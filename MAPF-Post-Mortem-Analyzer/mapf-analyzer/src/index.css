@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-zinc-900: #18181B;
+  --color-blue-500: #3B82F6;
+  --color-neon-red: #EF4444;
+  --color-amber: #F59E0B;
+  --color-neon-green: #10B981;
+
+  --font-sans: 'Pretendard', 'Inter', ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  
+  --color-background: var(--color-zinc-900);
+  --color-primary: var(--color-blue-500);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: white; /* 텍스트 보장 */
+    font-family: var(--font-sans);
+  }
+}

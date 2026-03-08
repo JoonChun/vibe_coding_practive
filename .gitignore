@@ -1,5 +1,4 @@
-# Ignore everything
 *
-# But not these
-!.gitignore
+!MAPF-Post-Mortem-Analyzer/
 !MAPF-Post-Mortem-Analyzer/**
+!.gitignore
