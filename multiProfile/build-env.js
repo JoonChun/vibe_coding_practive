@@ -10,5 +10,5 @@ const content = `window.viJoonEnv = {
 };
 `;
 
-fs.writeFileSync('.env.js', content);
-console.log('.env.js generated' + (apiKey ? ' with API key.' : ' (no key set).'));
+fs.writeFileSync('env-config.js', content);
+console.log('env-config.js generated' + (apiKey ? ' with API key.' : ' (no key set).'));
