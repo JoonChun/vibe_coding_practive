@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>vi.joon Link</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            purple: '#8A2BE2',
+                            dark: '#0F1014',
+                            surface: 'rgba(255, 255, 255, 0.05)',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Pretendard', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Pretendard Font -->
+    <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body class="bg-brand-dark text-white font-sans antialiased min-h-screen flex justify-center">
+
+    <!-- 메인 컨테이너 (모바일 뷰 중앙 정렬) -->
+    <main id="app-container" class="w-full max-w-md min-h-screen p-6 relative pb-20">
+        <!-- 동적으로 콘텐츠가 주입될 영역 -->
+    </main>
+
+    <!-- App Data & Config -->
+    <script src=".env.js"></script>
+    <script src="data.js"></script>
+    <!-- Main Logic -->
+    <script src="app.js"></script>
+</body>
+
+</html>

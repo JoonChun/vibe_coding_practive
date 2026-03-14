@@ -1,4 +1,12 @@
 *
 !MAPF-Post-Mortem-Analyzer/
 !MAPF-Post-Mortem-Analyzer/**
+!multiProfile/
+!multiProfile/**
 !.gitignore
+
+# Sensitive files and unnecessary folders
+**/.env.js
+**/node_modules/
+**/.DS_Store
+

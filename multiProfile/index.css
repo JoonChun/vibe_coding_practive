@@ -1,0 +1,53 @@
+/* index.css */
+
+/* 기본 셋팅 */
+body {
+    background-color: #0F1014;
+    overflow-x: hidden;
+}
+
+/* Glassmorphism 베이스 클래스 */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Neon Glow (보라색 네온 효과) */
+.neon-border {
+    border: 2px solid #8A2BE2;
+    box-shadow: 0 0 10px rgba(138, 43, 226, 0.5), inset 0 0 10px rgba(138, 43, 226, 0.3);
+}
+
+/* Neon Text Glow */
+.text-neon {
+    text-shadow: 0 0 8px rgba(138, 43, 226, 0.8);
+}
+
+/* 호버 시 네온 효과 강화 대상 */
+.hover-neon:hover {
+    box-shadow: 0 0 15px rgba(138, 43, 226, 0.7), inset 0 0 12px rgba(138, 43, 226, 0.4);
+    transform: translateY(-2px);
+    transition: all 0.3s ease;
+}
+
+/* 트랜지션 유틸리티 */
+.transition-all-300 {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Hide Scrollbar for clean UI */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(138, 43, 226, 0.3);
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(138, 43, 226, 0.6);
+}
