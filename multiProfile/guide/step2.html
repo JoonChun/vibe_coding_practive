@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Step 2: PRD 작성하기 | 바이브 코딩 가이드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { brand: { purple: '#8A2BE2', dark: '#0F1014' } },
+                    fontFamily: { sans: ['Pretendard', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+    <link rel="stylesheet" href="guide.css">
+</head>
+
+<body class="bg-brand-dark text-white font-sans antialiased min-h-screen flex justify-center">
+    <main class="w-full max-w-md min-h-screen p-6">
+
+        <!-- 상단 네비 -->
+        <div class="flex items-center justify-between mb-6">
+            <a href="index.html" class="text-gray-400 text-sm hover:text-white transition">← 목록</a>
+            <span class="text-xs text-gray-500">Step 2 / 3</span>
+        </div>
+
+        <!-- 진행 바 -->
+        <div class="progress-bar mb-8">
+            <div class="progress-fill" style="width: 66%"></div>
+        </div>
+
+        <!-- 타이틀 -->
+        <header class="mb-10">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="step-number" style="background:#8A2BE2; box-shadow: 0 0 10px rgba(138,43,226,0.5);">2</div>
+                <h1 class="text-2xl font-bold">PRD 작성하기</h1>
+            </div>
+            <p class="text-gray-400 text-sm leading-relaxed">코딩을 시작하기 전에, 만들고 싶은 것을 체계적으로 정리합니다. Gemini가 도와줄 거예요.</p>
+        </header>
+
+        <!-- 섹션 1: PRD란? -->
+        <div class="guide-section">
+            <h2>📋 PRD란?</h2>
+            <p>
+                PRD(Product Requirements Document)는 <strong style="color:white;">"내가 뭘 만들 건지"</strong>를 정리한 기획서입니다.
+                설계도 없이 집을 지을 수 없듯이, PRD 없이 프로젝트를 시작하면 중간에 길을 잃기 쉽습니다.
+            </p>
+            <p>
+                좋은 소식은, AI에게 아이디어만 말하면 PRD를 대신 작성해준다는 것입니다!
+            </p>
+        </div>
+
+        <!-- 섹션 2: Gemini로 PRD 작성 -->
+        <div class="guide-section">
+            <h2>✍️ Gemini로 PRD 작성하기</h2>
+            <p>
+                Gemini에게 다음과 같은 프롬프트를 입력해보세요. 여러분의 아이디어에 맞게 수정하면 됩니다.
+            </p>
+
+            <div class="prompt-box">나는 [프로젝트 아이디어]를 만들고 싶어.
+
+타겟 사용자는 [대상]이고, 핵심 목적은 [목적]이야.
+
+이 프로젝트의 PRD를 작성해줘. 다음 항목을 포함해줘:
+1. 프로젝트 개요
+2. 사용자 시나리오
+3. 핵심 기능 목록
+4. 기술 스택 (HTML, CSS, JS 기반)
+5. 화면 구성
+6. 디자인 가이드 (색상, 폰트, 분위기)
+7. 제약 사항</div>
+
+            <div class="tip-box">
+                💡 <strong>팁:</strong> 처음에는 완벽하지 않아도 됩니다. AI에게 "이 부분을 더 자세히 써줘" 또는 "이 기능은 빼줘"라고 요청하며 다듬어 가세요.
+            </div>
+        </div>
+
+        <!-- 섹션 3: 좋은 PRD의 구조 -->
+        <div class="guide-section">
+            <h2>🏗️ 좋은 PRD의 구조</h2>
+            <p>AI가 작성한 PRD에 다음 내용이 포함되어 있는지 확인하세요:</p>
+
+            <div style="display:flex; flex-direction:column; gap:8px; margin: 16px 0;">
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px;">
+                    <div style="font-weight:600; color:white; font-size:0.9rem; margin-bottom:4px;">🎯 프로젝트 개요</div>
+                    <div style="color:#aaa; font-size:0.8rem;">무엇을, 왜, 누구를 위해 만드는지</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px;">
+                    <div style="font-weight:600; color:white; font-size:0.9rem; margin-bottom:4px;">⚙️ 핵심 기능 목록</div>
+                    <div style="color:#aaa; font-size:0.8rem;">구체적으로 어떤 기능이 필요한지</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px;">
+                    <div style="font-weight:600; color:white; font-size:0.9rem; margin-bottom:4px;">🎨 디자인 가이드</div>
+                    <div style="color:#aaa; font-size:0.8rem;">색상, 폰트, 전체적인 분위기</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px;">
+                    <div style="font-weight:600; color:white; font-size:0.9rem; margin-bottom:4px;">🚧 제약 사항</div>
+                    <div style="color:#aaa; font-size:0.8rem;">기술적 한계, 예산, 시간 등</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 섹션 4: 실전 예시 -->
+        <div class="guide-section">
+            <h2>📱 실전 예시: vi.joon Link</h2>
+            <p>
+                이 사이트(vi.joon Link)도 PRD를 먼저 작성한 후 만들었습니다.
+                실제로 사용한 PRD의 일부를 보여드릴게요:
+            </p>
+
+            <div class="prompt-box" style="font-size:0.8rem; color:#c4b5fd;">프로젝트 명: vi.joon Link
+
+핵심 컨셉: '바이브 코딩'을 통해 만든 결과물들을 기록하고
+일반인에게 그 가능성을 전달하는 성장형 포트폴리오.
+
+기술 스택: HTML5, CSS3, Vanilla JavaScript, Tailwind CSS
+
+디자인:
+- Main Color: #8A2BE2 (Electric Purple)
+- Background: #0F1014 (Dark Charcoal)
+- Style: Glassmorphism + Neon Glow</div>
+
+            <p>
+                이렇게 정리된 PRD가 있으면, 다음 단계에서 AI에게 "이 PRD대로 만들어줘"라고 요청할 수 있습니다.
+            </p>
+        </div>
+
+        <!-- 네비게이션 -->
+        <div class="nav-buttons">
+            <a href="step1.html" class="nav-btn prev">← 툴 설치하기</a>
+            <a href="step3.html" class="nav-btn next">첫 프로젝트 만들기 →</a>
+        </div>
+
+        <div class="h-8"></div>
+    </main>
+</body>
+
+</html>

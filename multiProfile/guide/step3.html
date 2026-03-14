@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Step 3: 첫 프로젝트 만들기 | 바이브 코딩 가이드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { brand: { purple: '#8A2BE2', dark: '#0F1014' } },
+                    fontFamily: { sans: ['Pretendard', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+    <link rel="stylesheet" href="guide.css">
+</head>
+
+<body class="bg-brand-dark text-white font-sans antialiased min-h-screen flex justify-center">
+    <main class="w-full max-w-md min-h-screen p-6">
+
+        <!-- 상단 네비 -->
+        <div class="flex items-center justify-between mb-6">
+            <a href="index.html" class="text-gray-400 text-sm hover:text-white transition">← 목록</a>
+            <span class="text-xs text-gray-500">Step 3 / 3</span>
+        </div>
+
+        <!-- 진행 바 -->
+        <div class="progress-bar mb-8">
+            <div class="progress-fill" style="width: 100%"></div>
+        </div>
+
+        <!-- 타이틀 -->
+        <header class="mb-10">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="step-number" style="background:#8A2BE2; box-shadow: 0 0 10px rgba(138,43,226,0.5);">3</div>
+                <h1 class="text-2xl font-bold">첫 프로젝트 만들기</h1>
+            </div>
+            <p class="text-gray-400 text-sm leading-relaxed">PRD를 기반으로 Antigravity와 Claude를 활용해 실제 프로젝트를 완성합니다.</p>
+        </header>
+
+        <!-- 섹션 1: 프로젝트 시작 -->
+        <div class="guide-section">
+            <h2>🎬 Antigravity에서 프로젝트 시작</h2>
+            <p>
+                Antigravity를 실행하고 새 프로젝트를 생성합니다.
+                AI 모델로 Claude를 선택하세요 — 코드 생성 능력이 뛰어납니다.
+            </p>
+            <div class="screenshot">📸 Antigravity 새 프로젝트 생성 화면</div>
+        </div>
+
+        <!-- 섹션 2: PRD 전달 -->
+        <div class="guide-section">
+            <h2>📤 Claude에게 PRD 전달하기</h2>
+            <p>
+                Step 2에서 작성한 PRD를 Claude에게 전달합니다.
+                다음과 같이 요청해보세요:
+            </p>
+
+            <div class="prompt-box">다음 PRD를 기반으로 웹사이트를 만들어줘.
+
+[여기에 PRD 전체를 붙여넣기]
+
+HTML, CSS, JavaScript로 구현해줘.
+모바일에서 잘 보이게 만들어줘.</div>
+
+            <p>
+                Claude가 코드를 생성하면 Antigravity에서 바로 결과를 확인할 수 있습니다.
+            </p>
+            <div class="screenshot">📸 Claude가 코드를 생성하는 화면</div>
+        </div>
+
+        <!-- 섹션 3: 수정 요청 -->
+        <div class="guide-section">
+            <h2>🔧 결과물 확인 및 수정</h2>
+            <p>
+                한 번에 완벽한 결과가 나오지 않는 것은 정상입니다!
+                다음과 같이 수정을 요청하세요:
+            </p>
+
+            <div style="display:flex; flex-direction:column; gap:8px; margin: 16px 0;">
+                <div style="background:rgba(138,43,226,0.08); border:1px solid rgba(138,43,226,0.2); border-radius:10px; padding:12px;">
+                    <div style="color:#c4b5fd; font-size:0.85rem;">"버튼 색상을 보라색으로 바꿔줘"</div>
+                </div>
+                <div style="background:rgba(138,43,226,0.08); border:1px solid rgba(138,43,226,0.2); border-radius:10px; padding:12px;">
+                    <div style="color:#c4b5fd; font-size:0.85rem;">"글자 크기가 너무 작아. 좀 더 키워줘"</div>
+                </div>
+                <div style="background:rgba(138,43,226,0.08); border:1px solid rgba(138,43,226,0.2); border-radius:10px; padding:12px;">
+                    <div style="color:#c4b5fd; font-size:0.85rem;">"여기에 인스타그램 링크 버튼을 추가해줘"</div>
+                </div>
+            </div>
+
+            <div class="tip-box">
+                💡 <strong>핵심:</strong> 바이브 코딩은 대화입니다. 마치 디자이너에게 요청하듯 자연스럽게 말하면 AI가 이해하고 수정해줍니다.
+            </div>
+        </div>
+
+        <!-- 섹션 4: 배포 -->
+        <div class="guide-section">
+            <h2>🌐 세상에 공개하기</h2>
+            <p>
+                프로젝트가 완성되었다면 전 세계에 공개할 차례입니다!
+                <a href="https://vercel.com" target="_blank" rel="noopener noreferrer" class="guide-link">Vercel</a>을 사용하면 무료로 쉽게 배포할 수 있습니다.
+            </p>
+            <p>
+                1. <a href="https://vercel.com" target="_blank" rel="noopener noreferrer" class="guide-link">vercel.com</a>에 가입합니다.<br>
+                2. GitHub에 프로젝트를 업로드합니다.<br>
+                3. Vercel에서 GitHub 저장소를 연결하면 자동 배포!<br>
+                4. 나만의 URL이 생성됩니다.
+            </p>
+            <div class="screenshot">📸 Vercel 배포 완료 화면</div>
+
+            <div class="tip-box">
+                💡 <strong>축하합니다!</strong> 여기까지 왔다면 코딩 경험 없이도 AI의 도움으로 웹사이트를 만들고 배포한 것입니다. 이것이 바이브 코딩의 힘이에요!
+            </div>
+        </div>
+
+        <!-- 마무리 CTA -->
+        <div style="background: linear-gradient(135deg, rgba(138,43,226,0.2), rgba(79,70,229,0.2)); border: 1px solid rgba(138,43,226,0.3); border-radius: 16px; padding: 24px; text-align: center; margin-top: 20px;">
+            <p style="font-size: 1.1rem; font-weight: 700; color: white; margin-bottom: 8px;">다음은 여러분의 차례입니다!</p>
+            <p style="font-size: 0.85rem; color: #aaa; margin-bottom: 16px;">바이브 코딩으로 만든 프로젝트를 공유해주세요</p>
+            <a href="https://www.instagram.com/vi.jooncoding/" target="_blank" rel="noopener noreferrer"
+               style="display:inline-block; background:linear-gradient(to right, #7c3aed, #4f46e5); color:white; padding:10px 28px; border-radius:12px; font-weight:600; font-size:0.9rem; text-decoration:none; transition:all 0.3s ease;">
+                @vi.jooncoding 팔로우하기
+            </a>
+        </div>
+
+        <!-- 네비게이션 -->
+        <div class="nav-buttons">
+            <a href="step2.html" class="nav-btn prev">← PRD 작성하기</a>
+            <a href="index.html" class="nav-btn next">가이드 처음으로 →</a>
+        </div>
+
+        <div class="h-8"></div>
+    </main>
+</body>
+
+</html>

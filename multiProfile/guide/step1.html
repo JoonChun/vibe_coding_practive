@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Step 1: 툴 설치하기 | 바이브 코딩 가이드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { brand: { purple: '#8A2BE2', dark: '#0F1014' } },
+                    fontFamily: { sans: ['Pretendard', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+    <link rel="stylesheet" href="guide.css">
+</head>
+
+<body class="bg-brand-dark text-white font-sans antialiased min-h-screen flex justify-center">
+    <main class="w-full max-w-md min-h-screen p-6">
+
+        <!-- 상단 네비 -->
+        <div class="flex items-center justify-between mb-6">
+            <a href="index.html" class="text-gray-400 text-sm hover:text-white transition">← 목록</a>
+            <span class="text-xs text-gray-500">Step 1 / 3</span>
+        </div>
+
+        <!-- 진행 바 -->
+        <div class="progress-bar mb-8">
+            <div class="progress-fill" style="width: 33%"></div>
+        </div>
+
+        <!-- 타이틀 -->
+        <header class="mb-10">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="step-number active" style="background:#8A2BE2; box-shadow: 0 0 10px rgba(138,43,226,0.5);">1</div>
+                <h1 class="text-2xl font-bold">툴 설치하기</h1>
+            </div>
+            <p class="text-gray-400 text-sm leading-relaxed">바이브 코딩에 필요한 3가지 도구를 준비합니다. 모두 무료로 시작할 수 있어요.</p>
+        </header>
+
+        <!-- 섹션 1: Antigravity -->
+        <div class="guide-section">
+            <h2>🚀 Antigravity란?</h2>
+            <p>
+                Antigravity는 AI를 활용해 코드를 생성하고, 바로 실행하며 결과를 확인할 수 있는 개발 도구입니다.
+                코딩을 전혀 몰라도, 만들고 싶은 것을 말로 설명하면 AI가 대신 코드를 작성해줍니다.
+            </p>
+            <div class="screenshot">📸 Antigravity 메인 화면 스크린샷</div>
+
+            <h2>설치 방법</h2>
+            <p>
+                1. <a href="https://antigravity.dev" target="_blank" rel="noopener noreferrer" class="guide-link">antigravity.dev</a>에 접속합니다.<br>
+                2. 운영체제에 맞는 설치 파일을 다운로드합니다.<br>
+                3. 설치 후 실행하면 끝!
+            </p>
+            <div class="screenshot">📸 다운로드 페이지 스크린샷</div>
+        </div>
+
+        <!-- 섹션 2: Claude -->
+        <div class="guide-section">
+            <h2>🤖 Claude 계정 만들기</h2>
+            <p>
+                Claude는 Anthropic에서 만든 AI 어시스턴트입니다. 코드를 작성하고 수정하는 데 뛰어난 능력을 가지고 있어요.
+                Antigravity에서 Claude를 연결하면 강력한 코딩 파트너를 얻게 됩니다.
+            </p>
+            <p>
+                1. <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" class="guide-link">claude.ai</a>에 접속합니다.<br>
+                2. 이메일 또는 Google 계정으로 가입합니다.<br>
+                3. 무료 플랜으로 시작할 수 있습니다.
+            </p>
+            <div class="screenshot">📸 Claude 가입 화면 스크린샷</div>
+
+            <div class="tip-box">
+                💡 <strong>팁:</strong> Claude Pro 구독을 하면 더 긴 대화와 빠른 응답을 받을 수 있지만, 무료로도 충분히 시작할 수 있어요.
+            </div>
+        </div>
+
+        <!-- 섹션 3: Gemini -->
+        <div class="guide-section">
+            <h2>✨ Gemini API 키 발급</h2>
+            <p>
+                Gemini는 Google의 AI 모델입니다. PRD(기획서)를 작성할 때 Gemini의 도움을 받으면 체계적인 기획이 가능합니다.
+            </p>
+            <p>
+                1. <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" class="guide-link">Google AI Studio</a>에 접속합니다.<br>
+                2. Google 계정으로 로그인합니다.<br>
+                3. "Get API Key" 버튼을 클릭하여 키를 발급받습니다.<br>
+                4. 발급받은 키를 안전한 곳에 저장해두세요.
+            </p>
+            <div class="screenshot">📸 Google AI Studio API 키 발급 화면</div>
+
+            <div class="tip-box">
+                💡 <strong>팁:</strong> API 키는 비밀번호와 같습니다. 절대 다른 사람과 공유하지 마세요!
+            </div>
+        </div>
+
+        <!-- 네비게이션 -->
+        <div class="nav-buttons">
+            <a href="index.html" class="nav-btn prev">← 목록으로</a>
+            <a href="step2.html" class="nav-btn next">PRD 작성하기 →</a>
+        </div>
+
+        <div class="h-8"></div>
+    </main>
+</body>
+
+</html>

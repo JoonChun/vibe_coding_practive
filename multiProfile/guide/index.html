@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>바이브 코딩 가이드 | vi.joon</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { purple: '#8A2BE2', dark: '#0F1014' }
+                    },
+                    fontFamily: { sans: ['Pretendard', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+    <link rel="stylesheet" href="guide.css">
+</head>
+
+<body class="bg-brand-dark text-white font-sans antialiased min-h-screen flex justify-center">
+    <main class="w-full max-w-md min-h-screen p-6 flex flex-col">
+
+        <!-- 타이틀 영역 -->
+        <header class="text-center pt-8 pb-12">
+            <p class="text-brand-purple text-xs uppercase tracking-[3px] font-bold mb-3">VIBE CODING GUIDE</p>
+            <h1 class="text-3xl font-bold leading-tight mb-3">
+                이제 시작하는<br>
+                <span class="text-brand-purple">바이브 코딩</span>
+            </h1>
+        </header>
+
+        <!-- 3단계 카드 -->
+        <div class="flex flex-col gap-3 flex-1">
+            <a href="step1.html" class="step-card active">
+                <div class="step-number">1</div>
+                <div class="flex-1 min-w-0">
+                    <h2 class="text-[15px] font-semibold text-white">툴 설치하기</h2>
+                    <p class="text-xs text-gray-400 mt-1">Antigravity, Claude, Gemini 셋업</p>
+                </div>
+                <span class="text-brand-purple text-lg">→</span>
+            </a>
+
+            <a href="step2.html" class="step-card">
+                <div class="step-number">2</div>
+                <div class="flex-1 min-w-0">
+                    <h2 class="text-[15px] font-semibold text-white">PRD 작성하기</h2>
+                    <p class="text-xs text-gray-400 mt-1">Gemini로 기획서 만들기</p>
+                </div>
+                <span class="text-gray-600 text-lg">→</span>
+            </a>
+
+            <a href="step3.html" class="step-card">
+                <div class="step-number">3</div>
+                <div class="flex-1 min-w-0">
+                    <h2 class="text-[15px] font-semibold text-white">첫 프로젝트 만들기</h2>
+                    <p class="text-xs text-gray-400 mt-1">실전! Antigravity + Claude</p>
+                </div>
+                <span class="text-gray-600 text-lg">→</span>
+            </a>
+        </div>
+
+        <!-- 하단 -->
+        <footer class="text-center py-8 mt-auto">
+            <a href="../index.html" class="text-gray-500 text-sm hover:text-brand-purple transition">← vi.joon 프로필로 돌아가기</a>
+        </footer>
+
+    </main>
+</body>
+
+</html>

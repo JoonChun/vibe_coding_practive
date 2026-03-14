@@ -6,7 +6,7 @@ const globalData = {
     },
     "featured": {
         "title": "이제 시작하는 바이브 코딩 프로젝트✨",
-        "link": "https://example.com/guide",
+        "link": "./guide/index.html",
         "isActive": true
     },
     "projects": [
@@ -26,14 +26,21 @@ const globalData = {
     "socials": {
         "instagram": "https://www.instagram.com/vi.jooncoding/",
         "github": "https://github.com/JoonChun",
-        "email": "Joon:jeonjun47@gmail.com"
+        "email": "mailto:jeonjun47@gmail.com"
     }
 };
 
 // --- LocalStorage Persistence Layer ---
 // 어드민 패널에서 수정한 데이터가 있다면 소스 코드의 기본값 대신 사용합니다.
 const savedData = localStorage.getItem('viJoonLink_data');
-const finalData = savedData ? JSON.parse(savedData) : globalData;
+let finalData;
+try {
+    finalData = savedData ? JSON.parse(savedData) : globalData;
+} catch (e) {
+    console.warn('LocalStorage data corrupted, using defaults:', e);
+    localStorage.removeItem('viJoonLink_data');
+    finalData = globalData;
+}
 
 // 브라우저 환경에서 전역 접근 가능하도록 노출
 window.viJoonData = finalData;

@@ -3,6 +3,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const appContainer = document.getElementById('app-container');
     const data = window.viJoonData;
 
+    // HTML 이스케이프 헬퍼 (XSS 방지)
+    function escapeHTML(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+    }
+
+    // URL 검증 헬퍼 (javascript: 프로토콜 차단)
+    function safeURL(url) {
+        if (!url) return '#';
+        const trimmed = url.trim();
+        if (/^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed) || /^\.?\//i.test(trimmed) || trimmed === '#') {
+            return escapeHTML(trimmed);
+        }
+        return '#';
+    }
+
     // 1. 초기 렌더링 함수
     function renderApp() {
         appContainer.innerHTML = ''; // 초기화
@@ -11,10 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const headerHTML = `
             <header class="flex flex-col items-center mb-8 animate-fade-in">
                 <div class="relative w-24 h-24 mb-4 rounded-full neon-border overflow-hidden">
-                    <img src="${data.profile.image}" alt="Profile Image" class="w-full h-full object-cover">
+                    <img src="${escapeHTML(data.profile.image)}" alt="Profile Image" class="w-full h-full object-cover">
                 </div>
-                <h1 class="text-2xl font-bold mb-2 text-neon">${data.profile.title}</h1>
-                <p class="text-gray-400 text-center text-sm px-4">${data.profile.description}</p>
+                <h1 class="text-2xl font-bold mb-2 text-neon">${escapeHTML(data.profile.title)}</h1>
+                <p class="text-gray-400 text-center text-sm px-4">${escapeHTML(data.profile.description)}</p>
             </header>
         `;
 
@@ -23,9 +40,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.featured && data.featured.isActive) {
             featuredHTML = `
                 <section class="mb-8 w-full">
-                    <a href="${data.featured.link}" target="_blank" rel="noopener noreferrer" 
+                    <a href="${safeURL(data.featured.link)}" target="_blank" rel="noopener noreferrer"
                        class="block w-full py-4 px-6 text-center font-bold text-white rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 shadow-lg hover-neon transition-all-300 transform active:scale-95">
-                        ${data.featured.title}
+                        ${escapeHTML(data.featured.title)}
                     </a>
                 </section>
             `;
@@ -35,16 +52,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const projectsHTML = `
             <section class="space-y-4 w-full" id="project-list">
                 ${data.projects.map(proj => `
-                    <a href="${proj.url}" target="_blank" rel="noopener noreferrer" 
-                       class="glass-panel rounded-xl p-4 flex items-center space-x-4 hover:bg-white/10 hover-neon transition-all-300 transform active:scale-95" data-id="${proj.id}">
+                    <a href="${safeURL(proj.url)}" target="_blank" rel="noopener noreferrer"
+                       class="glass-panel rounded-xl p-4 flex items-center space-x-4 hover:bg-white/10 hover-neon transition-all-300 transform active:scale-95" data-id="${escapeHTML(proj.id)}">
                         <div class="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-800">
-                            <img src="${proj.thumbnail}" alt="${proj.title}" class="w-full h-full object-cover">
+                            <img src="${escapeHTML(proj.thumbnail)}" alt="${escapeHTML(proj.title)}" class="w-full h-full object-cover">
                         </div>
                         <div class="flex-1 min-w-0">
-                            <h2 class="text-lg font-semibold text-white truncate">${proj.title}</h2>
-                            <p class="text-sm text-gray-400 line-clamp-2">${proj.description}</p>
+                            <h2 class="text-lg font-semibold text-white truncate">${escapeHTML(proj.title)}</h2>
+                            <p class="text-sm text-gray-400 line-clamp-2">${escapeHTML(proj.description)}</p>
                             <div class="flex flex-wrap gap-2 mt-2">
-                                ${proj.tags.map(tag => `<span class="text-xs bg-purple-900/50 text-purple-200 px-2 py-0.5 rounded-full border border-purple-500/30">${tag}</span>`).join('')}
+                                ${(proj.tags || []).map(tag => `<span class="text-xs bg-purple-900/50 text-purple-200 px-2 py-0.5 rounded-full border border-purple-500/30">${escapeHTML(tag)}</span>`).join('')}
                             </div>
                         </div>
                     </a>
@@ -55,9 +72,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- Social/Footer ---
         const socialHTML = `
             <footer class="mt-12 mb-8 flex justify-center space-x-6">
-                ${data.socials.instagram ? `<a href="${data.socials.instagram}" target="_blank" class="text-gray-400 hover:text-brand-purple transition-all-300"><i class="fab fa-instagram text-2xl"></i> Instagram</a>` : ''}
-                ${data.socials.github ? `<a href="${data.socials.github}" target="_blank" class="text-gray-400 hover:text-brand-purple transition-all-300"><i class="fab fa-github text-2xl"></i> Github</a>` : ''}
-                ${data.socials.email ? `<a href="${data.socials.email}" class="text-gray-400 hover:text-brand-purple transition-all-300"><i class="fas fa-envelope text-2xl"></i> Email</a>` : ''}
+                ${data.socials.instagram ? `<a href="${safeURL(data.socials.instagram)}" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-brand-purple transition-all-300"><i class="fab fa-instagram text-2xl"></i> Instagram</a>` : ''}
+                ${data.socials.github ? `<a href="${safeURL(data.socials.github)}" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-brand-purple transition-all-300"><i class="fab fa-github text-2xl"></i> Github</a>` : ''}
+                ${data.socials.email ? `<a href="${safeURL(data.socials.email)}" class="text-gray-400 hover:text-brand-purple transition-all-300"><i class="fas fa-envelope text-2xl"></i> Email</a>` : ''}
             </footer>
             <p class="text-center text-xs text-gray-600 pb-4 relative z-10 w-full">Press <kbd class="px-1 py-0.5 bg-gray-800 rounded text-gray-400 font-mono">Ctrl + M</kbd> to edit (Local Only)</p>
         `;
@@ -329,17 +346,21 @@ document.addEventListener('DOMContentLoaded', () => {
             renderApp();
         });
 
+        // Export 헬퍼
+        function buildExportText() {
+            return `const globalData = ${JSON.stringify(data, null, 4)};\n\n// --- LocalStorage Persistence Layer ---\nconst savedData = localStorage.getItem('viJoonLink_data');\nlet finalData;\ntry {\n    finalData = savedData ? JSON.parse(savedData) : globalData;\n} catch (e) {\n    console.warn('LocalStorage data corrupted, using defaults:', e);\n    localStorage.removeItem('viJoonLink_data');\n    finalData = globalData;\n}\n\nwindow.viJoonData = finalData;`;
+        }
+
         // Copy 버튼
         document.getElementById('btn-copy-json').addEventListener('click', () => {
-            const exportText = `const globalData = ${JSON.stringify(data, null, 4)};\n\nwindow.viJoonData = globalData;`;
-            navigator.clipboard.writeText(exportText).then(() => {
+            navigator.clipboard.writeText(buildExportText()).then(() => {
                 alert('Copied data.js content to clipboard!');
             });
         });
 
         // Download 버튼
         document.getElementById('btn-dl-json').addEventListener('click', () => {
-            const exportText = `const globalData = ${JSON.stringify(data, null, 4)};\n\nwindow.viJoonData = globalData;`;
+            const exportText = buildExportText();
             const blob = new Blob([exportText], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -352,12 +373,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Native Drag and Drop Logic
+    // Drag and Drop Logic (Desktop + Mobile Touch)
     function setupDragAndDrop(listEl) {
         let draggedItem = null;
 
+        // --- Desktop: Native Drag & Drop ---
         listEl.addEventListener('dragstart', (e) => {
-            // Edit 폼 내부의 요소나 인풋 클릭 시 드래그가 시작되지 않도록 함
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.closest('.edit-form') || e.target.closest('button')) {
                 e.preventDefault();
                 return;
@@ -384,16 +405,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
         listEl.addEventListener('dragend', () => {
             if (draggedItem) draggedItem.classList.remove('opacity-50');
-            // 순서 데이터에 반영
-            const newOrder = Array.from(listEl.children).map(li => parseInt(li.dataset.idx, 10));
-            const reorderedProjects = newOrder.map(idx => data.projects[idx]);
-            data.projects = reorderedProjects; // 전역 데이터 교체
-
-            // 재렌더링
-            renderApp();
-            // 데이터 인덱스 재할당용 sync
-            syncDataToAdmin();
+            finalizeDragOrder(listEl);
         });
+
+        // --- Mobile: Touch Events ---
+        let touchDragItem = null;
+        let touchClone = null;
+        let touchStartY = 0;
+
+        listEl.addEventListener('touchstart', (e) => {
+            const handle = e.target.closest('.drag-handle');
+            if (!handle) return;
+
+            const li = handle.closest('li');
+            if (!li) return;
+
+            touchDragItem = li;
+            touchStartY = e.touches[0].clientY;
+
+            // 시각 피드백
+            touchDragItem.classList.add('opacity-50');
+            touchDragItem.style.transition = 'none';
+        }, { passive: true });
+
+        listEl.addEventListener('touchmove', (e) => {
+            if (!touchDragItem) return;
+            e.preventDefault();
+
+            const touchY = e.touches[0].clientY;
+            const targetEl = document.elementFromPoint(e.touches[0].clientX, touchY);
+            if (!targetEl) return;
+
+            const targetItem = targetEl.closest('li');
+            if (targetItem && targetItem !== touchDragItem && listEl.contains(targetItem)) {
+                const rect = targetItem.getBoundingClientRect();
+                const next = (touchY - rect.top) / (rect.bottom - rect.top) > 0.5;
+                listEl.insertBefore(touchDragItem, next ? targetItem.nextSibling : targetItem);
+            }
+        }, { passive: false });
+
+        listEl.addEventListener('touchend', () => {
+            if (!touchDragItem) return;
+            touchDragItem.classList.remove('opacity-50');
+            touchDragItem.style.transition = '';
+            finalizeDragOrder(listEl);
+            touchDragItem = null;
+        });
+
+        // 공통: 드래그 완료 후 데이터 순서 반영
+        function finalizeDragOrder(list) {
+            const newOrder = Array.from(list.children).map(li => parseInt(li.dataset.idx, 10));
+            const reorderedProjects = newOrder.map(idx => data.projects[idx]);
+            data.projects = reorderedProjects;
+            renderApp();
+            syncDataToAdmin();
+        }
     }
 
     // 키보드 이벤트 (Ctrl + M)
@@ -410,6 +476,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     function initChatbot() {
         const apiKey = window.viJoonEnv ? window.viJoonEnv.GEMINI_API_KEY : null;
+        // 대화 히스토리 (멀티턴 지원)
+        const chatHistory = [];
 
         const chatHTML = `
             <div id="vi-chatbot" class="fixed bottom-6 right-6 z-40 flex flex-col items-end pointer-events-none">
@@ -469,6 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!text) return;
 
             appendMessage(text, 'user');
+            chatHistory.push({ role: 'user', text: text });
             chatInput.value = '';
 
             if (!apiKey) {
@@ -479,9 +548,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const typingId = appendMessage("답변을 생성중입니다...", 'ai', true);
 
             try {
-                const response = await askGemini(text, apiKey, data);
+                const response = await askGemini(text, apiKey, data, chatHistory);
                 document.getElementById(typingId).remove();
                 appendMessage(response, 'ai');
+                chatHistory.push({ role: 'model', text: response });
             } catch (e) {
                 document.getElementById(typingId).remove();
                 appendMessage("오류가 발생했습니다: " + e.message, 'system');
@@ -511,7 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function askGemini(question, apiKey, contextData) {
+    async function askGemini(question, apiKey, contextData, history) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
 
         const safeData = {
@@ -519,18 +589,35 @@ document.addEventListener('DOMContentLoaded', () => {
             projects: contextData.projects
         };
 
-        const prompt = `당신은 '${safeData.profile.title}'의 개인 프로젝트를 안내하는 큐레이터이자 친절한 AI 어시스턴트입니다.
+        const systemPrompt = `당신은 '${safeData.profile.title}'의 개인 프로젝트를 안내하는 큐레이터이자 친절한 AI 어시스턴트입니다.
 다음 포트폴리오 데이터를 바탕으로 사용자의 질문에 한국어로 대답해주세요. 대답은 기술적이되 전문적이고 친근한 톤을 유지하고, 3~4문장 정도로 간결하게 답변해주세요. 정보를 나열하기보다는 자연스러운 대화체로 말해주세요.
-데이터: ${JSON.stringify(safeData)}
+데이터: ${JSON.stringify(safeData)}`;
 
-사용자 질문: ${question}`;
+        // 대화 히스토리를 Gemini contents 형식으로 변환
+        const contents = [];
+
+        // 첫 메시지에 시스템 프롬프트를 포함
+        const previousMessages = history.slice(0, -1); // 현재 질문 제외 (이미 history에 push됨)
+        if (previousMessages.length === 0) {
+            // 첫 대화: 시스템 프롬프트 + 질문을 하나로
+            contents.push({ role: 'user', parts: [{ text: systemPrompt + '\n\n사용자 질문: ' + question }] });
+        } else {
+            // 멀티턴: 첫 메시지에 시스템 프롬프트 포함, 이후 히스토리 추가
+            previousMessages.forEach((msg, i) => {
+                if (i === 0) {
+                    contents.push({ role: 'user', parts: [{ text: systemPrompt + '\n\n사용자 질문: ' + msg.text }] });
+                } else {
+                    contents.push({ role: msg.role, parts: [{ text: msg.text }] });
+                }
+            });
+            // 현재 질문 추가
+            contents.push({ role: 'user', parts: [{ text: question }] });
+        }
 
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }]
-            })
+            body: JSON.stringify({ contents })
         });
         const json = await res.json();
         if (json.error) throw new Error(json.error.message);
