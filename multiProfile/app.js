@@ -463,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 키보드 이벤트 (Ctrl + M)
-    const ADMIN_PASS = '0818';
+    const ADMIN_PASS = window.viJoonEnv ? window.viJoonEnv.ADMIN_PASS : '';
     let isAdminAuthenticated = false;
 
     window.addEventListener('keydown', (e) => {
