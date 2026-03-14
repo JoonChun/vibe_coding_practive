@@ -463,11 +463,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 키보드 이벤트 (Ctrl + M)
+    const ADMIN_PASS = '0818';
+    let isAdminAuthenticated = false;
+
     window.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key.toLowerCase() === 'm') {
             e.preventDefault();
-            if (isAdminOpen) closeAdminPanel();
-            else initAdminPanel();
+            if (isAdminOpen) {
+                closeAdminPanel();
+            } else if (isAdminAuthenticated) {
+                initAdminPanel();
+            } else {
+                const input = prompt('관리자 비밀번호를 입력하세요:');
+                if (input === ADMIN_PASS) {
+                    isAdminAuthenticated = true;
+                    initAdminPanel();
+                } else if (input !== null) {
+                    alert('비밀번호가 올바르지 않습니다.');
+                }
+            }
         }
     });
 
