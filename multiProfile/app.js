@@ -466,6 +466,67 @@ document.addEventListener('DOMContentLoaded', () => {
     const ADMIN_PASS = window.viJoonEnv ? window.viJoonEnv.ADMIN_PASS : '';
     let isAdminAuthenticated = false;
 
+    // 비밀번호 입력 모달
+    function showPasswordModal() {
+        let modal = document.getElementById('password-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'password-modal';
+            modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-300';
+            modal.innerHTML = `
+                <div class="glass-panel rounded-2xl p-6 w-80 flex flex-col items-center gap-4 shadow-[0_0_30px_rgba(138,43,226,0.3)]">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-brand-purple shadow-[0_0_8px_#8A2BE2]"></span>
+                        <h3 class="text-white font-bold text-lg">Admin Access</h3>
+                    </div>
+                    <p class="text-gray-400 text-sm text-center">관리자 비밀번호를 입력하세요</p>
+                    <input type="password" id="admin-pass-input" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-center text-sm focus:outline-none focus:border-brand-purple transition-colors" placeholder="••••••••" autocomplete="off">
+                    <p id="pass-error" class="text-red-400 text-xs hidden">비밀번호가 올바르지 않습니다.</p>
+                    <div class="flex gap-2 w-full">
+                        <button id="pass-cancel" class="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 py-2 rounded-lg text-sm transition">취소</button>
+                        <button id="pass-submit" class="flex-1 bg-brand-purple hover:bg-purple-600 text-white py-2 rounded-lg text-sm transition shadow-[0_0_10px_rgba(138,43,226,0.3)]">확인</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            const input = document.getElementById('admin-pass-input');
+            const errorMsg = document.getElementById('pass-error');
+
+            function tryLogin() {
+                const val = input.value;
+                if (val && val === ADMIN_PASS) {
+                    isAdminAuthenticated = true;
+                    closePasswordModal();
+                    initAdminPanel();
+                } else {
+                    errorMsg.classList.remove('hidden');
+                    input.classList.add('border-red-500');
+                    input.value = '';
+                    setTimeout(() => {
+                        errorMsg.classList.add('hidden');
+                        input.classList.remove('border-red-500');
+                    }, 2000);
+                }
+            }
+
+            document.getElementById('pass-submit').addEventListener('click', tryLogin);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryLogin(); });
+            document.getElementById('pass-cancel').addEventListener('click', closePasswordModal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) closePasswordModal(); });
+        }
+
+        modal.classList.remove('hidden');
+        document.getElementById('admin-pass-input').value = '';
+        document.getElementById('pass-error').classList.add('hidden');
+        setTimeout(() => document.getElementById('admin-pass-input').focus(), 100);
+    }
+
+    function closePasswordModal() {
+        const modal = document.getElementById('password-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
     window.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key.toLowerCase() === 'm') {
             e.preventDefault();
@@ -474,15 +535,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (isAdminAuthenticated) {
                 initAdminPanel();
             } else if (!ADMIN_PASS) {
-                alert('관리자 비밀번호가 설정되지 않았습니다.');
+                return;
             } else {
-                const input = prompt('관리자 비밀번호를 입력하세요:');
-                if (input && input === ADMIN_PASS) {
-                    isAdminAuthenticated = true;
-                    initAdminPanel();
-                } else if (input !== null) {
-                    alert('비밀번호가 올바르지 않습니다.');
-                }
+                showPasswordModal();
             }
         }
     });
