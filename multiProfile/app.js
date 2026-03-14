@@ -473,9 +473,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 closeAdminPanel();
             } else if (isAdminAuthenticated) {
                 initAdminPanel();
+            } else if (!ADMIN_PASS) {
+                alert('관리자 비밀번호가 설정되지 않았습니다.');
             } else {
                 const input = prompt('관리자 비밀번호를 입력하세요:');
-                if (input === ADMIN_PASS) {
+                if (input && input === ADMIN_PASS) {
                     isAdminAuthenticated = true;
                     initAdminPanel();
                 } else if (input !== null) {
