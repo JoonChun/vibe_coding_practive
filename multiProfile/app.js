@@ -528,6 +528,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (isAdminOpen) {
+                closeAdminPanel();
+            } else if (!document.getElementById('password-modal')?.classList.contains('hidden')) {
+                closePasswordModal();
+            }
+            return;
+        }
         if (e.ctrlKey && e.key.toLowerCase() === 'm') {
             e.preventDefault();
             if (isAdminOpen) {
