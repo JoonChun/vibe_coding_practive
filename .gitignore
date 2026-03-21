@@ -3,10 +3,16 @@
 !MAPF-Post-Mortem-Analyzer/**
 !multiProfile/
 !multiProfile/**
+!all-in-one_calculator/
+!all-in-one_calculator/**
 !.gitignore
+!README.md
 
 # Sensitive files and unnecessary folders
 **/.env.js
 **/node_modules/
 **/.DS_Store
+**/.next/
+**/out/
+**/build/
 docs/
