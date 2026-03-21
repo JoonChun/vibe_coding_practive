@@ -305,33 +305,57 @@ function CompoundPageInner() {
               </AreaChart>
             </ChartContainer>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">원금 vs 이자</CardTitle>
+            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
+              <CardHeader className="pb-2 border-b border-border/10">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  원금 vs 이자 분석
+                </CardTitle>
               </CardHeader>
-              <CardContent className="pb-4">
-                <ResponsiveContainer width="100%" height={280}>
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="45%"
-                      innerRadius={55}
-                      outerRadius={85}
-                      dataKey="value"
-                      paddingAngle={2}
-                      isAnimationActive={false}
-                    >
-                      <Cell fill={CHART_COLORS.muted} />
-                      <Cell fill={CHART_COLORS.primary} />
-                    </Pie>
-                    <Legend />
-                    <Tooltip
-                      formatter={(value) => formatCurrency(Number(value))}
-                      contentStyle={{ backgroundColor: "#1e293b", border: "none", borderRadius: 8 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <CardContent className="pt-6 pb-4">
+                <div className="h-[280px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        dataKey="value"
+                        paddingAngle={5}
+                        animationBegin={0}
+                        animationDuration={1000}
+                      >
+                        {pieData.map((_, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={index === 0 ? CHART_COLORS.muted : CHART_COLORS.primary}
+                            className="stroke-background hover:opacity-80 transition-opacity"
+                            strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => formatCurrency(Number(value))}
+                        contentStyle={{ 
+                          backgroundColor: "rgba(15, 23, 42, 0.9)", 
+                          backdropFilter: "blur(8px)",
+                          border: "1px solid rgba(255,255,255,0.1)", 
+                          borderRadius: 12,
+                          boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)"
+                        }}
+                        itemStyle={{ color: "#fff", fontSize: "12px" }}
+                      />
+                      <Legend 
+                        verticalAlign="bottom" 
+                        height={36}
+                        iconType="circle"
+                        formatter={(value) => <span className="text-xs font-medium text-muted-foreground">{value}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
 
