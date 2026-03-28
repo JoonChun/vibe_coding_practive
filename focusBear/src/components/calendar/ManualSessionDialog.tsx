@@ -59,6 +59,10 @@ export function ManualSessionDialog({ open, date, categories, onSave, onClose }:
       setError('종료 시간은 시작 시간보다 늦어야 합니다.')
       return
     }
+    if (!category) {
+      setError('카테고리를 선택해주세요.')
+      return
+    }
     onSave(start, end, category, memo)
     onClose()
   }
@@ -148,7 +152,8 @@ export function ManualSessionDialog({ open, date, categories, onSave, onClose }:
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 py-2 rounded-xl bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+                disabled={categories.length === 0}
+                className="flex-1 py-2 rounded-xl bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 추가하기
               </button>
