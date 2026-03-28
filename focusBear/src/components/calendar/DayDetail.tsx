@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus } from 'lucide-react'
 import { getSessions, addSession, getSessionsOverlapping } from '../../db/sessions'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
+import { useApp } from '../../context/AppContext'
 import { ManualSessionDialog } from './ManualSessionDialog'
 import type { Session } from '../../types'
 
@@ -28,6 +29,7 @@ export function DayDetail({ date, onClose }: Props) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const { record } = useUndoRedo()
+  const { state } = useApp()
 
   const refresh = useCallback(() => {
     if (!date) return
@@ -118,6 +120,7 @@ export function DayDetail({ date, onClose }: Props) {
             <ManualSessionDialog
               open={dialogOpen}
               date={date}
+              categories={state.categories}
               onSave={handleAddSession}
               onClose={() => setDialogOpen(false)}
             />

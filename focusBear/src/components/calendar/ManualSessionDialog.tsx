@@ -2,12 +2,12 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
-import { getCategories } from '../../db/categories'
 import type { Category } from '../../types'
 
 interface Props {
   open: boolean
   date: Date
+  categories: Category[]
   onSave: (start: number, end: number, category: string, memo: string) => void
   onClose: () => void
 }
@@ -23,22 +23,17 @@ function parseTime(date: Date, timeStr: string): number {
   return d.getTime()
 }
 
-export function ManualSessionDialog({ open, date, onSave, onClose }: Props) {
+export function ManualSessionDialog({ open, date, categories, onSave, onClose }: Props) {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:00')
-  const [category, setCategory] = useState('기타')
+  const [category, setCategory] = useState('')
   const [memo, setMemo] = useState('')
-  const [categories, setCategories] = useState<Category[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
-    getCategories().then(cats => {
-      setCategories(cats)
-      if (cats.length > 0) setCategory(cats[0].name)
-    })
-  }, [])
+    if (categories.length > 0) setCategory(categories[0].name)
+  }, [categories])
 
-  // 선택한 날짜로 기본 시간 초기화
   useEffect(() => {
     if (open) {
       const now = new Date()
@@ -95,7 +90,6 @@ export function ManualSessionDialog({ open, date, onSave, onClose }: Props) {
             </p>
 
             <div className="space-y-3">
-              {/* 시간 범위 */}
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <label className="text-xs text-gray-500 mb-1 block">시작</label>
@@ -120,7 +114,6 @@ export function ManualSessionDialog({ open, date, onSave, onClose }: Props) {
 
               {error && <p className="text-xs text-red-500">{error}</p>}
 
-              {/* 카테고리 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">카테고리</label>
                 <select
@@ -134,7 +127,6 @@ export function ManualSessionDialog({ open, date, onSave, onClose }: Props) {
                 </select>
               </div>
 
-              {/* 메모 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">메모 (선택)</label>
                 <textarea
