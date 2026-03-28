@@ -1,4 +1,5 @@
 *
+!README.md
 !MAPF-Post-Mortem-Analyzer/
 !MAPF-Post-Mortem-Analyzer/**
 !multiProfile/
@@ -9,4 +10,3 @@
 **/.env.js
 **/node_modules/
 **/.DS_Store
-
