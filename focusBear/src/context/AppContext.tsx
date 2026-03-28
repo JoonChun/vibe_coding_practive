@@ -78,8 +78,13 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, todayTotal: action.total }
     case 'SET_ANIMATION':
       return { ...state, animationEnabled: action.enabled }
-    case 'SET_CATEGORIES':
-      return { ...state, categories: action.categories }
+    case 'SET_CATEGORIES': {
+      const names = action.categories.map(c => c.name)
+      const validCategory = names.includes(state.selectedCategory)
+        ? state.selectedCategory
+        : (action.categories[0]?.name ?? state.selectedCategory)
+      return { ...state, categories: action.categories, selectedCategory: validCategory }
+    }
     case 'PUSH_UNDO':
       return {
         ...state,

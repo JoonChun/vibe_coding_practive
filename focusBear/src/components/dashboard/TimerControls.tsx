@@ -14,10 +14,7 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
   const { categories } = state
 
   const isRunning = state.timerState === 'running'
-  const isPaused = state.timerState === 'paused'
   const isIdle = state.timerState === 'idle'
-
-  void isPaused
 
   function setMode(mode: TimerMode) {
     if (!isRunning) {
