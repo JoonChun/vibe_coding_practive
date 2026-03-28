@@ -2,9 +2,6 @@ import { Play, Pause, Square, Clock, Timer as TimerIcon } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import { clsx } from 'clsx'
 import type { TimerMode } from '../../types'
-import { useEffect, useState } from 'react'
-import { getCategories } from '../../db/categories'
-import type { Category } from '../../types'
 
 interface Props {
   onStart: () => void
@@ -14,17 +11,13 @@ interface Props {
 
 export function TimerControls({ onStart, onPause, onReset }: Props) {
   const { state, dispatch } = useApp()
-  const [categories, setCategories] = useState<Category[]>([])
-
-  useEffect(() => {
-    getCategories().then(setCategories)
-  }, [])
+  const { categories } = state
 
   const isRunning = state.timerState === 'running'
   const isPaused = state.timerState === 'paused'
   const isIdle = state.timerState === 'idle'
 
-  void isPaused // used implicitly; suppress unused warning
+  void isPaused
 
   function setMode(mode: TimerMode) {
     if (!isRunning) {
