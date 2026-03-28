@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ChartTooltip } from "@/components/calculators/shared/chart-tooltip";
 
 const CHART_PALETTE = [
   CHART_COLORS.primary,
@@ -199,8 +200,8 @@ function SalaryPageInner() {
                   width={80}
                 />
                 <Tooltip
-                  formatter={(value) => formatCurrency(Number(value))}
-                  contentStyle={{ backgroundColor: "#1e293b", border: "none", borderRadius: 8 }}
+                  content={<ChartTooltip titleSuffix=" (월)" />}
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                 />
                 <Bar dataKey="금액" radius={[0, 4, 4, 0]}>
                   {chartData.map((_, index) => (

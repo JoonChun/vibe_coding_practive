@@ -50,30 +50,7 @@ const methodLabels: Record<RepaymentMethod, string> = {
   bullet: "만기일시",
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function LoanTooltip({ active, payload, label }: any) {
-  if (!active || !payload || payload.length === 0) return null;
-
-  const principal = payload.find((p: any) => p.dataKey === "원금")?.value ?? 0;
-  const interest = payload.find((p: any) => p.dataKey === "이자")?.value ?? 0;
-  const total = Number(principal) + Number(interest);
-
-  const principalRatio = total > 0 ? ((Number(principal) / total) * 100).toFixed(1) : "0.0";
-  const interestRatio = total > 0 ? ((Number(interest) / total) * 100).toFixed(1) : "0.0";
-
-  return (
-    <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs shadow-lg border border-white/10">
-      <p className="font-medium text-white mb-1">{label}년차 상환액</p>
-      <p className="text-emerald-400">총 상환: {formatCurrency(total)}</p>
-      <p className="text-slate-300">
-        원금: {formatCurrency(Number(principal))} ({principalRatio}%)
-      </p>
-      <p className="text-slate-300">
-        이자: {formatCurrency(Number(interest))} ({interestRatio}%)
-      </p>
-    </div>
-  );
-}
+import { ChartTooltip } from "@/components/calculators/shared/chart-tooltip";
 
 export default function LoanPage() {
   return (
@@ -250,7 +227,10 @@ function LoanPageInner() {
                   tick={{ fontSize: 12 }}
                   stroke="rgba(255,255,255,0.4)"
                 />
-                <Tooltip content={<LoanTooltip />} />
+                <Tooltip 
+                  content={<ChartTooltip />} 
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                />
                 <Legend />
                 <Bar dataKey="원금" fill={CHART_COLORS.primary} stackId="a" />
                 <Bar dataKey="이자" fill={CHART_COLORS.muted} stackId="a" />

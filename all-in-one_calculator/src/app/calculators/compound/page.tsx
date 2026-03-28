@@ -55,30 +55,29 @@ const frequencyLabels: Record<CompoundFrequency, string> = {
   yearly: "연 복리",
 };
 
+import { ChartTooltip } from "@/components/calculators/shared/chart-tooltip";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CompoundTooltip({ active, payload, label }: any) {
+function CompoundTooltipWrapper({ active, payload, label }: any) {
   if (!active || !payload || payload.length === 0) return null;
 
-  const deposit = payload.find((p: any) => p.dataKey === "totalDeposit")?.value ?? 0;
-  const interest = payload.find((p: any) => p.dataKey === "totalInterest")?.value ?? 0;
-  const total = Number(deposit) + Number(interest);
-
-  // 전년 대비 증가율 계산 (payload에서 yearlyBreakdown 참조)
+  // 전년 대비 증가율 계산 (별도 표시용)
   const chartData = payload[0]?.payload;
   const prevYear = chartData?.prevBalance;
+  const total = payload.reduce((acc: number, curr: any) => acc + Number(curr.value), 0);
   const growthRate =
     prevYear && prevYear > 0
       ? (((total - prevYear) / prevYear) * 100).toFixed(1)
       : null;
 
   return (
-    <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs shadow-lg border border-white/10">
-      <p className="font-medium text-white mb-1">{label}년차</p>
-      <p className="text-emerald-400">총 자산: {formatCurrency(total)}</p>
-      <p className="text-slate-300">적립금: {formatCurrency(Number(deposit))}</p>
-      <p className="text-slate-300">이자: {formatCurrency(Number(interest))}</p>
+    <div className="flex flex-col gap-2">
+      <ChartTooltip active={active} payload={payload} label={label} />
       {growthRate && (
-        <p className="text-amber-400 mt-1">전년 대비: +{growthRate}%</p>
+        <div className="bg-amber-400/10 border border-amber-400/20 rounded-lg px-2 py-1 flex items-center justify-between backdrop-blur-sm">
+          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-tighter">전년 대비</span>
+          <span className="text-xs font-black text-amber-400">+{growthRate}%</span>
+        </div>
       )}
     </div>
   );
@@ -285,7 +284,10 @@ function CompoundPageInner() {
                   tick={{ fontSize: 12 }}
                   stroke="rgba(255,255,255,0.4)"
                 />
-                <Tooltip content={<CompoundTooltip />} />
+                <Tooltip 
+                  content={<CompoundTooltipWrapper />} 
+                  cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1 }}
+                />
                 <Area
                   type="monotone"
                   dataKey="totalDeposit"
@@ -305,33 +307,49 @@ function CompoundPageInner() {
               </AreaChart>
             </ChartContainer>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">원금 vs 이자</CardTitle>
+            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
+              <CardHeader className="pb-2 border-b border-border/10">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  원금 vs 이자 분석
+                </CardTitle>
               </CardHeader>
-              <CardContent className="pb-4">
-                <ResponsiveContainer width="100%" height={280}>
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="45%"
-                      innerRadius={55}
-                      outerRadius={85}
-                      dataKey="value"
-                      paddingAngle={2}
-                      isAnimationActive={false}
-                    >
-                      <Cell fill={CHART_COLORS.muted} />
-                      <Cell fill={CHART_COLORS.primary} />
-                    </Pie>
-                    <Legend />
-                    <Tooltip
-                      formatter={(value) => formatCurrency(Number(value))}
-                      contentStyle={{ backgroundColor: "#1e293b", border: "none", borderRadius: 8 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <CardContent className="pt-6 pb-4">
+                <div className="h-[280px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        dataKey="value"
+                        paddingAngle={5}
+                        animationBegin={0}
+                        animationDuration={1000}
+                      >
+                        {pieData.map((_, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={index === 0 ? CHART_COLORS.muted : CHART_COLORS.primary}
+                            className="stroke-background hover:opacity-80 transition-opacity"
+                            strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        content={<ChartTooltip titleSuffix="" />}
+                      />
+                      <Legend 
+                        verticalAlign="bottom" 
+                        height={36}
+                        iconType="circle"
+                        formatter={(value) => <span className="text-xs font-medium text-muted-foreground">{value}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </CardContent>
             </Card>
 
