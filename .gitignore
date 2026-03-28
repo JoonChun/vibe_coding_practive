@@ -5,6 +5,8 @@
 !multiProfile/**
 !all-in-one_calculator/
 !all-in-one_calculator/**
+!focusBear/
+!focusBear/**
 !.gitignore
 !README.md
 
