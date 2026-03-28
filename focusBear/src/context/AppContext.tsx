@@ -32,7 +32,10 @@ export type AppAction =
 function getInitialTheme(): Theme {
   const saved = localStorage.getItem('theme')
   if (saved === 'dark' || saved === 'light') return saved
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  return 'light'
 }
 
 const initialState: AppState = {
