@@ -1,7 +1,7 @@
 // src/context/AppContext.tsx
 import React, { createContext, useContext, useReducer } from 'react'
 import type { ReactNode } from 'react'
-import type { Page, Theme, TimerState, TimerMode, BearMood, DbAction } from '../types'
+import type { Page, Theme, TimerState, TimerMode, BearMood, DbAction, Category } from '../types'
 
 export interface AppState {
   currentPage: Page
@@ -9,12 +9,13 @@ export interface AppState {
   timerState: TimerState
   timerMode: TimerMode
   bearMood: BearMood
-  elapsed: number          // 초
+  elapsed: number
   selectedCategory: string
-  todayTotal: number       // 초
+  todayTotal: number
   animationEnabled: boolean
   undoStack: DbAction[]
   redoStack: DbAction[]
+  categories: Category[]
 }
 
 export type AppAction =
@@ -29,6 +30,7 @@ export type AppAction =
   | { type: 'PUSH_UNDO'; action: DbAction }
   | { type: 'UNDO' }
   | { type: 'REDO' }
+  | { type: 'SET_CATEGORIES'; categories: Category[] }
 
 function getInitialTheme(): Theme {
   const saved = localStorage.getItem('theme')
@@ -51,6 +53,7 @@ const initialState: AppState = {
   animationEnabled: true,
   undoStack: [],
   redoStack: [],
+  categories: [],
 }
 
 function reducer(state: AppState, action: AppAction): AppState {
@@ -75,6 +78,8 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, todayTotal: action.total }
     case 'SET_ANIMATION':
       return { ...state, animationEnabled: action.enabled }
+    case 'SET_CATEGORIES':
+      return { ...state, categories: action.categories }
     case 'PUSH_UNDO':
       return {
         ...state,
