@@ -35,6 +35,6 @@ export async function seedDefaultCategories(): Promise<void> {
         { name: '기타', color: '#8B5CF6' },
       ])
     }
-  })()
+  })().finally(() => { _seedPromise = null })
   return _seedPromise
 }
