@@ -1,5 +1,6 @@
 // src/components/layout/Layout.tsx
-import { ReactNode, useEffect } from 'react'
+import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { useApp } from '../../context/AppContext'

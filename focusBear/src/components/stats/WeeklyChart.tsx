@@ -37,7 +37,7 @@ export function WeeklyChart() {
           <XAxis dataKey="day" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
           <YAxis hide />
           <Tooltip
-            formatter={(v: number) => [`${v}분`, '집중']}
+            formatter={(v) => [`${v}분`, '집중']}
             contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
           />
           <Bar dataKey="minutes" radius={[6, 6, 0, 0]}>

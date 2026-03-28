@@ -10,7 +10,7 @@ function getIntensityLevel(seconds: number): number {
 }
 
 const LIGHT_COLORS = ['bg-gray-100', 'bg-amber-100', 'bg-amber-200', 'bg-amber-400', 'bg-amber-600']
-const DARK_COLORS = ['bg-gray-800', 'bg-green-900', 'bg-green-700', 'bg-green-500', 'bg-green-300']
+const DARK_BG: Record<number, string> = { 0: 'dark:bg-gray-800', 1: 'dark:bg-green-900', 2: 'dark:bg-green-700', 3: 'dark:bg-green-500', 4: 'dark:bg-green-300' }
 
 interface Props {
   date: Date
@@ -30,7 +30,7 @@ export function HeatmapCell({ date, totalSeconds, isToday, isCurrentMonth, onCli
       title={`${date.getDate()}일 · ${Math.floor(totalSeconds / 60)}분 집중`}
       className={clsx(
         'relative aspect-square w-full rounded-lg transition-all hover:ring-2 hover:ring-[var(--accent-color)] hover:ring-offset-1',
-        isCurrentMonth ? LIGHT_COLORS[level] : 'bg-gray-50 dark:bg-gray-900 opacity-40',
+        isCurrentMonth ? `${LIGHT_COLORS[level]} ${DARK_BG[level]}` : 'bg-gray-50 dark:bg-gray-900 opacity-40',
         isToday && 'ring-2 ring-[var(--accent-color)] ring-offset-1',
       )}
     >

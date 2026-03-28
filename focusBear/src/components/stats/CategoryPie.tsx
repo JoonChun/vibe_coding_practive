@@ -45,7 +45,7 @@ export function CategoryPie() {
           <Pie data={data} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" paddingAngle={3}>
             {data.map((d, i) => <Cell key={i} fill={d.color} />)}
           </Pie>
-          <Tooltip formatter={(v: number) => [`${v}분`, '']} />
+          <Tooltip formatter={(v) => [`${v}분`, '']} />
           <Legend iconType="circle" iconSize={8} />
         </PieChart>
       </ResponsiveContainer>
