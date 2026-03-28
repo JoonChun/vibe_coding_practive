@@ -15,6 +15,7 @@ export function CategoryManager() {
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(PRESET_COLORS[0])
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function handleAdd() {
     const name = newName.trim()
@@ -22,23 +23,34 @@ export function CategoryManager() {
       setError('이름을 입력해 주세요.')
       return
     }
-    if (categories.some(c => c.name === name)) {
+    if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
       setError('이미 있는 카테고리입니다.')
       return
     }
-    await addCategory({ name, color: newColor })
-    const updated = await getCategories()
-    dispatch({ type: 'SET_CATEGORIES', categories: updated })
-    setNewName('')
-    setNewColor(PRESET_COLORS[0])
-    setError('')
+    setIsSubmitting(true)
+    try {
+      await addCategory({ name, color: newColor })
+      const updated = await getCategories()
+      dispatch({ type: 'SET_CATEGORIES', categories: updated })
+      setNewName('')
+      setNewColor(PRESET_COLORS[0])
+      setError('')
+    } catch {
+      setError('저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  async function handleDelete(id: number) {
-    if (categories.length <= 1) return
-    await deleteCategory(id)
-    const updated = await getCategories()
-    dispatch({ type: 'SET_CATEGORIES', categories: updated })
+  async function handleDelete(id: number | undefined) {
+    if (id === undefined || categories.length <= 1) return
+    try {
+      await deleteCategory(id)
+      const updated = await getCategories()
+      dispatch({ type: 'SET_CATEGORIES', categories: updated })
+    } catch {
+      setError('삭제 중 오류가 발생했습니다.')
+    }
   }
 
   return (
@@ -56,7 +68,7 @@ export function CategoryManager() {
             <span className="text-sm">{c.name}</span>
           </div>
           <button
-            onClick={() => handleDelete(c.id!)}
+            onClick={() => handleDelete(c.id)}
             disabled={categories.length <= 1}
             className="text-gray-400 hover:text-red-400 disabled:opacity-20 transition-colors"
             aria-label={`${c.name} 삭제`}
@@ -72,14 +84,15 @@ export function CategoryManager() {
             type="text"
             value={newName}
             onChange={e => { setNewName(e.target.value); setError('') }}
-            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            onKeyDown={e => e.key === 'Enter' && !isSubmitting && handleAdd()}
             placeholder="새 카테고리"
             maxLength={20}
             className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)]"
           />
           <button
             onClick={handleAdd}
-            className="px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
+            disabled={isSubmitting}
+            className="px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
           >
             추가
           </button>
@@ -96,7 +109,7 @@ export function CategoryManager() {
                 outline: newColor === color ? `2px solid ${color}` : 'none',
                 outlineOffset: '2px',
               }}
-              aria-label={color}
+              aria-label={`색상 선택`}
             />
           ))}
         </div>
