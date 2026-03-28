@@ -16,7 +16,9 @@ export function Layout({ children }: { children: ReactNode }) {
       .then(() => getCategories())
       .then(cats => dispatch({ type: 'SET_CATEGORIES', categories: cats }))
       .catch(err => console.error('Failed to initialize categories:', err))
-    getTodayTotal().then(total => dispatch({ type: 'SET_TODAY_TOTAL', total }))
+    getTodayTotal()
+      .then(total => dispatch({ type: 'SET_TODAY_TOTAL', total }))
+      .catch(err => console.error('Failed to load today total:', err))
   }, [dispatch])
 
   return (
