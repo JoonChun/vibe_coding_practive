@@ -55,30 +55,29 @@ const frequencyLabels: Record<CompoundFrequency, string> = {
   yearly: "연 복리",
 };
 
+import { ChartTooltip } from "@/components/calculators/shared/chart-tooltip";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CompoundTooltip({ active, payload, label }: any) {
+function CompoundTooltipWrapper({ active, payload, label }: any) {
   if (!active || !payload || payload.length === 0) return null;
 
-  const deposit = payload.find((p: any) => p.dataKey === "totalDeposit")?.value ?? 0;
-  const interest = payload.find((p: any) => p.dataKey === "totalInterest")?.value ?? 0;
-  const total = Number(deposit) + Number(interest);
-
-  // 전년 대비 증가율 계산 (payload에서 yearlyBreakdown 참조)
+  // 전년 대비 증가율 계산 (별도 표시용)
   const chartData = payload[0]?.payload;
   const prevYear = chartData?.prevBalance;
+  const total = payload.reduce((acc: number, curr: any) => acc + Number(curr.value), 0);
   const growthRate =
     prevYear && prevYear > 0
       ? (((total - prevYear) / prevYear) * 100).toFixed(1)
       : null;
 
   return (
-    <div className="rounded-lg bg-slate-800 px-3 py-2 text-xs shadow-lg border border-white/10">
-      <p className="font-medium text-white mb-1">{label}년차</p>
-      <p className="text-emerald-400">총 자산: {formatCurrency(total)}</p>
-      <p className="text-slate-300">적립금: {formatCurrency(Number(deposit))}</p>
-      <p className="text-slate-300">이자: {formatCurrency(Number(interest))}</p>
+    <div className="flex flex-col gap-2">
+      <ChartTooltip active={active} payload={payload} label={label} />
       {growthRate && (
-        <p className="text-amber-400 mt-1">전년 대비: +{growthRate}%</p>
+        <div className="bg-amber-400/10 border border-amber-400/20 rounded-lg px-2 py-1 flex items-center justify-between backdrop-blur-sm">
+          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-tighter">전년 대비</span>
+          <span className="text-xs font-black text-amber-400">+{growthRate}%</span>
+        </div>
       )}
     </div>
   );
@@ -285,7 +284,10 @@ function CompoundPageInner() {
                   tick={{ fontSize: 12 }}
                   stroke="rgba(255,255,255,0.4)"
                 />
-                <Tooltip content={<CompoundTooltip />} />
+                <Tooltip 
+                  content={<CompoundTooltipWrapper />} 
+                  cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1 }}
+                />
                 <Area
                   type="monotone"
                   dataKey="totalDeposit"
@@ -337,15 +339,7 @@ function CompoundPageInner() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value) => formatCurrency(Number(value))}
-                        contentStyle={{ 
-                          backgroundColor: "rgba(15, 23, 42, 0.9)", 
-                          backdropFilter: "blur(8px)",
-                          border: "1px solid rgba(255,255,255,0.1)", 
-                          borderRadius: 12,
-                          boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)"
-                        }}
-                        itemStyle={{ color: "#fff", fontSize: "12px" }}
+                        content={<ChartTooltip titleSuffix="" />}
                       />
                       <Legend 
                         verticalAlign="bottom" 
