@@ -21,6 +21,14 @@ const globalData = {
             ],
             "url": "https://github.com/JoonChun/vibe_coding_practive",
             "thumbnail": "https://via.placeholder.com/600x400/2C2F33/FFFFFF?text=Vibe+Dashboard"
+        },
+        {
+            "id": "proj-1774694020506",
+            "title": "올인원 라이프 계산기",
+            "description": "복리/적금, 대출 상환, 연봉 실수령액, 단위 변환, 디데이 등 생활 금융 계산기 모음",
+            "tags": [],
+            "url": "https://all-in-one-calculator-theta.vercel.app",
+            "thumbnail": "https://ibb.co/84rL3b9P"
         }
     ],
     "socials": {
@@ -31,7 +39,6 @@ const globalData = {
 };
 
 // --- LocalStorage Persistence Layer ---
-// 어드민 패널에서 수정한 데이터가 있다면 소스 코드의 기본값 대신 사용합니다.
 const savedData = localStorage.getItem('viJoonLink_data');
 let finalData;
 try {
@@ -42,5 +49,4 @@ try {
     finalData = globalData;
 }
 
-// 브라우저 환경에서 전역 접근 가능하도록 노출
 window.viJoonData = finalData;
