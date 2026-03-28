@@ -23,6 +23,12 @@ export async function getSessionsByRange(from: number, to: number): Promise<Sess
     .toArray()
 }
 
+// start < rangeEnd AND end > rangeStart 인 모든 세션 (겹치는 세션 전부)
+export async function getSessionsOverlapping(rangeStart: number, rangeEnd: number): Promise<Session[]> {
+  const all = await db.sessions.toArray()
+  return all.filter(s => s.start < rangeEnd && s.end > rangeStart)
+}
+
 export async function addSession(newSession: Omit<Session, 'id'>): Promise<Session[]> {
   const { start, end } = newSession
 

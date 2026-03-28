@@ -1,8 +1,10 @@
 // src/components/calendar/DayDetail.tsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X } from 'lucide-react'
-import { getSessions } from '../../db/sessions'
+import { X, Plus } from 'lucide-react'
+import { getSessions, addSession, getSessionsOverlapping } from '../../db/sessions'
+import { useUndoRedo } from '../../hooks/useUndoRedo'
+import { ManualSessionDialog } from './ManualSessionDialog'
 import type { Session } from '../../types'
 
 function formatTime(ms: number): string {
@@ -24,11 +26,43 @@ interface Props {
 
 export function DayDetail({ date, onClose }: Props) {
   const [sessions, setSessions] = useState<Session[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const { record } = useUndoRedo()
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!date) return
     getSessions(date).then(setSessions)
   }, [date])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const handleAddSession = useCallback(async (
+    start: number, end: number, category: string, memo: string
+  ) => {
+    // Undo를 위해 변경 전 상태 스냅샷 (겹치는 세션 전부 포함)
+    const before = await getSessionsOverlapping(start, end)
+
+    const session = { start, end, duration: Math.floor((end - start) / 1000), category, memo, isManual: true }
+    await addSession(session)
+
+    // 변경 후 상태 (새 세션 + 분할/수정된 세션들)
+    const after = await getSessionsOverlapping(start, end)
+
+    record({
+      type: 'BATCH',
+      forward: [
+        ...before.map(s => ({ type: 'DELETE_SESSION' as const, session: s })),
+        ...after.map(s => ({ type: 'ADD_SESSION' as const, session: s })),
+      ],
+      backward: [
+        ...after.map(s => ({ type: 'DELETE_SESSION' as const, session: s })),
+        ...before.map(s => ({ type: 'ADD_SESSION' as const, session: s })),
+      ],
+    })
+    refresh()
+  }, [record, refresh])
 
   return (
     <AnimatePresence>
@@ -44,9 +78,18 @@ export function DayDetail({ date, onClose }: Props) {
             <h3 className="font-bold">
               {date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
             </h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setDialogOpen(true)}
+                title="수동 기록 추가"
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-[var(--accent-color)] transition-colors"
+              >
+                <Plus size={18} />
+              </button>
+              <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -71,6 +114,14 @@ export function DayDetail({ date, onClose }: Props) {
               ))
             )}
           </div>
+          {date && (
+            <ManualSessionDialog
+              open={dialogOpen}
+              date={date}
+              onSave={handleAddSession}
+              onClose={() => setDialogOpen(false)}
+            />
+          )}
         </motion.aside>
       )}
     </AnimatePresence>

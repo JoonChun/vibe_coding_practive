@@ -48,7 +48,7 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
             )}
           >
             {mode === 'stopwatch' ? <Clock size={14} /> : <TimerIcon size={14} />}
-            {mode === 'stopwatch' ? '스톱워치' : '뽀모도로'}
+            {mode === 'stopwatch' ? '스톱워치' : '타이머'}
           </button>
         ))}
       </div>

@@ -20,7 +20,7 @@ export function useTimer() {
         dispatch({ type: 'SET_TIMER_STATE', timerState: 'idle' })
         dispatch({ type: 'SET_ELAPSED', elapsed: 0 })
         if (Notification.permission === 'granted') {
-          new Notification('🐻 FocusBear', { body: '뽀모도로 완료! 잠깐 쉬어가세요.' })
+          new Notification('🐻 FocusBear', { body: '타이머 완료! 잠깐 쉬어가세요.' })
         }
       } else {
         dispatch({ type: 'SET_ELAPSED', elapsed: msg.elapsed })
