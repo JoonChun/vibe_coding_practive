@@ -1,6 +1,7 @@
 // src/components/settings/SettingsView.tsx
 import { useApp } from '../../context/AppContext'
 import { ExportImport } from './ExportImport'
+import { CategoryManager } from './CategoryManager'
 import { AlertTriangle } from 'lucide-react'
 
 export function SettingsView() {
@@ -31,6 +32,13 @@ export function SettingsView() {
               }`} />
             </button>
           </label>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">카테고리</h3>
+        <div className="bg-white dark:bg-gray-900 rounded-2xl divide-y divide-gray-100 dark:divide-gray-800 shadow-sm">
+          <CategoryManager />
         </div>
       </section>
 
