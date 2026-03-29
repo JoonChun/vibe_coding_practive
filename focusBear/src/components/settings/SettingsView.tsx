@@ -20,19 +20,17 @@ export function SettingsView() {
           <div className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
             <div>
               <p className="font-semibold text-sm text-on-surface dark:text-slate-200">애니메이션</p>
-              <p className="text-xs text-on-surface-variant dark:text-slate-400 mt-0.5">곰 캐릭터 및 매트릭스 이펙트</p>
+              <p className="text-xs text-on-surface-variant dark:text-slate-400 mt-0.5">이펙트</p>
             </div>
             <button
               role="switch"
               aria-checked={state.animationEnabled}
               onClick={() => dispatch({ type: 'SET_ANIMATION', enabled: !state.animationEnabled })}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                state.animationEnabled ? 'honey-gradient' : 'bg-surface-container-highest dark:bg-white/10'
-              }`}
+              className={`relative w-12 h-6 rounded-full transition-colors ${state.animationEnabled ? 'honey-gradient' : 'bg-surface-container-highest dark:bg-white/10'
+                }`}
             >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
-                state.animationEnabled ? 'translate-x-6' : 'translate-x-0'
-              }`} />
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${state.animationEnabled ? 'translate-x-6' : 'translate-x-0'
+                }`} />
             </button>
           </div>
         </div>
@@ -52,11 +50,10 @@ export function SettingsView() {
                 <button
                   key={m}
                   onClick={() => dispatch({ type: 'SET_DAILY_GOAL', minutes: m })}
-                  className={`font-mono text-xs px-3 py-1.5 rounded-full transition-colors ${
-                    state.dailyGoal === m
-                      ? 'honey-gradient text-white'
-                      : 'bg-surface-container-highest dark:bg-white/10 text-on-surface-variant dark:text-slate-400'
-                  }`}
+                  className={`font-mono text-xs px-3 py-1.5 rounded-full transition-colors ${state.dailyGoal === m
+                    ? 'honey-gradient text-white'
+                    : 'bg-surface-container-highest dark:bg-white/10 text-on-surface-variant dark:text-slate-400'
+                    }`}
                 >
                   {m >= 60 ? `${m / 60}h` : `${m}m`}
                 </button>
