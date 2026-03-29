@@ -1,8 +1,8 @@
 // src/components/calendar/DayDetail.tsx
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus } from 'lucide-react'
-import { getSessions, addSession, getSessionsOverlapping } from '../../db/sessions'
+import { X, Plus, Pencil } from 'lucide-react'
+import { getSessions, addSession, deleteSession, getSessionsOverlapping } from '../../db/sessions'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
 import { useApp } from '../../context/AppContext'
 import { ManualSessionDialog } from './ManualSessionDialog'
@@ -28,6 +28,7 @@ interface Props {
 export function DayDetail({ date, onClose }: Props) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingSession, setEditingSession] = useState<Session | null>(null)
   const { record } = useUndoRedo()
   const { state } = useApp()
 
@@ -43,15 +44,10 @@ export function DayDetail({ date, onClose }: Props) {
   const handleAddSession = useCallback(async (
     start: number, end: number, category: string, memo: string
   ) => {
-    // Undo를 위해 변경 전 상태 스냅샷 (겹치는 세션 전부 포함)
     const before = await getSessionsOverlapping(start, end)
-
     const session = { start, end, duration: Math.floor((end - start) / 1000), category, memo, isManual: true }
     await addSession(session)
-
-    // 변경 후 상태 (새 세션 + 분할/수정된 세션들)
     const after = await getSessionsOverlapping(start, end)
-
     record({
       type: 'BATCH',
       forward: [
@@ -65,6 +61,31 @@ export function DayDetail({ date, onClose }: Props) {
     })
     refresh()
   }, [record, refresh])
+
+  const handleEditSession = useCallback(async (
+    start: number, end: number, category: string, memo: string
+  ) => {
+    if (!editingSession) return
+    const oldSession = editingSession
+    // 기존 세션 삭제 후 새 시간으로 재삽입
+    await deleteSession(oldSession.id!)
+    const newSession = { start, end, duration: Math.floor((end - start) / 1000), category, memo, isManual: true }
+    await addSession(newSession)
+    const after = await getSessionsOverlapping(start, end)
+    record({
+      type: 'BATCH',
+      forward: [
+        { type: 'DELETE_SESSION' as const, session: oldSession },
+        ...after.map(s => ({ type: 'ADD_SESSION' as const, session: s })),
+      ],
+      backward: [
+        ...after.map(s => ({ type: 'DELETE_SESSION' as const, session: s })),
+        { type: 'ADD_SESSION' as const, session: oldSession },
+      ],
+    })
+    setEditingSession(null)
+    refresh()
+  }, [editingSession, record, refresh])
 
   return (
     <AnimatePresence>
@@ -99,19 +120,30 @@ export function DayDetail({ date, onClose }: Props) {
               <p className="text-sm text-gray-400 text-center mt-8">기록이 없습니다 🐻</p>
             ) : (
               sessions.map(s => (
-                <div key={s.id} className="rounded-xl bg-gray-50 dark:bg-gray-800 p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-mono text-gray-400">
-                      {formatTime(s.start)} — {formatTime(s.end)}
-                    </span>
-                    <span className="text-xs font-medium text-[var(--accent-color)]">
-                      {formatDuration(s.duration)}
-                    </span>
+                <div key={s.id} className="rounded-xl bg-gray-50 dark:bg-gray-800 p-3 group">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-mono text-gray-400">
+                          {formatTime(s.start)} — {formatTime(s.end)}
+                        </span>
+                        <span className="text-xs font-medium text-[var(--accent-color)]">
+                          {formatDuration(s.duration)}
+                        </span>
+                      </div>
+                      <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{s.category}</p>
+                      {s.memo && (
+                        <p className="text-xs text-gray-500 mt-1 leading-relaxed">{s.memo}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setEditingSession(s)}
+                      title="수정"
+                      className="p-1 rounded-lg text-gray-300 dark:text-gray-600 hover:text-[var(--accent-color)] hover:bg-gray-100 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                    >
+                      <Pencil size={13} />
+                    </button>
                   </div>
-                  <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{s.category}</p>
-                  {s.memo && (
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{s.memo}</p>
-                  )}
                 </div>
               ))
             )}
@@ -123,6 +155,16 @@ export function DayDetail({ date, onClose }: Props) {
               categories={state.categories}
               onSave={handleAddSession}
               onClose={() => setDialogOpen(false)}
+            />
+          )}
+          {date && editingSession && (
+            <ManualSessionDialog
+              open={!!editingSession}
+              date={date}
+              categories={state.categories}
+              initialSession={editingSession}
+              onSave={handleEditSession}
+              onClose={() => setEditingSession(null)}
             />
           )}
         </motion.aside>

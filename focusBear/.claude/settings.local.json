@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm test:*)",
+      "Bash(git -C /home/joon/vibe_ws/focusBear log --oneline -5)",
+      "Bash(ls /home/joon/vibe_ws/focusBear/src/types*)",
+      "Bash(npm run:*)",
+      "Bash(find /home/joon/vibe_ws/focusBear -name vite.config.* -o -name manifest.json -o -name public/sw.*)",
+      "Bash(npx vitest:*)",
+      "Bash(find /home/joon/vibe_ws/focusBear/src -name *.ts -o -name *.tsx)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(apt list:*)",
+      "Bash(git -C /home/joon/vibe_ws branch -a)",
+      "Bash(git -C /home/joon/vibe_ws show main:README.md)",
+      "Bash(git -C /home/joon/vibe_ws ls-tree main --name-only)",
+      "Bash(/home/joon/vibe_ws/README.md:*)",
+      "Read(//tmp/vibe_ws_main/**)",
+      "Bash(.gitignore:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(/tmp/test_focusbear.py:*)",
+      "Bash(/tmp/test_focusbear2.py:*)",
+      "Bash(npm show:*)",
+      "Bash(node -e \"const v=require\\(''''fs''''\\).readFileSync\\(''''/dev/stdin'''',''''utf8''''\\);const arr=JSON.parse\\(v\\);console.log\\(arr.filter\\(x=>x.startsWith\\(''''4''''\\)\\).slice\\(-3\\).join\\(''''\\\\n''''\\)\\)\")",
+      "Bash(node:*)",
+      "Bash(sed -i 's/import { LayoutDashboard, Calendar, BarChart2, Settings, Paw, Sun, Moon, Undo2, Redo2, Zap }/import { LayoutDashboard, Calendar, BarChart2, Settings, PawPrint, Sun, Moon, Undo2, Redo2, Zap }/' /home/joon/vibe_ws/focusBear/src/components/layout/Sidebar.tsx)",
+      "Bash(sed -i 's/<Paw size={18} \\\\/>/<PawPrint size={16} \\\\/>/' /home/joon/vibe_ws/focusBear/src/components/layout/Sidebar.tsx)",
+      "Bash(git tag:*)"
+    ]
+  }
+}
