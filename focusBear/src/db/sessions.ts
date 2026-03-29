@@ -98,3 +98,66 @@ export async function getTodayTotal(): Promise<number> {
     .toArray()
   return sessions.reduce((sum, s) => sum + s.duration, 0)
 }
+
+export async function getMonthSummary(year: number, month: number): Promise<{ totalSeconds: number; sessionCount: number }> {
+  const start = new Date(year, month, 1).getTime()
+  const end = new Date(year, month + 1, 1).getTime()
+  const sessions = await getSessionsByRange(start, end)
+  return {
+    totalSeconds: sessions.reduce((s, r) => s + r.duration, 0),
+    sessionCount: sessions.length,
+  }
+}
+
+export async function getCurrentStreak(): Promise<number> {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  let streak = 0
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    const next = new Date(d)
+    next.setDate(d.getDate() + 1)
+    const sessions = await getSessionsByRange(d.getTime(), next.getTime())
+    if (sessions.length === 0) break
+    streak++
+  }
+  return streak
+}
+
+export async function getWeeklyData(): Promise<{ day: string; minutes: number; isToday: boolean }[]> {
+  const today = new Date()
+  const results = await Promise.all(
+    Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today)
+      d.setDate(today.getDate() - (6 - i))
+      d.setHours(0, 0, 0, 0)
+      const next = new Date(d)
+      next.setDate(d.getDate() + 1)
+      return getSessionsByRange(d.getTime(), next.getTime()).then(sessions => ({
+        day: d.toLocaleDateString('ko-KR', { weekday: 'short' }),
+        minutes: Math.floor(sessions.reduce((s, r) => s + r.duration, 0) / 60),
+        isToday: i === 6,
+      }))
+    })
+  )
+  return results
+}
+
+export async function getWeekdayStats(): Promise<{ weekday: string; score: number; label: string }[]> {
+  const DAYS = ['일', '월', '화', '수', '목', '금', '토']
+  const LABELS = ['REST', 'BUILDING', 'BUILDING', 'PEAK FLOW', 'MAINTAINING', 'WINDING', 'REST']
+  const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const sessions = await getSessionsByRange(monthAgo, Date.now())
+  const totals = Array(7).fill(0)
+  for (const s of sessions) {
+    const wd = new Date(s.start).getDay()
+    totals[wd] += s.duration
+  }
+  const maxTotal = Math.max(...totals, 1)
+  return DAYS.map((weekday, i) => ({
+    weekday,
+    score: Math.round((totals[i] / maxTotal) * 100),
+    label: totals[i] === 0 ? 'REST' : LABELS[i],
+  }))
+}

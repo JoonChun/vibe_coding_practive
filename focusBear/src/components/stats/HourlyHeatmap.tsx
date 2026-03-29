@@ -1,45 +1,44 @@
-// src/components/stats/HourlyHeatmap.tsx
 import { useEffect, useState } from 'react'
-import { getSessionsByRange } from '../../db/sessions'
+import { getWeekdayStats } from '../../db/sessions'
+
+interface WeekdayData { weekday: string; score: number; label: string }
 
 export function HourlyHeatmap() {
-  const [hourData, setHourData] = useState<number[]>(Array(24).fill(0))
+  const [data, setData] = useState<WeekdayData[]>([])
 
-  useEffect(() => {
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
-    getSessionsByRange(weekAgo, Date.now()).then(sessions => {
-      const counts = Array(24).fill(0)
-      for (const s of sessions) {
-        const hour = new Date(s.start).getHours()
-        counts[hour] += s.duration
-      }
-      setHourData(counts)
-    })
-  }, [])
+  useEffect(() => { getWeekdayStats().then(setData) }, [])
 
-  const max = Math.max(...hourData, 1)
+  if (data.length === 0) return null
+
+  const maxScore = Math.max(...data.map(d => d.score), 1)
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm">
-      <h3 className="font-bold mb-4">시간대별 집중 패턴 (7일)</h3>
-      <div className="flex items-end gap-1 h-20">
-        {hourData.map((val, h) => (
-          <div key={h} className="flex-1 flex flex-col items-center gap-1">
-            <div
-              className="w-full rounded-t"
-              style={{
-                height: `${(val / max) * 64}px`,
-                minHeight: val > 0 ? 4 : 0,
-                background: val > 0 ? 'var(--accent-color)' : '#E5E7EB',
-                opacity: val > 0 ? 0.4 + 0.6 * (val / max) : 1,
-              }}
-              title={`${h}시 · ${Math.floor(val / 60)}분`}
-            />
-            {h % 6 === 0 && (
-              <span className="text-[9px] text-gray-400">{h}</span>
-            )}
-          </div>
-        ))}
+    <div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {data.map((d) => {
+          const intensity = d.score / maxScore
+          return (
+            <div key={d.weekday}
+              className="flex flex-col items-center text-center p-2 rounded-2xl bg-surface-container-highest/40 dark:bg-white/5">
+              <span className="font-mono text-[9px] text-on-surface-variant dark:text-slate-500 mb-2 uppercase">{d.weekday}</span>
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white mb-1.5"
+                style={{
+                  background: d.score === 0
+                    ? 'rgba(108, 47, 0, 0.1)'
+                    : `rgba(108, 47, 0, ${0.2 + intensity * 0.8})`,
+                  color: intensity > 0.5 ? 'white' : '#6c2f00',
+                }}
+              >
+                <span className="font-mono text-[10px] font-bold">{d.score}</span>
+              </div>
+              <span className="font-mono text-[8px] font-bold text-primary dark:text-[#00FF41] uppercase leading-tight"
+                style={{ opacity: d.score === 0 ? 0.3 : 0.8 }}>
+                {d.label}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
