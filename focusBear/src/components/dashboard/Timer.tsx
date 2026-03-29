@@ -27,14 +27,14 @@ export function Timer({ elapsed, mode, timerState, pomodoroDuration }: Props) {
   return (
     <div className="text-center">
       <span
-        className="font-mono text-6xl font-bold tabular-nums tracking-widest text-[var(--accent-color)]"
+        className="font-mono text-6xl font-bold tabular-nums tracking-widest text-primary dark:text-[#00FF41]"
         style={{ fontFamily: '"JetBrains Mono", monospace' }}
       >
         {formatTime(display)}
       </span>
       {mode === 'pomodoro' && (
-        <p className="text-xs text-gray-400 mt-1 font-mono">
-          POMODORO {timerState === 'running' ? '▶' : '⏸'}
+        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-on-surface-variant dark:text-slate-500 mt-1">
+          Pomodoro {timerState === 'running' ? '▶' : timerState === 'paused' ? '⏸' : '■'}
         </p>
       )}
     </div>
