@@ -38,6 +38,34 @@ export function SettingsView() {
         </div>
       </section>
 
+      {/* Daily Goal */}
+      <section className="space-y-3">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary/60 dark:text-[#00FF41]/60">Daily Goal</h3>
+        <div className="bg-surface-container-low dark:bg-white/5 rounded-4xl fur-shadow p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-sm text-on-surface dark:text-slate-200">하루 목표 집중 시간</p>
+              <p className="text-xs text-on-surface-variant dark:text-slate-400 mt-0.5">Paw Trail 진행도 기준</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {[60, 90, 120, 180, 240].map(m => (
+                <button
+                  key={m}
+                  onClick={() => dispatch({ type: 'SET_DAILY_GOAL', minutes: m })}
+                  className={`font-mono text-xs px-3 py-1.5 rounded-full transition-colors ${
+                    state.dailyGoal === m
+                      ? 'honey-gradient text-white'
+                      : 'bg-surface-container-highest dark:bg-white/10 text-on-surface-variant dark:text-slate-400'
+                  }`}
+                >
+                  {m >= 60 ? `${m / 60}h` : `${m}m`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Categories */}
       <section className="space-y-3">
         <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary/60 dark:text-[#00FF41]/60">Categories</h3>

@@ -1,5 +1,6 @@
 // src/components/calendar/HeatmapCell.tsx
 import { clsx } from 'clsx'
+import { useApp } from '../../context/AppContext'
 
 function getIntensityLevel(seconds: number): number {
   if (seconds === 0) return 0
@@ -9,40 +10,81 @@ function getIntensityLevel(seconds: number): number {
   return 4
 }
 
-const LIGHT_COLORS = ['bg-gray-100', 'bg-amber-100', 'bg-amber-200', 'bg-amber-400', 'bg-amber-600']
-const DARK_BG: Record<number, string> = { 0: 'dark:bg-gray-800', 1: 'dark:bg-green-900', 2: 'dark:bg-green-700', 3: 'dark:bg-green-500', 4: 'dark:bg-green-300' }
+// Returns inline style for the cell background based on intensity and theme
+function getCellStyle(level: number, isDark: boolean): React.CSSProperties {
+  if (level === 0) return {}
+  const intensities = [0, 0.15, 0.35, 0.65, 1.0]
+  const intensity = intensities[level]
+
+  if (isDark) {
+    // Dark theme: #00FF41 green with varying alpha
+    const alpha = Math.round(intensity * 255).toString(16).padStart(2, '0')
+    return { backgroundColor: `#00FF41${alpha}` }
+  } else {
+    // Light theme: honey brown #6c2f00
+    return { backgroundColor: `rgba(108, 47, 0, ${intensity})` }
+  }
+}
 
 interface Props {
   date: Date
   totalSeconds: number
   isToday: boolean
   isCurrentMonth: boolean
+  isSelected: boolean
   onClick: () => void
 }
 
-export function HeatmapCell({ date, totalSeconds, isToday, isCurrentMonth, onClick }: Props) {
+export function HeatmapCell({ date, totalSeconds, isToday, isCurrentMonth, isSelected, onClick }: Props) {
+  const { state } = useApp()
+  const isDark = state.theme === 'dark'
   const level = getIntensityLevel(totalSeconds)
   const hasSessions = totalSeconds > 0
+  const minutes = Math.floor(totalSeconds / 60)
+
+  const cellStyle = isCurrentMonth ? getCellStyle(level, isDark) : {}
+  const useWhiteText = level >= 3 && isCurrentMonth
 
   return (
     <button
       onClick={onClick}
-      title={`${date.getDate()}일 · ${Math.floor(totalSeconds / 60)}분 집중`}
+      title={`${date.getDate()}일 · ${minutes}분 집중`}
+      style={cellStyle}
       className={clsx(
-        'relative aspect-square w-full rounded-lg transition-all hover:ring-2 hover:ring-[var(--accent-color)] hover:ring-offset-1',
-        isCurrentMonth ? `${LIGHT_COLORS[level]} ${DARK_BG[level]}` : 'bg-gray-50 dark:bg-gray-900 opacity-40',
-        isToday && 'ring-2 ring-[var(--accent-color)] ring-offset-1',
+        'relative aspect-square w-full rounded-xl p-2 transition-all cursor-pointer',
+        // Base bg when no data
+        isCurrentMonth
+          ? level === 0 ? 'bg-surface-container-highest dark:bg-gray-800' : ''
+          : 'bg-transparent opacity-30',
+        // Hover effect
+        isCurrentMonth && 'hover:opacity-75',
+        // Selected ring
+        isSelected && 'ring-4 ring-primary-fixed ring-offset-2 ring-offset-background scale-105 z-10 shadow-lg',
+        // Today indicator
+        isToday && !isSelected && 'ring-2 ring-primary/40 dark:ring-green-400/40 ring-offset-1',
       )}
     >
       <span className={clsx(
-        'absolute top-1 left-1.5 text-xs',
-        level >= 3 ? 'text-white' : 'text-gray-600 dark:text-gray-300',
-        !isCurrentMonth && 'opacity-50'
+        'font-mono text-sm font-bold leading-none block',
+        useWhiteText
+          ? 'text-white'
+          : isDark
+            ? 'text-gray-100'
+            : 'text-on-surface',
+        !isCurrentMonth && 'opacity-40',
       )}>
         {date.getDate()}
       </span>
-      {hasSessions && (
-        <span className="absolute bottom-0.5 right-0.5 text-[10px]">🐾</span>
+      {hasSessions && isCurrentMonth && (
+        <span
+          className={clsx(
+            'absolute bottom-1 right-1 text-[10px] select-none',
+            useWhiteText ? 'opacity-90' : 'opacity-70',
+          )}
+          aria-hidden="true"
+        >
+          🐾
+        </span>
       )}
     </button>
   )
