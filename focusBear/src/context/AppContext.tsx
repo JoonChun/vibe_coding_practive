@@ -14,6 +14,7 @@ export interface AppState {
   todayTotal: number
   animationEnabled: boolean
   pomodoroDuration: number
+  dailyGoal: number
   undoStack: DbAction[]
   redoStack: DbAction[]
   categories: Category[]
@@ -29,6 +30,7 @@ export type AppAction =
   | { type: 'SET_TODAY_TOTAL'; total: number }
   | { type: 'SET_ANIMATION'; enabled: boolean }
   | { type: 'SET_POMODORO_DURATION'; minutes: number }
+  | { type: 'SET_DAILY_GOAL'; minutes: number }
   | { type: 'PUSH_UNDO'; action: DbAction }
   | { type: 'UNDO' }
   | { type: 'REDO' }
@@ -49,6 +51,12 @@ function getInitialPomodoroDuration(): number {
   return Number.isFinite(n) && n >= 1 && n <= 120 ? n : 25
 }
 
+function getInitialDailyGoal(): number {
+  const saved = localStorage.getItem('dailyGoal')
+  const n = saved ? parseInt(saved, 10) : NaN
+  return Number.isFinite(n) && n >= 10 && n <= 720 ? n : 120
+}
+
 const initialState: AppState = {
   currentPage: 'dashboard',
   theme: getInitialTheme(),
@@ -60,6 +68,7 @@ const initialState: AppState = {
   todayTotal: 0,
   animationEnabled: true,
   pomodoroDuration: getInitialPomodoroDuration(),
+  dailyGoal: getInitialDailyGoal(),
   undoStack: [],
   redoStack: [],
   categories: [],
@@ -90,6 +99,9 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'SET_POMODORO_DURATION':
       localStorage.setItem('pomodoroDuration', String(action.minutes))
       return { ...state, pomodoroDuration: action.minutes, elapsed: 0 }
+    case 'SET_DAILY_GOAL':
+      localStorage.setItem('dailyGoal', String(action.minutes))
+      return { ...state, dailyGoal: action.minutes }
     case 'SET_CATEGORIES': {
       const names = action.categories.map(c => c.name)
       const validCategory = names.includes(state.selectedCategory)

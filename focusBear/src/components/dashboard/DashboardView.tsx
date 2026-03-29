@@ -6,6 +6,7 @@ import { BearCharacter } from './BearCharacter'
 import { Timer } from './Timer'
 import { TimerControls } from './TimerControls'
 import { MemoDialog } from './MemoDialog'
+import { PawTrail } from './PawTrail'
 import { addSession, getTodayTotal } from '../../db/sessions'
 
 export function DashboardView() {
@@ -82,6 +83,9 @@ export function DashboardView() {
           onReset={handleReset}
         />
       </div>
+
+      {/* Paw Trail — daily goal progress */}
+      <PawTrail />
 
       <MemoDialog
         open={memoOpen}
