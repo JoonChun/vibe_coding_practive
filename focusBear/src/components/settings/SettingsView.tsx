@@ -36,6 +36,31 @@ export function SettingsView() {
       </section>
 
       <section>
+        <h3 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">타이머</h3>
+        <div className="bg-white dark:bg-gray-900 rounded-2xl divide-y divide-gray-100 dark:divide-gray-800 shadow-sm">
+          <div className="flex items-center justify-between p-4">
+            <div>
+              <p className="font-medium text-sm">뽀모도로 시간</p>
+              <p className="text-xs text-gray-400">타이머 모드의 집중 시간 (분)</p>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={state.pomodoroDuration}
+              onChange={e => {
+                const n = parseInt(e.target.value, 10)
+                if (Number.isFinite(n) && n >= 1 && n <= 120) {
+                  dispatch({ type: 'SET_POMODORO_DURATION', minutes: n })
+                }
+              }}
+              className="w-16 text-center px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)]"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section>
         <h3 className="font-semibold mb-3 text-sm text-gray-500 uppercase tracking-wide">카테고리</h3>
         <div className="bg-white dark:bg-gray-900 rounded-2xl divide-y divide-gray-100 dark:divide-gray-800 shadow-sm">
           <CategoryManager />

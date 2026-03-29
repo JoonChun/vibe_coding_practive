@@ -2,20 +2,19 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { MatrixCanvas } from './MatrixCanvas'
 import type { BearMood } from '../../types'
 
-const POMODORO_SECS = 25 * 60
-
 interface Props {
   mood: BearMood
   elapsed: number
   timerMode: string
   animationEnabled: boolean
+  pomodoroDuration: number
 }
 
-export function BearCharacter({ mood, elapsed, timerMode, animationEnabled }: Props) {
+export function BearCharacter({ mood, elapsed, timerMode, animationEnabled, pomodoroDuration }: Props) {
   const isFocus = mood === 'focus'
 
   const pomodoroProgress = timerMode === 'pomodoro'
-    ? Math.min(elapsed / POMODORO_SECS, 1)
+    ? Math.min(elapsed / (pomodoroDuration * 60), 1)
     : null
 
   return (

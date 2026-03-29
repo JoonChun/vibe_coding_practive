@@ -1,7 +1,5 @@
 import type { TimerMode } from '../../types'
 
-const POMODORO_SECS = 25 * 60
-
 function pad(n: number): string {
   return n.toString().padStart(2, '0')
 }
@@ -18,11 +16,12 @@ interface Props {
   elapsed: number
   mode: TimerMode
   timerState: string
+  pomodoroDuration: number
 }
 
-export function Timer({ elapsed, mode, timerState }: Props) {
+export function Timer({ elapsed, mode, timerState, pomodoroDuration }: Props) {
   const display = mode === 'pomodoro'
-    ? Math.max(0, POMODORO_SECS - elapsed)
+    ? Math.max(0, pomodoroDuration * 60 - elapsed)
     : elapsed
 
   return (

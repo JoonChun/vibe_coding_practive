@@ -14,6 +14,7 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
   const { categories } = state
 
   const isRunning = state.timerState === 'running'
+  const isPaused = state.timerState === 'paused'
   const isIdle = state.timerState === 'idle'
 
   function setMode(mode: TimerMode) {
@@ -65,13 +66,23 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
 
         <button
           onClick={isRunning ? onPause : onStart}
-          className="w-16 h-16 rounded-full bg-[var(--accent-color)] text-white flex items-center justify-center shadow-lg hover:opacity-90 active:scale-95 transition-all"
+          className={`w-16 h-16 rounded-full text-white flex items-center justify-center shadow-lg hover:opacity-90 active:scale-95 transition-all ${
+            isPaused
+              ? 'bg-amber-500 ring-4 ring-amber-300 dark:ring-amber-600 animate-pulse'
+              : 'bg-[var(--accent-color)]'
+          }`}
         >
           {isRunning ? <Pause size={24} /> : <Play size={24} className="ml-1" />}
         </button>
 
         <div className="w-12 h-12" />
       </div>
+
+      {isPaused && (
+        <p className="text-xs font-mono text-amber-500 animate-pulse tracking-widest">
+          [ 일시정지 중 ]
+        </p>
+      )}
     </div>
   )
 }
