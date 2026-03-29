@@ -8,6 +8,7 @@ interface Props {
   open: boolean
   date: Date
   categories: Category[]
+  initialSession?: { start: number; end: number; category: string; memo: string }
   onSave: (start: number, end: number, category: string, memo: string) => void
   onClose: () => void
 }
@@ -23,34 +24,42 @@ function parseTime(date: Date, timeStr: string): number {
   return d.getTime()
 }
 
-export function ManualSessionDialog({ open, date, categories, onSave, onClose }: Props) {
+export function ManualSessionDialog({ open, date, categories, initialSession, onSave, onClose }: Props) {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:00')
   const [category, setCategory] = useState('')
   const [memo, setMemo] = useState('')
   const [error, setError] = useState('')
 
+  const isEditMode = !!initialSession
+
   useEffect(() => {
-    if (categories.length > 0) setCategory(categories[0].name)
-  }, [categories])
+    if (categories.length > 0 && !category) setCategory(categories[0].name)
+  }, [categories, category])
 
   useEffect(() => {
     if (open) {
-      const now = new Date()
-      const isToday = date.toDateString() === now.toDateString()
-      if (isToday) {
-        const end = toLocalTimeString(now)
-        const start = toLocalTimeString(new Date(now.getTime() - 60 * 60 * 1000))
-        setStartTime(start)
-        setEndTime(end)
+      if (initialSession) {
+        setStartTime(toLocalTimeString(new Date(initialSession.start)))
+        setEndTime(toLocalTimeString(new Date(initialSession.end)))
+        setCategory(initialSession.category)
+        setMemo(initialSession.memo)
       } else {
-        setStartTime('09:00')
-        setEndTime('10:00')
+        const now = new Date()
+        const isToday = date.toDateString() === now.toDateString()
+        if (isToday) {
+          setEndTime(toLocalTimeString(now))
+          setStartTime(toLocalTimeString(new Date(now.getTime() - 60 * 60 * 1000)))
+        } else {
+          setStartTime('09:00')
+          setEndTime('10:00')
+        }
+        setMemo('')
+        if (categories.length > 0) setCategory(categories[0].name)
       }
-      setMemo('')
       setError('')
     }
-  }, [open, date])
+  }, [open, date, initialSession, categories])
 
   function handleSave() {
     const start = parseTime(date, startTime)
@@ -83,7 +92,7 @@ export function ManualSessionDialog({ open, date, categories, onSave, onClose }:
             className="bg-white dark:bg-gray-900 rounded-2xl p-6 w-full max-w-sm shadow-2xl"
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-lg">⏱ 수동 기록 추가</h2>
+              <h2 className="font-bold text-lg">{isEditMode ? '✏️ 기록 수정' : '⏱ 수동 기록 추가'}</h2>
               <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
@@ -155,7 +164,7 @@ export function ManualSessionDialog({ open, date, categories, onSave, onClose }:
                 disabled={categories.length === 0}
                 className="flex-1 py-2 rounded-xl bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                추가하기
+                {isEditMode ? '수정 완료' : '추가하기'}
               </button>
             </div>
           </motion.div>
