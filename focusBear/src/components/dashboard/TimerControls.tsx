@@ -60,7 +60,8 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
 
   return (
     <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-      <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 gap-1">
+      {/* Mode toggle pill */}
+      <div className="flex rounded-xl bg-surface-container-high dark:bg-white/10 p-1 gap-1">
         {(['stopwatch', 'pomodoro'] as TimerMode[]).map(mode => (
           <button
             key={mode}
@@ -69,8 +70,8 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
             className={clsx(
               'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
               state.timerMode === mode
-                ? 'bg-white dark:bg-gray-700 text-[var(--accent-color)] shadow-sm'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50'
+                ? 'bg-surface-container-lowest dark:bg-white/15 text-primary dark:text-[#00FF41] shadow-sm'
+                : 'text-on-surface-variant dark:text-slate-400 hover:text-on-surface dark:hover:text-slate-200 disabled:opacity-50'
             )}
           >
             {mode === 'stopwatch' ? <Clock size={14} /> : <TimerIcon size={14} />}
@@ -79,6 +80,7 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
         ))}
       </div>
 
+      {/* Pomodoro duration badge + dropdown */}
       {state.timerMode === 'pomodoro' && (
         <div ref={dropdownRef} className="relative">
           <button
@@ -87,8 +89,8 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
             className={clsx(
               'flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-colors',
               isIdle
-                ? 'border-[var(--accent-color)] text-[var(--accent-color)] hover:bg-[var(--accent-color)]/10 cursor-pointer'
-                : 'border-gray-300 dark:border-gray-600 text-gray-400 cursor-default'
+                ? 'border-primary dark:border-[#00FF41] text-primary dark:text-[#00FF41] hover:bg-primary/10 dark:hover:bg-[#00FF41]/10 cursor-pointer'
+                : 'border-outline-variant dark:border-white/20 text-on-surface-variant dark:text-slate-500 cursor-default'
             )}
           >
             {state.pomodoroDuration}분
@@ -96,8 +98,8 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
           </button>
 
           {durationOpen && (
-            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-10 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 p-3 w-52">
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-2 text-center">집중 시간</p>
+            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-10 bg-surface-container-lowest dark:bg-slate-800 rounded-2xl shadow-fur-lg border border-outline-variant/30 dark:border-white/10 p-3 w-52">
+              <p className="text-[10px] text-on-surface-variant dark:text-slate-400 uppercase tracking-widest mb-2 text-center font-mono">집중 시간</p>
               <div className="grid grid-cols-4 gap-1.5 mb-3">
                 {PRESETS.map(min => (
                   <button
@@ -106,8 +108,8 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
                     className={clsx(
                       'py-1.5 rounded-lg text-xs font-medium transition-colors',
                       state.pomodoroDuration === min
-                        ? 'bg-[var(--accent-color)] text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        ? 'honey-gradient text-white dark:bg-[#00FF41] dark:text-[#0F172A]'
+                        : 'bg-surface-container dark:bg-white/10 text-on-surface-variant dark:text-slate-300 hover:bg-surface-container-high dark:hover:bg-white/20'
                     )}
                   >
                     {min}분
@@ -123,12 +125,12 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
                   value={customInput}
                   onChange={e => setCustomInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && submitCustom()}
-                  className="flex-1 px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)]"
+                  className="flex-1 px-2 py-1 rounded-lg border border-outline-variant/30 dark:border-white/20 bg-surface-container-lowest dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-[#00FF41]"
                 />
-                <span className="text-xs text-gray-400">분</span>
+                <span className="text-xs text-on-surface-variant dark:text-slate-400">분</span>
                 <button
                   onClick={submitCustom}
-                  className="px-2 py-1 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 transition-opacity"
+                  className="px-2 py-1 rounded-lg honey-gradient dark:bg-[#00FF41] text-white dark:text-[#0F172A] text-xs font-medium hover:opacity-90 transition-opacity"
                 >
                   확인
                 </button>
@@ -138,33 +140,36 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
         </div>
       )}
 
+      {/* Category select */}
       <select
         value={state.selectedCategory}
         onChange={e => dispatch({ type: 'SET_CATEGORY', category: e.target.value })}
         disabled={isRunning}
-        className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)] disabled:opacity-50"
+        className="w-full px-3 py-2 rounded-xl border border-outline-variant/30 dark:border-white/10 bg-surface-container-lowest dark:bg-white/5 text-sm text-on-surface dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-[#00FF41] disabled:opacity-50"
       >
         {categories.map(c => (
           <option key={c.id} value={c.name}>{c.name}</option>
         ))}
       </select>
 
+      {/* Play / Pause / Stop buttons */}
       <div className="flex items-center gap-3">
         <button
           onClick={onReset}
           disabled={isIdle}
-          className="w-12 h-12 rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-400 hover:border-red-400 hover:text-red-400 disabled:opacity-30 transition-colors"
+          className="w-12 h-12 rounded-full border-2 border-outline-variant dark:border-white/20 flex items-center justify-center text-on-surface-variant dark:text-slate-400 hover:border-error hover:text-error disabled:opacity-30 transition-colors"
         >
           <Square size={18} />
         </button>
 
         <button
           onClick={isRunning ? onPause : onStart}
-          className={`w-16 h-16 rounded-full text-white flex items-center justify-center shadow-lg hover:opacity-90 active:scale-95 transition-all ${
+          className={clsx(
+            'w-16 h-16 rounded-full flex items-center justify-center shadow-fur-lg active:scale-95 transition-all',
             isPaused
-              ? 'bg-amber-500 ring-4 ring-amber-300 dark:ring-amber-600 animate-pulse'
-              : 'bg-[var(--accent-color)]'
-          }`}
+              ? 'bg-amber-500 text-white ring-4 ring-amber-300 dark:ring-amber-600 animate-pulse'
+              : 'honey-gradient dark:bg-[#00FF41] text-white dark:text-[#0F172A] hover:opacity-90'
+          )}
         >
           {isRunning ? <Pause size={24} /> : <Play size={24} className="ml-1" />}
         </button>
@@ -172,7 +177,10 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
         <div className="w-12 h-12" />
       </div>
 
-      <p className={`text-xs font-mono tracking-widest transition-opacity ${isPaused ? 'text-amber-500 animate-pulse opacity-100' : 'opacity-0 select-none'}`}>
+      <p className={clsx(
+        'text-xs font-mono tracking-widest transition-opacity',
+        isPaused ? 'text-amber-500 animate-pulse opacity-100' : 'opacity-0 select-none'
+      )}>
         [ 일시정지 중 ]
       </p>
     </div>
