@@ -75,7 +75,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         timerState: action.timerState,
-        bearMood: action.timerState === 'running' ? 'focus' : 'rest',
+        bearMood: action.timerState === 'idle' ? 'rest' : 'focus',
       }
     case 'SET_TIMER_MODE':
       return { ...state, timerMode: action.mode, elapsed: 0 }

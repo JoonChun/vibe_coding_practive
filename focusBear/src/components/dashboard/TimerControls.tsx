@@ -172,11 +172,9 @@ export function TimerControls({ onStart, onPause, onReset }: Props) {
         <div className="w-12 h-12" />
       </div>
 
-      {isPaused && (
-        <p className="text-xs font-mono text-amber-500 animate-pulse tracking-widest">
-          [ 일시정지 중 ]
-        </p>
-      )}
+      <p className={`text-xs font-mono tracking-widest transition-opacity ${isPaused ? 'text-amber-500 animate-pulse opacity-100' : 'opacity-0 select-none'}`}>
+        [ 일시정지 중 ]
+      </p>
     </div>
   )
 }

@@ -6,11 +6,12 @@ interface Props {
   mood: BearMood
   elapsed: number
   timerMode: string
+  timerState: string
   animationEnabled: boolean
   pomodoroDuration: number
 }
 
-export function BearCharacter({ mood, elapsed, timerMode, animationEnabled, pomodoroDuration }: Props) {
+export function BearCharacter({ mood, elapsed, timerMode, timerState, animationEnabled, pomodoroDuration }: Props) {
   const isFocus = mood === 'focus'
 
   const pomodoroProgress = timerMode === 'pomodoro'
@@ -67,7 +68,7 @@ export function BearCharacter({ mood, elapsed, timerMode, animationEnabled, pomo
       )}
 
       <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">
-        {isFocus ? '[ 집중 중... ]' : '[ 쉬는 중 🍯 ]'}
+        {timerState === 'running' ? '[ 집중 중... ]' : timerState === 'paused' ? '[ 일시정지 중 ]' : '[ 쉬는 중 🍯 ]'}
       </p>
     </div>
   )
