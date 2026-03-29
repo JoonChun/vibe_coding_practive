@@ -2,8 +2,6 @@ import { useRef, useCallback, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import type { WorkerMessage } from '../types'
 
-const POMODORO_SECONDS = 25 * 60
-
 export function useTimer() {
   const { state, dispatch } = useApp()
   const workerRef = useRef<Worker | null>(null)
@@ -37,7 +35,7 @@ export function useTimer() {
       type: 'START',
       offset: state.elapsed,
       mode: state.timerMode,
-      total: POMODORO_SECONDS,
+      total: state.pomodoroDuration * 60,
     })
     dispatch({ type: 'SET_TIMER_STATE', timerState: 'running' })
 

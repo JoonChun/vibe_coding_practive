@@ -55,13 +55,16 @@ export function DashboardView() {
         mood={state.bearMood}
         elapsed={state.elapsed}
         timerMode={state.timerMode}
+        timerState={state.timerState}
         animationEnabled={state.animationEnabled}
+        pomodoroDuration={state.pomodoroDuration}
       />
 
       <Timer
         elapsed={state.elapsed}
         mode={state.timerMode}
         timerState={state.timerState}
+        pomodoroDuration={state.pomodoroDuration}
       />
 
       <TimerControls

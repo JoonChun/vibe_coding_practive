@@ -2,20 +2,20 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { MatrixCanvas } from './MatrixCanvas'
 import type { BearMood } from '../../types'
 
-const POMODORO_SECS = 25 * 60
-
 interface Props {
   mood: BearMood
   elapsed: number
   timerMode: string
+  timerState: string
   animationEnabled: boolean
+  pomodoroDuration: number
 }
 
-export function BearCharacter({ mood, elapsed, timerMode, animationEnabled }: Props) {
+export function BearCharacter({ mood, elapsed, timerMode, timerState, animationEnabled, pomodoroDuration }: Props) {
   const isFocus = mood === 'focus'
 
   const pomodoroProgress = timerMode === 'pomodoro'
-    ? Math.min(elapsed / POMODORO_SECS, 1)
+    ? Math.min(elapsed / (pomodoroDuration * 60), 1)
     : null
 
   return (
@@ -32,7 +32,7 @@ export function BearCharacter({ mood, elapsed, timerMode, animationEnabled }: Pr
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.3 }}
-              className="mb-2"
+              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2"
             >
               <MatrixCanvas active={isFocus && animationEnabled} />
             </motion.div>
@@ -68,7 +68,7 @@ export function BearCharacter({ mood, elapsed, timerMode, animationEnabled }: Pr
       )}
 
       <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">
-        {isFocus ? '[ 집중 중... ]' : '[ 쉬는 중 🍯 ]'}
+        {timerState === 'running' ? '[ 집중 중... ]' : timerState === 'paused' ? '[ 일시정지 중 ]' : '[ 쉬는 중 🍯 ]'}
       </p>
     </div>
   )

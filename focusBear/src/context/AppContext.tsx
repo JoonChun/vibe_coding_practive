@@ -13,6 +13,7 @@ export interface AppState {
   selectedCategory: string
   todayTotal: number
   animationEnabled: boolean
+  pomodoroDuration: number
   undoStack: DbAction[]
   redoStack: DbAction[]
   categories: Category[]
@@ -27,6 +28,7 @@ export type AppAction =
   | { type: 'SET_CATEGORY'; category: string }
   | { type: 'SET_TODAY_TOTAL'; total: number }
   | { type: 'SET_ANIMATION'; enabled: boolean }
+  | { type: 'SET_POMODORO_DURATION'; minutes: number }
   | { type: 'PUSH_UNDO'; action: DbAction }
   | { type: 'UNDO' }
   | { type: 'REDO' }
@@ -41,6 +43,12 @@ function getInitialTheme(): Theme {
   return 'light'
 }
 
+function getInitialPomodoroDuration(): number {
+  const saved = localStorage.getItem('pomodoroDuration')
+  const n = saved ? parseInt(saved, 10) : NaN
+  return Number.isFinite(n) && n >= 1 && n <= 120 ? n : 25
+}
+
 const initialState: AppState = {
   currentPage: 'dashboard',
   theme: getInitialTheme(),
@@ -51,6 +59,7 @@ const initialState: AppState = {
   selectedCategory: '기타',
   todayTotal: 0,
   animationEnabled: true,
+  pomodoroDuration: getInitialPomodoroDuration(),
   undoStack: [],
   redoStack: [],
   categories: [],
@@ -66,7 +75,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         timerState: action.timerState,
-        bearMood: action.timerState === 'running' ? 'focus' : 'rest',
+        bearMood: action.timerState === 'idle' ? 'rest' : 'focus',
       }
     case 'SET_TIMER_MODE':
       return { ...state, timerMode: action.mode, elapsed: 0 }
@@ -78,6 +87,9 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, todayTotal: action.total }
     case 'SET_ANIMATION':
       return { ...state, animationEnabled: action.enabled }
+    case 'SET_POMODORO_DURATION':
+      localStorage.setItem('pomodoroDuration', String(action.minutes))
+      return { ...state, pomodoroDuration: action.minutes, elapsed: 0 }
     case 'SET_CATEGORIES': {
       const names = action.categories.map(c => c.name)
       const validCategory = names.includes(state.selectedCategory)
