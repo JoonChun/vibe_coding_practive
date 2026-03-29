@@ -51,15 +51,13 @@ export function DashboardView() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] gap-8 py-8 px-4">
-      <div className="h-[320px] flex items-end justify-center">
-        <BearCharacter
-          mood={state.bearMood}
-          elapsed={state.elapsed}
-          timerMode={state.timerMode}
-          animationEnabled={state.animationEnabled}
-          pomodoroDuration={state.pomodoroDuration}
-        />
-      </div>
+      <BearCharacter
+        mood={state.bearMood}
+        elapsed={state.elapsed}
+        timerMode={state.timerMode}
+        animationEnabled={state.animationEnabled}
+        pomodoroDuration={state.pomodoroDuration}
+      />
 
       <Timer
         elapsed={state.elapsed}

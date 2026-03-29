@@ -31,7 +31,7 @@ export function BearCharacter({ mood, elapsed, timerMode, animationEnabled, pomo
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.3 }}
-              className="mb-2"
+              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2"
             >
               <MatrixCanvas active={isFocus && animationEnabled} />
             </motion.div>
