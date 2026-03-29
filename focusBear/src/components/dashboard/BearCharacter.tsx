@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { MatrixCanvas } from './MatrixCanvas'
 import type { BearMood } from '../../types'
+
+const FOCUS_MESSAGES = ['집중 중...', '몰입하는 중 🎯', '잘하고 있어요!', '오늘도 파이팅 🐾', '흐름을 타는 중~']
 
 interface Props {
   mood: BearMood
@@ -106,20 +107,31 @@ export function BearCharacter({ mood, elapsed, timerMode, timerState, animationE
     ? Math.min(elapsed / (pomodoroDuration * 60), 1)
     : null
 
+  // Cycle through messages every 30s of elapsed time
+  const msgIndex = Math.floor(elapsed / 30) % FOCUS_MESSAGES.length
+
   return (
     <div className="flex flex-col items-center gap-4 select-none">
       <div className="relative">
-        {/* MatrixCanvas: floating above only when running */}
+        {/* Speech bubble above bear when running */}
         <AnimatePresence>
           {isRunning && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              key={msgIndex}
+              initial={{ opacity: 0, y: 6, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.92 }}
               transition={{ duration: 0.3 }}
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3"
+              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 whitespace-nowrap"
             >
-              <MatrixCanvas active={animationEnabled} />
+              {/* Bubble body */}
+              <div className="bg-white dark:bg-[#1e293b] border border-outline-variant/30 dark:border-white/10 rounded-2xl px-3 py-1.5 shadow-sm">
+                <span className="font-mono text-[11px] text-primary dark:text-[#00FF41] font-medium">
+                  {FOCUS_MESSAGES[msgIndex]}
+                </span>
+              </div>
+              {/* Bubble tail — small rotated square */}
+              <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-2.5 h-2.5 bg-white dark:bg-[#1e293b] border-r border-b border-outline-variant/30 dark:border-white/10 rotate-45" />
             </motion.div>
           )}
         </AnimatePresence>
