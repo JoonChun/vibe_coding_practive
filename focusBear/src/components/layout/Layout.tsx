@@ -1,4 +1,3 @@
-// src/components/layout/Layout.tsx
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
@@ -7,9 +6,19 @@ import { useApp } from '../../context/AppContext'
 import { getTodayTotal } from '../../db/sessions'
 import { seedDefaultCategories } from '../../db/schema'
 import { getCategories } from '../../db/categories'
+import { LayoutDashboard, Calendar, BarChart2, Settings } from 'lucide-react'
+import { clsx } from 'clsx'
+import type { Page } from '../../types'
+
+const MOBILE_NAV: { page: Page; icon: React.ReactNode; label: string }[] = [
+  { page: 'dashboard', icon: <LayoutDashboard size={20} />, label: '홈' },
+  { page: 'calendar', icon: <Calendar size={20} />, label: '지도' },
+  { page: 'stats', icon: <BarChart2 size={20} />, label: '통계' },
+  { page: 'settings', icon: <Settings size={20} />, label: '설정' },
+]
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { dispatch } = useApp()
+  const { state, dispatch } = useApp()
 
   useEffect(() => {
     seedDefaultCategories()
@@ -25,9 +34,27 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-[var(--bg-color)]">
       <Header />
       <Sidebar />
-      <main className="ml-16 pt-14 min-h-screen">
+      <main className="md:ml-64 pt-14 pb-20 md:pb-0 min-h-screen">
         {children}
       </main>
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 bg-[#fbf9f5]/80 dark:bg-[#0F172A]/80 backdrop-blur-xl border-t border-outline-variant/20 dark:border-white/5 flex justify-around items-center py-2 px-4">
+        {MOBILE_NAV.map(({ page, icon, label }) => (
+          <button
+            key={page}
+            onClick={() => dispatch({ type: 'SET_PAGE', page })}
+            className={clsx(
+              'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors text-xs font-mono',
+              state.currentPage === page
+                ? 'text-primary dark:text-[#00FF41]'
+                : 'text-on-surface-variant'
+            )}
+          >
+            {icon}
+            <span className="text-[10px] uppercase tracking-wide">{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }

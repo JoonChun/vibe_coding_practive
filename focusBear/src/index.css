@@ -1,5 +1,5 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,28 +7,47 @@
 
 @layer base {
   :root {
-    --bg-color: #FDFBF7;
-    --text-color: #0F172A;
-    --accent-color: #8B4513;
+    --bg-color: #fbf9f5;
+    --text-color: #1b1c1a;
+    --accent-color: #6c2f00;
+    --surface-container: #efeeea;
   }
 
   .dark {
     --bg-color: #0F172A;
-    --text-color: #FDFBF7;
+    --text-color: #e2e8f0;
     --accent-color: #00FF41;
+    --surface-container: #1e293b;
   }
 
   body {
     @apply bg-[var(--bg-color)] text-[var(--text-color)] antialiased transition-colors duration-200;
-    font-family: 'Pretendard', 'ui-sans-serif', system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Pretendard', ui-sans-serif, system-ui, sans-serif;
   }
 
-  * {
-    box-sizing: border-box;
+  * { box-sizing: border-box; }
+}
+
+@layer utilities {
+  .honey-gradient {
+    background: linear-gradient(135deg, #6c2f00 0%, #8b4513 100%);
+  }
+
+  .fur-shadow {
+    box-shadow: 0 8px 24px -4px rgba(139, 69, 19, 0.08);
+  }
+
+  .glass-card {
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+  }
+
+  .dark .matrix-glow {
+    box-shadow: 0px 0px 12px rgba(0, 255, 65, 0.4);
   }
 }
 
-/* 스크롤바 스타일 */
+/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-700 rounded-full; }
+::-webkit-scrollbar-thumb { @apply bg-outline-variant/50 rounded-full; }
