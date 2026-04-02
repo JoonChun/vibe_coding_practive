@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { ExportImport } from './ExportImport'
 import { CategoryManager } from './CategoryManager'
