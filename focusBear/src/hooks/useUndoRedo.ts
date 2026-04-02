@@ -7,8 +7,7 @@ import type { DbAction } from '../types'
 export async function applyDbAction(action: DbAction): Promise<void> {
   switch (action.type) {
     case 'ADD_SESSION': {
-      const { id: _, ...rest } = action.session
-      await db.sessions.add(rest)
+      await db.sessions.put(action.session)
       break
     }
     case 'DELETE_SESSION':
@@ -33,8 +32,7 @@ export async function applyInverseDbAction(action: DbAction): Promise<void> {
       }
       break
     case 'DELETE_SESSION': {
-      const { id: _, ...rest } = action.session
-      await db.sessions.add(rest)
+      await db.sessions.put(action.session)
       break
     }
     case 'UPDATE_SESSION':

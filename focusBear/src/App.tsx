@@ -5,6 +5,7 @@ import { DashboardView } from './components/dashboard/DashboardView'
 import { CalendarView } from './components/calendar/CalendarView'
 import { StatsView } from './components/stats/StatsView'
 import { SettingsView } from './components/settings/SettingsView'
+import { JournalPage } from './components/journal/JournalPage'
 
 function PageRouter() {
   const { state } = useApp()
@@ -13,6 +14,7 @@ function PageRouter() {
     case 'calendar': return <CalendarView />
     case 'stats': return <StatsView />
     case 'settings': return <SettingsView />
+    case 'journal': return <JournalPage />
   }
 }
 

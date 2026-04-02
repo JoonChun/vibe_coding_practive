@@ -7,6 +7,7 @@ import { Timer } from './Timer'
 import { TimerControls } from './TimerControls'
 import { MemoDialog } from './MemoDialog'
 import { PawTrail } from './PawTrail'
+import { JournalWidget } from './JournalWidget'
 import { addSession, getTodayTotal } from '../../db/sessions'
 
 export function DashboardView() {
@@ -42,6 +43,14 @@ export function DashboardView() {
     record({ type: 'ADD_SESSION', session })
     const total = await getTodayTotal()
     dispatch({ type: 'SET_TODAY_TOTAL', total })
+    // 스톱워치 세션 저장 알림
+    if (Notification.permission === 'granted') {
+      const mins = Math.floor(pendingSession.duration / 60)
+      new Notification('🐻 FocusBear', { body: `${mins}분 집중 세션 저장됐어요!` })
+    }
+    if ('vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200])
+    }
     setMemoOpen(false)
     setPendingSession(null)
   }, [pendingSession, record, dispatch])
@@ -86,6 +95,9 @@ export function DashboardView() {
 
       {/* Paw Trail — daily goal progress */}
       <PawTrail />
+
+      {/* Journal widget */}
+      <JournalWidget />
 
       <MemoDialog
         open={memoOpen}

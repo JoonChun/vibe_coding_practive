@@ -1,11 +1,12 @@
 // src/db/schema.ts
 import Dexie, { type Table } from 'dexie'
-import type { Session, Category, Setting } from '../types'
+import type { Session, Category, Setting, JournalEntry } from '../types'
 
 export class FocusBearDB extends Dexie {
   sessions!: Table<Session>
   categories!: Table<Category>
   settings!: Table<Setting>
+  journals!: Table<JournalEntry>
 
   constructor() {
     super('FocusBearDB')
@@ -14,12 +15,17 @@ export class FocusBearDB extends Dexie {
       categories: '++id, name',
       settings: 'key',
     })
+    this.version(2).stores({
+      sessions: '++id, start, end, category',
+      categories: '++id, name',
+      settings: 'key',
+      journals: '++id, &date',
+    })
   }
 }
 
 export const db = new FocusBearDB()
 
-// 앱 최초 실행 시 기본 카테고리 시드
 let _seedPromise: Promise<void> | null = null
 
 export async function seedDefaultCategories(): Promise<void> {
