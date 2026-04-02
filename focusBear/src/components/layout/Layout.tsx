@@ -12,6 +12,7 @@ import { clsx } from 'clsx'
 import type { Page } from '../../types'
 import { useMidnightRefresh } from '../../hooks/useMidnightRefresh'
 import { useNotificationPermission } from '../../hooks/useNotificationPermission'
+import { useJournalReminder } from '../../hooks/useJournalReminder'
 
 const MOBILE_NAV: { page: Page; icon: React.ReactNode; label: string }[] = [
   { page: 'dashboard', icon: <LayoutDashboard size={20} />, label: '홈' },
@@ -26,6 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pendingPage, setPendingPage, handleNav: handleMobileNav } = useNavGuard()
   useMidnightRefresh()
   useNotificationPermission()
+  useJournalReminder()
 
   useEffect(() => {
     seedDefaultCategories()
