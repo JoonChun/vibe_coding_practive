@@ -174,7 +174,7 @@ export function SettingsView() {
         <div className="bg-surface-container-low dark:bg-white/5 rounded-4xl fur-shadow p-6 space-y-2">
           <div className="flex justify-between items-center text-sm">
             <span className="text-on-surface-variant dark:text-slate-400">Version</span>
-            <span className="font-mono font-bold text-primary dark:text-[#00FF41]">v0.1.0-bear</span>
+            <span className="font-mono font-bold text-primary dark:text-[#00FF41]">v3.0.0</span>
           </div>
           <div className="flex justify-between items-center text-sm">
             <span className="text-on-surface-variant dark:text-slate-400">Storage</span>
