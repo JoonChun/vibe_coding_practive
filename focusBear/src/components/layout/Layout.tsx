@@ -7,7 +7,7 @@ import { getTodayTotal } from '../../db/sessions'
 import { seedDefaultCategories } from '../../db/schema'
 import { getCategories } from '../../db/categories'
 import { NavGuardModal, useNavGuard } from './NavGuardModal'
-import { LayoutDashboard, Calendar, BarChart2, Settings } from 'lucide-react'
+import { LayoutDashboard, Calendar, BarChart2, Settings, BookOpen } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { Page } from '../../types'
 
@@ -15,6 +15,7 @@ const MOBILE_NAV: { page: Page; icon: React.ReactNode; label: string }[] = [
   { page: 'dashboard', icon: <LayoutDashboard size={20} />, label: '홈' },
   { page: 'calendar', icon: <Calendar size={20} />, label: '지도' },
   { page: 'stats', icon: <BarChart2 size={20} />, label: '통계' },
+  { page: 'journal', icon: <BookOpen size={20} />, label: '일지' },
   { page: 'settings', icon: <Settings size={20} />, label: '설정' },
 ]
 

@@ -7,6 +7,7 @@ import { Timer } from './Timer'
 import { TimerControls } from './TimerControls'
 import { MemoDialog } from './MemoDialog'
 import { PawTrail } from './PawTrail'
+import { JournalWidget } from './JournalWidget'
 import { addSession, getTodayTotal } from '../../db/sessions'
 
 export function DashboardView() {
@@ -86,6 +87,9 @@ export function DashboardView() {
 
       {/* Paw Trail — daily goal progress */}
       <PawTrail />
+
+      {/* Journal widget */}
+      <JournalWidget />
 
       <MemoDialog
         open={memoOpen}

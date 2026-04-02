@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calendar, BarChart2, Settings, PawPrint, Sun, Moon, Undo2, Redo2, Zap } from 'lucide-react'
+import { LayoutDashboard, Calendar, BarChart2, Settings, PawPrint, Sun, Moon, Undo2, Redo2, Zap, BookOpen } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import { useTheme } from '../../hooks/useTheme'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
@@ -10,6 +10,7 @@ const NAV_ITEMS: { page: Page; icon: React.ReactNode; label: string }[] = [
   { page: 'dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
   { page: 'calendar', icon: <Calendar size={18} />, label: 'Flow Map' },
   { page: 'stats', icon: <BarChart2 size={18} />, label: 'Growth Stats' },
+  { page: 'journal', icon: <BookOpen size={18} />, label: 'Journal' },
   { page: 'settings', icon: <Settings size={18} />, label: 'Settings' },
 ]
 
