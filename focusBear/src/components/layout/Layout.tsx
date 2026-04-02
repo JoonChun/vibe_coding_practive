@@ -6,6 +6,7 @@ import { useApp } from '../../context/AppContext'
 import { getTodayTotal } from '../../db/sessions'
 import { seedDefaultCategories } from '../../db/schema'
 import { getCategories } from '../../db/categories'
+import { NavGuardModal, useNavGuard } from './NavGuardModal'
 import { LayoutDashboard, Calendar, BarChart2, Settings } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { Page } from '../../types'
@@ -19,6 +20,7 @@ const MOBILE_NAV: { page: Page; icon: React.ReactNode; label: string }[] = [
 
 export function Layout({ children }: { children: ReactNode }) {
   const { state, dispatch } = useApp()
+  const { pendingPage, setPendingPage, handleNav: handleMobileNav } = useNavGuard()
 
   useEffect(() => {
     seedDefaultCategories()
@@ -42,7 +44,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {MOBILE_NAV.map(({ page, icon, label }) => (
           <button
             key={page}
-            onClick={() => dispatch({ type: 'SET_PAGE', page })}
+            onClick={() => handleMobileNav(page)}
             className={clsx(
               'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors text-xs font-mono',
               state.currentPage === page
@@ -55,6 +57,12 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
         ))}
       </nav>
+      <NavGuardModal
+        pendingPage={pendingPage}
+        timerState={state.timerState}
+        onConfirm={(page) => { dispatch({ type: 'SET_PAGE', page }); setPendingPage(null) }}
+        onCancel={() => setPendingPage(null)}
+      />
     </div>
   )
 }

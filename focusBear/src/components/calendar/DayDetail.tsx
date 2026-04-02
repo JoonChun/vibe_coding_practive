@@ -1,7 +1,7 @@
 // src/components/calendar/DayDetail.tsx
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Pencil } from 'lucide-react'
+import { X, Plus, Pencil, Trash2 } from 'lucide-react'
 import { getSessions, addSession, deleteSession, getSessionsOverlapping } from '../../db/sessions'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
 import { useApp } from '../../context/AppContext'
@@ -29,6 +29,7 @@ export function DayDetail({ date, onClose }: Props) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSession, setEditingSession] = useState<Session | null>(null)
+  const [deletingSession, setDeletingSession] = useState<Session | null>(null)
   const { record } = useUndoRedo()
   const { state } = useApp()
 
@@ -39,7 +40,7 @@ export function DayDetail({ date, onClose }: Props) {
 
   useEffect(() => {
     refresh()
-  }, [refresh])
+  }, [refresh, state.undoRedoVersion])
 
   const handleAddSession = useCallback(async (
     start: number, end: number, category: string, memo: string
@@ -86,6 +87,14 @@ export function DayDetail({ date, onClose }: Props) {
     setEditingSession(null)
     refresh()
   }, [editingSession, record, refresh])
+
+  const handleDeleteSession = useCallback(async () => {
+    if (!deletingSession) return
+    await deleteSession(deletingSession.id!)
+    record({ type: 'DELETE_SESSION', session: deletingSession })
+    setDeletingSession(null)
+    refresh()
+  }, [deletingSession, record, refresh])
 
   return (
     <AnimatePresence>
@@ -136,13 +145,22 @@ export function DayDetail({ date, onClose }: Props) {
                         <p className="text-xs text-gray-500 mt-1 leading-relaxed">{s.memo}</p>
                       )}
                     </div>
-                    <button
-                      onClick={() => setEditingSession(s)}
-                      title="수정"
-                      className="p-1 rounded-lg text-gray-300 dark:text-gray-600 hover:text-[var(--accent-color)] hover:bg-gray-100 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                    >
-                      <Pencil size={13} />
-                    </button>
+                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                      <button
+                        onClick={() => setEditingSession(s)}
+                        title="수정"
+                        className="p-1 rounded-lg text-gray-300 dark:text-gray-600 hover:text-[var(--accent-color)] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => setDeletingSession(s)}
+                        title="삭제"
+                        className="p-1 rounded-lg text-gray-300 dark:text-gray-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -167,6 +185,42 @@ export function DayDetail({ date, onClose }: Props) {
               onClose={() => setEditingSession(null)}
             />
           )}
+          <AnimatePresence>
+            {deletingSession && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-none"
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white dark:bg-gray-900 rounded-2xl p-5 mx-4 shadow-xl w-full max-w-xs"
+                >
+                  <h4 className="font-bold text-sm text-gray-800 dark:text-gray-100 mb-1">기록 삭제</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    이 기록을 삭제할까요? 실행 취소로 복구할 수 있어요.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeletingSession(null)}
+                      className="flex-1 py-2 rounded-xl text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleDeleteSession}
+                      className="flex-1 py-2 rounded-xl text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.aside>
       )}
     </AnimatePresence>

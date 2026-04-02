@@ -18,6 +18,7 @@ export interface AppState {
   undoStack: DbAction[]
   redoStack: DbAction[]
   categories: Category[]
+  undoRedoVersion: number
 }
 
 export type AppAction =
@@ -72,6 +73,7 @@ const initialState: AppState = {
   undoStack: [],
   redoStack: [],
   categories: [],
+  undoRedoVersion: 0,
 }
 
 function reducer(state: AppState, action: AppAction): AppState {
@@ -122,6 +124,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         undoStack: state.undoStack.slice(0, -1),
         redoStack: [...state.redoStack, last],
+        undoRedoVersion: state.undoRedoVersion + 1,
       }
     }
     case 'REDO': {
@@ -131,6 +134,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         redoStack: state.redoStack.slice(0, -1),
         undoStack: [...state.undoStack, last],
+        undoRedoVersion: state.undoRedoVersion + 1,
       }
     }
     default:
