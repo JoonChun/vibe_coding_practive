@@ -9,9 +9,6 @@ function formatDisplayDate(dateStr: string): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 }
 
-function isToday(dateStr: string): boolean {
-  return dateStr === todayDateString()
-}
 
 export function JournalPage() {
   const today = todayDateString()
@@ -20,6 +17,7 @@ export function JournalPage() {
   const [entry, setEntry] = useState<JournalEntry>({ date: today, did: '', todo: '', memo: '', updatedAt: 0 })
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const entryRef = useRef(entry)
 
   const loadDates = useCallback(async () => {
     const all = await getJournalDates()
@@ -40,17 +38,24 @@ export function JournalPage() {
     loadEntry(selectedDate)
   }, [selectedDate, loadEntry])
 
+  useEffect(() => { entryRef.current = entry }, [entry])
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+  }, [])
+
   const handleChange = useCallback((field: 'did' | 'todo' | 'memo', value: string) => {
     setEntry(prev => ({ ...prev, [field]: value }))
     setSaveStatus('saving')
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
-      await upsertJournalEntry({ ...entry, [field]: value, date: selectedDate })
+      const { id: _id, ...rest } = entryRef.current
+      await upsertJournalEntry({ ...rest, [field]: value, date: selectedDate })
       setSaveStatus('saved')
       await loadDates()
       setTimeout(() => setSaveStatus('idle'), 2000)
     }, 1000)
-  }, [entry, selectedDate, loadDates])
+  }, [selectedDate, loadDates])
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex">
@@ -73,7 +78,7 @@ export function JournalPage() {
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
-              {isToday(date) ? `${date} (오늘)` : date}
+              {date === today ? `${date} (오늘)` : date}
             </button>
           ))}
         </nav>
@@ -89,7 +94,7 @@ export function JournalPage() {
             onChange={e => setSelectedDate(e.target.value)}
           >
             {dates.map(d => (
-              <option key={d} value={d}>{isToday(d) ? `${d} (오늘)` : d}</option>
+              <option key={d} value={d}>{d === today ? `${d} (오늘)` : d}</option>
             ))}
           </select>
           <h2 className="hidden md:block font-bold text-primary dark:text-[#00FF41]">
