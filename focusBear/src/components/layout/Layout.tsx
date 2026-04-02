@@ -11,6 +11,7 @@ import { LayoutDashboard, Calendar, BarChart2, Settings, BookOpen } from 'lucide
 import { clsx } from 'clsx'
 import type { Page } from '../../types'
 import { useMidnightRefresh } from '../../hooks/useMidnightRefresh'
+import { useNotificationPermission } from '../../hooks/useNotificationPermission'
 
 const MOBILE_NAV: { page: Page; icon: React.ReactNode; label: string }[] = [
   { page: 'dashboard', icon: <LayoutDashboard size={20} />, label: '홈' },
@@ -24,6 +25,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { state, dispatch } = useApp()
   const { pendingPage, setPendingPage, handleNav: handleMobileNav } = useNavGuard()
   useMidnightRefresh()
+  useNotificationPermission()
 
   useEffect(() => {
     seedDefaultCategories()
