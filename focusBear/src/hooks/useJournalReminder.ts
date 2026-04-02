@@ -21,7 +21,10 @@ export function useJournalReminder() {
     const msUntil = reminder.getTime() - now.getTime()
 
     const id = setTimeout(async () => {
-      if (Notification.permission !== 'granted') return
+      if (Notification.permission !== 'granted') {
+        console.warn('useJournalReminder: notification permission not granted')
+        return
+      }
       const today = todayDateString()
       const entry = await getJournalEntry(today)
       if (!entry?.did) {
