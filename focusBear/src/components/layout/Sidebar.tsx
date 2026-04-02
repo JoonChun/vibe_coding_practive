@@ -1,7 +1,8 @@
-import { LayoutDashboard, Calendar, BarChart2, Settings, PawPrint, Sun, Moon, Undo2, Redo2, Zap } from 'lucide-react'
+import { LayoutDashboard, Calendar, BarChart2, Settings, PawPrint, Sun, Moon, Undo2, Redo2, Zap, BookOpen } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import { useTheme } from '../../hooks/useTheme'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
+import { NavGuardModal, useNavGuard } from './NavGuardModal'
 import { clsx } from 'clsx'
 import type { Page } from '../../types'
 
@@ -9,6 +10,7 @@ const NAV_ITEMS: { page: Page; icon: React.ReactNode; label: string }[] = [
   { page: 'dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
   { page: 'calendar', icon: <Calendar size={18} />, label: 'Flow Map' },
   { page: 'stats', icon: <BarChart2 size={18} />, label: 'Growth Stats' },
+  { page: 'journal', icon: <BookOpen size={18} />, label: 'Journal' },
   { page: 'settings', icon: <Settings size={18} />, label: 'Settings' },
 ]
 
@@ -16,6 +18,7 @@ export function Sidebar() {
   const { state, dispatch } = useApp()
   const { toggle } = useTheme()
   const { undo, redo, canUndo, canRedo } = useUndoRedo()
+  const { pendingPage, setPendingPage, handleNav } = useNavGuard()
 
   const isRunning = state.timerState === 'running'
 
@@ -37,7 +40,7 @@ export function Sidebar() {
         {NAV_ITEMS.map(({ page, icon, label }) => (
           <button
             key={page}
-            onClick={() => dispatch({ type: 'SET_PAGE', page })}
+            onClick={() => handleNav(page)}
             className={clsx(
               'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-left',
               state.currentPage === page
@@ -85,6 +88,12 @@ export function Sidebar() {
           </button>
         </div>
       </div>
+      <NavGuardModal
+        pendingPage={pendingPage}
+        timerState={state.timerState}
+        onConfirm={(page) => { dispatch({ type: 'SET_PAGE', page }); setPendingPage(null) }}
+        onCancel={() => setPendingPage(null)}
+      />
     </aside>
   )
 }

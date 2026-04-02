@@ -6,19 +6,28 @@ import { useApp } from '../../context/AppContext'
 import { getTodayTotal } from '../../db/sessions'
 import { seedDefaultCategories } from '../../db/schema'
 import { getCategories } from '../../db/categories'
-import { LayoutDashboard, Calendar, BarChart2, Settings } from 'lucide-react'
+import { NavGuardModal, useNavGuard } from './NavGuardModal'
+import { LayoutDashboard, Calendar, BarChart2, Settings, BookOpen } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { Page } from '../../types'
+import { useMidnightRefresh } from '../../hooks/useMidnightRefresh'
+import { useNotificationPermission } from '../../hooks/useNotificationPermission'
+import { useJournalReminder } from '../../hooks/useJournalReminder'
 
 const MOBILE_NAV: { page: Page; icon: React.ReactNode; label: string }[] = [
   { page: 'dashboard', icon: <LayoutDashboard size={20} />, label: '홈' },
   { page: 'calendar', icon: <Calendar size={20} />, label: '지도' },
   { page: 'stats', icon: <BarChart2 size={20} />, label: '통계' },
+  { page: 'journal', icon: <BookOpen size={20} />, label: '일지' },
   { page: 'settings', icon: <Settings size={20} />, label: '설정' },
 ]
 
 export function Layout({ children }: { children: ReactNode }) {
   const { state, dispatch } = useApp()
+  const { pendingPage, setPendingPage, handleNav: handleMobileNav } = useNavGuard()
+  useMidnightRefresh()
+  useNotificationPermission()
+  useJournalReminder()
 
   useEffect(() => {
     seedDefaultCategories()
@@ -42,7 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {MOBILE_NAV.map(({ page, icon, label }) => (
           <button
             key={page}
-            onClick={() => dispatch({ type: 'SET_PAGE', page })}
+            onClick={() => handleMobileNav(page)}
             className={clsx(
               'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors text-xs font-mono',
               state.currentPage === page
@@ -55,6 +64,12 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
         ))}
       </nav>
+      <NavGuardModal
+        pendingPage={pendingPage}
+        timerState={state.timerState}
+        onConfirm={(page) => { dispatch({ type: 'SET_PAGE', page }); setPendingPage(null) }}
+        onCancel={() => setPendingPage(null)}
+      />
     </div>
   )
 }

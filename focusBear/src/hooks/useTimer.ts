@@ -18,7 +18,10 @@ export function useTimer() {
         dispatch({ type: 'SET_TIMER_STATE', timerState: 'idle' })
         dispatch({ type: 'SET_ELAPSED', elapsed: 0 })
         if (Notification.permission === 'granted') {
-          new Notification('🐻 FocusBear', { body: '타이머 완료! 잠깐 쉬어가세요.' })
+          new Notification('🐻 FocusBear', { body: '포모도로 완료! 잠깐 쉬어가세요 🍯' })
+        }
+        if ('vibrate' in navigator) {
+          navigator.vibrate([200, 100, 200])
         }
       } else {
         dispatch({ type: 'SET_ELAPSED', elapsed: msg.elapsed })
@@ -38,10 +41,6 @@ export function useTimer() {
       total: state.pomodoroDuration * 60,
     })
     dispatch({ type: 'SET_TIMER_STATE', timerState: 'running' })
-
-    if (Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
   }, [state.elapsed, state.timerMode, dispatch])
 
   const pause = useCallback(() => {
