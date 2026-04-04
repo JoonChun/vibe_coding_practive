@@ -29,6 +29,19 @@ const globalData = {
             "tags": [],
             "url": "https://all-in-one-calculator-theta.vercel.app",
             "thumbnail": "https://ibb.co/84rL3b9P"
+        },
+        {
+            "id": "proj-1775303463179",
+            "title": "FocusBear 🐻",
+            "description": "🐻 집중이 필요할 때! 귀여운 곰돌이와 함께하는 디지털 집중 타이머. 포모도로 & 스톱워치 기능으로 나만의 집중 루틴을 만들어보세요.",
+            "tags": [
+                "집중",
+                "타이머",
+                "포모도로",
+                "FocusBear"
+            ],
+            "url": "https://focus-bear.vercel.app/",
+            "thumbnail": "https://em-content.zobj.net/source/apple/391/bear_1f43b.png"
         }
     ],
     "socials": {

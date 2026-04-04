@@ -34,7 +34,11 @@
       "Bash(node:*)",
       "Bash(sed -i 's/import { LayoutDashboard, Calendar, BarChart2, Settings, Paw, Sun, Moon, Undo2, Redo2, Zap }/import { LayoutDashboard, Calendar, BarChart2, Settings, PawPrint, Sun, Moon, Undo2, Redo2, Zap }/' /home/joon/vibe_ws/focusBear/src/components/layout/Sidebar.tsx)",
       "Bash(sed -i 's/<Paw size={18} \\\\/>/<PawPrint size={16} \\\\/>/' /home/joon/vibe_ws/focusBear/src/components/layout/Sidebar.tsx)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(/home/joon/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.6/skills/brainstorming/scripts/start-server.sh --project-dir /home/joon/vibe_ws/focusBear 2>&1)",
+      "Bash(git:*)",
+      "Bash(timedatectl)",
+      "Bash(grep:*)"
     ]
   }
 }
