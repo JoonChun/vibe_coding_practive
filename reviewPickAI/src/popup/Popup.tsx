@@ -80,7 +80,7 @@ export function Popup() {
         setAnalysisProgress({ done: message.chunksComplete, total: message.totalChunks });
         setPhase('analyzing');
       } else if (message.action === 'ANALYSIS_COMPLETE') {
-        setPhase('done');
+        setPhase((prev) => (prev === 'analyzing' || prev === 'crawling') ? 'done' : prev);
       } else if (message.action === 'ANALYSIS_ERROR') {
         setErrorMsg(message.message);
         setPhase('error');
@@ -115,7 +115,7 @@ export function Popup() {
       pageToken = data.nextPageToken ?? '';
     } while (pageToken);
 
-    const filtered = allModels.filter((n) => n.includes('gemini-3') || n.includes('flash'));
+    const filtered = allModels.filter((n) => n.includes('gemini') || n.includes('flash'));
     alert(`=== gemini-3 / flash 모델 ===\n${filtered.join('\n')}\n\n=== 전체 (${allModels.length}개) ===\n${allModels.join('\n')}`);
   };
 
@@ -124,7 +124,24 @@ export function Popup() {
     chrome.storage.local.set({ [STORAGE_KEYS.MAX_REVIEWS]: value });
   };
 
+  const cancelCrawl = () => {
+    chrome.storage.local.remove(STORAGE_KEYS.CRAWL_STATE);
+    chrome.action.setBadgeText({ text: '' });
+
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (!tab?.id) {
+        setPhase('ready');
+        return;
+      }
+      chrome.tabs.sendMessage(tab.id, { action: 'CANCEL_CRAWL' } as ExtensionMessage, () => {
+        void chrome.runtime.lastError;
+        setPhase('ready');
+      });
+    });
+  };
+
   const startCrawl = () => {
+    setErrorMsg('');
     setPhase('crawling');
     setProgress({ pages: 0, reviews: 0 });
 
@@ -323,6 +340,12 @@ export function Popup() {
             <p className="text-[11px] text-text-disabled text-center">
               팝업을 닫아도 백그라운드에서 계속 수집됩니다.
             </p>
+            <button
+              onClick={cancelCrawl}
+              className="w-full py-2 border border-outline-variant/30 text-[13px] text-text-secondary rounded-[12px] hover:border-negative hover:text-negative transition-colors"
+            >
+              수집 취소
+            </button>
           </div>
         )}
 
@@ -351,6 +374,12 @@ export function Popup() {
             <p className="text-[11px] text-text-disabled text-center">
               완료되면 알림이 전송됩니다.
             </p>
+            <button
+              onClick={() => { setPhase('ready'); chrome.storage.local.remove(STORAGE_KEYS.CRAWL_STATE); }}
+              className="w-full py-2 border border-outline-variant/30 text-[13px] text-text-secondary rounded-[12px] hover:border-outline-variant hover:text-text-primary transition-colors"
+            >
+              닫기
+            </button>
           </div>
         )}
 

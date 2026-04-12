@@ -12,6 +12,7 @@ _w.__reviewPickLoaded = true;
 
 // 중복 실행 방지
 let isCrawling = false;
+let cancelRequested = false;
 
 /**
  * 진행 상황을 팝업으로 전달
@@ -40,6 +41,12 @@ function extractProductName(): string {
 
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, _sender, sendResponse) => {
+    if (message.action === 'CANCEL_CRAWL') {
+      cancelRequested = true;
+      sendResponse({ ok: true });
+      return false;
+    }
+
     if (message.action !== 'START_CRAWL') return false;
     if (isCrawling) {
       sendResponse({ ok: false, error: '이미 크롤링 중입니다.' });
@@ -53,19 +60,27 @@ chrome.runtime.onMessage.addListener(
     }
 
     isCrawling = true;
+    cancelRequested = false;
     sendResponse({ ok: true });
 
     (async () => {
       try {
         let reviews;
         const maxReviews = message.maxReviews;
+        const isCancelled = () => cancelRequested;
 
         if (platform === 'coupang') {
-          const crawler = new CoupangCrawler(sendProgress, maxReviews);
+          const crawler = new CoupangCrawler(sendProgress, maxReviews, isCancelled);
           reviews = await crawler.run();
         } else {
-          const crawler = new NaverCrawler(sendProgress, maxReviews);
+          const crawler = new NaverCrawler(sendProgress, maxReviews, isCancelled);
           reviews = await crawler.run();
+        }
+
+        // 취소된 경우 background에 알림
+        if (cancelRequested) {
+          chrome.runtime.sendMessage({ action: 'CRAWL_CANCELLED' } as ExtensionMessage).catch(() => {});
+          return;
         }
 
         if (reviews.length === 0) {
@@ -81,14 +96,21 @@ chrome.runtime.onMessage.addListener(
           productName,
           productUrl,
         };
-        chrome.runtime.sendMessage(completeMsg);
+        chrome.runtime.sendMessage(completeMsg).catch(() => {
+          // 서비스워커가 슬립 상태일 수 있으므로 1초 후 재시도
+          setTimeout(() => {
+            chrome.runtime.sendMessage(completeMsg).catch((err) => {
+              console.error('[ReviewPick] CRAWL_COMPLETE 전송 최종 실패:', err);
+            });
+          }, 1000);
+        });
       } catch (err) {
         console.error('[ReviewPick] 크롤링 오류:', err);
-        // 크롤링 오류를 background로 전달하여 사용자에게 알림
         const errMsg = err instanceof Error ? err.message : '크롤링 중 알 수 없는 오류가 발생했습니다.';
         chrome.runtime.sendMessage({ action: 'ANALYSIS_ERROR', message: errMsg } as ExtensionMessage).catch(() => {});
       } finally {
         isCrawling = false;
+        cancelRequested = false;
       }
     })();
 

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch & vite build --config vite.content.config.ts --watch",
-    "build": "vite build && vite build --config vite.content.config.ts",
+    "build": "tsc --noEmit && vite build && vite build --config vite.content.config.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

@@ -134,6 +134,8 @@ export type ExtensionMessage =
   | { action: 'START_CRAWL'; maxReviews: number }
   | { action: 'CRAWL_PROGRESS'; pagesScraped: number; totalReviews: number }
   | { action: 'CRAWL_COMPLETE'; reviews: RawReview[]; productName: string; productUrl: string }
+  | { action: 'CANCEL_CRAWL' }
+  | { action: 'CRAWL_CANCELLED' }
   | { action: 'ANALYSIS_PROGRESS'; chunksComplete: number; totalChunks: number }
   | { action: 'ANALYSIS_COMPLETE'; result: AnalysisResult }
   | { action: 'ANALYSIS_ERROR'; message: string }

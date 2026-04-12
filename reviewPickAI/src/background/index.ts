@@ -48,6 +48,19 @@ chrome.runtime.onMessage.addListener(
         });
         break;
 
+      case 'CRAWL_CANCELLED':
+        saveCrawlState({
+          phase: 'done',
+          pages: 0,
+          reviews: 0,
+          chunksComplete: 0,
+          totalChunks: 0,
+          updatedAt: Date.now(),
+        });
+        chrome.action.setBadgeText({ text: '' });
+        sendResponse({ ok: true });
+        break;
+
       case 'CRAWL_COMPLETE':
         handleCrawlComplete(message.reviews, message.productName, message.productUrl);
         sendResponse({ ok: true });
@@ -326,7 +339,11 @@ function broadcastProgress(chunksComplete: number, totalChunks: number) {
 }
 
 function saveCrawlState(state: CrawlState) {
-  chrome.storage.local.set({ [STORAGE_KEYS.CRAWL_STATE]: state });
+  chrome.storage.local.set({ [STORAGE_KEYS.CRAWL_STATE]: state }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('[ReviewPick] crawlState 저장 실패:', chrome.runtime.lastError.message);
+    }
+  });
 }
 
 function broadcastAnalysisComplete(result: AnalysisResult) {
@@ -407,6 +424,7 @@ function buildMindmapRoot(
   // 리뷰 수에 비례한 동적 최상위 노드 수 결정
   // 리뷰 10개당 1개 노드, 최소 3개, 최대 8개
   const dynamicTopCount = Math.min(8, Math.max(3, Math.floor(reviews.length / 10)));
+  const kwSentimentMap = new Map(gemini.keywords.map((k) => [k.word, k.sentiment]));
   const topKeywords = gemini.keywords.slice(0, dynamicTopCount);
 
   const children: MindmapNode[] = topKeywords.map((kw) => {
@@ -416,7 +434,7 @@ function buildMindmapRoot(
       .map((related) => ({
         id: `kw-${related}`,
         label: related,
-        sentiment: 'neutral' as SentimentLabel,
+        sentiment: kwSentimentMap.get(related) ?? 'neutral',
         count: keywordReviewMap.get(related)?.length ?? 0,
         relatedReviewIndices: keywordReviewMap.get(related) ?? [],
       }))
