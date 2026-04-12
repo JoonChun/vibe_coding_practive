@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "ReviewPick AI",
+  "short_name": "리뷰픽 AI",
+  "version": "1.0.0",
+  "description": "쿠팡·네이버 리뷰를 AI로 분석해 감성 수치, 키워드 마인드맵, 마케팅 인사이트를 즉시 제공합니다.",
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "notifications"],
+  "host_permissions": [
+    "*://*.coupang.com/*",
+    "*://*.shopping.naver.com/*",
+    "*://*.search.shopping.naver.com/*"
+  ],
+  "action": {
+    "default_popup": "pages/popup.html",
+    "default_title": "ReviewPick AI",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.coupang.com/*",
+        "*://*.shopping.naver.com/*",
+        "*://*.search.shopping.naver.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pages/dashboard.html", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

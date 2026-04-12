@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Benchmark Comparison | ReviewPick AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline-variant": "#c3c5d9",
+                        "on-secondary-fixed-variant": "#3d4856",
+                        "secondary-container": "#d5e0f3",
+                        "tertiary-fixed": "#ffdad9",
+                        "surface-dim": "#d8dadc",
+                        "inverse-on-surface": "#eff1f3",
+                        "background": "#f8f9fb",
+                        "primary": "#003dc7",
+                        "on-primary-container": "#dee2ff",
+                        "inverse-primary": "#b7c4ff",
+                        "surface-container-high": "#e6e8ea",
+                        "secondary-fixed-dim": "#bcc7d9",
+                        "on-secondary-fixed": "#111c29",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed": "#001452",
+                        "tertiary": "#9f0023",
+                        "on-tertiary-fixed": "#410008",
+                        "error": "#ba1a1a",
+                        "secondary": "#545f6e",
+                        "tertiary-fixed-dim": "#ffb3b2",
+                        "on-tertiary-container": "#ffdcdb",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-container": "#eceef0",
+                        "primary-fixed": "#dde1ff",
+                        "surface-variant": "#e0e3e5",
+                        "primary-fixed-dim": "#b7c4ff",
+                        "on-tertiary-fixed-variant": "#92001f",
+                        "inverse-surface": "#2d3133",
+                        "secondary-fixed": "#d8e3f5",
+                        "on-background": "#191c1e",
+                        "on-surface-variant": "#434656",
+                        "tertiary-container": "#c42237",
+                        "primary-container": "#0051ff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-error": "#ffffff",
+                        "on-secondary-container": "#586373",
+                        "on-secondary": "#ffffff",
+                        "surface-tint": "#004bee",
+                        "on-primary-fixed-variant": "#0038b7",
+                        "on-primary": "#ffffff",
+                        "outline": "#737688",
+                        "surface-bright": "#f8f9fb",
+                        "surface-container-lowest": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#191c1e",
+                        "surface": "#f8f9fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Plus Jakarta Sans"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .headline { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface flex min-h-screen">
+<!-- SideNavBar Shell -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-slate-100 flex flex-col h-full p-4 space-y-2 z-40 transition-all">
+<div class="flex items-center gap-3 px-2 mb-8 mt-2">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-700 to-blue-500 flex items-center justify-center text-white shadow-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">analytics</span>
+</div>
+<div>
+<h1 class="text-lg font-extrabold text-slate-900 leading-tight">ReviewPick AI</h1>
+<p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Chrome Extension v1.2</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:translate-x-1 transition-transform duration-200 font-medium text-sm rounded-xl" href="#">
+<span class="material-symbols-outlined">analytics</span>
+                Analysis
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:translate-x-1 transition-transform duration-200 font-medium text-sm rounded-xl" href="#">
+<span class="material-symbols-outlined">hub</span>
+                Mindmap
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 bg-white text-blue-600 rounded-xl shadow-sm hover:translate-x-1 transition-transform duration-200 font-medium text-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">compare_arrows</span>
+                Benchmark
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:translate-x-1 transition-transform duration-200 font-medium text-sm rounded-xl" href="#">
+<span class="material-symbols-outlined">history</span>
+                History
+            </a>
+</nav>
+<div class="mt-auto space-y-1 pt-4 border-t border-slate-200/50">
+<button class="w-full mb-4 py-3 px-4 bg-primary-container text-white rounded-xl font-semibold shadow-md hover:opacity-90 active:scale-95 transition-all text-sm">
+                Analyze URL
+            </button>
+<a class="flex items-center gap-3 px-4 py-2 text-slate-500 hover:bg-slate-200 transition-colors text-sm rounded-xl" href="#">
+<span class="material-symbols-outlined text-lg">help</span>
+                Help
+            </a>
+<a class="flex items-center gap-3 px-4 py-2 text-slate-500 hover:bg-slate-200 transition-colors text-sm rounded-xl" href="#">
+<span class="material-symbols-outlined text-lg">logout</span>
+                Logout
+            </a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 ml-64 min-h-screen">
+<!-- TopAppBar Shell -->
+<header class="sticky top-0 z-30 flex justify-between items-center px-8 py-4 w-full bg-slate-50/80 backdrop-blur-xl no-border bg-slate-100">
+<div class="flex items-center gap-8">
+<div class="hidden lg:flex items-center space-x-6 text-sm font-semibold font-['Plus_Jakarta_Sans'] tracking-tight">
+<a class="text-slate-500 hover:text-blue-500 transition-colors" href="#">Dashboard</a>
+<a class="text-blue-600 border-b-2 border-blue-600 pb-1" href="#">Comparison</a>
+<a class="text-slate-500 hover:text-blue-500 transition-colors" href="#">Insights</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center bg-surface-container px-3 py-2 rounded-full">
+<span class="material-symbols-outlined text-slate-400 text-lg mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-48 text-slate-600" placeholder="Search products..." type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-slate-500 hover:bg-slate-200 rounded-full transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-200 rounded-full transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+<button class="ml-2 px-5 py-2.5 bg-primary-container text-white text-sm font-bold rounded-xl shadow-sm hover:opacity-90 active:scale-95 transition-all">
+                    Export Report
+                </button>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm ml-2">
+<img alt="User Profile" data-alt="professional headshot of a product manager in a minimalist studio setting with soft natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANV5LQFkuT9e3TsP-mYHXtWOwOfVPENindgz8Im2H7Nw82xaiPAZWDcpUrFFFT139YF3eLPfAnoofcxH1lfBroXolHsvhvTzyQq1S-xzWC8W10L55PdZg0y82irJTfDOHmlPfJJwHwDSqArcwbwGnrtOkLh1UqfZbjBU8bK4Xs-6WU5zJzG0upAo3_JsFsckwrDFB54bkMN-mG2FA_NWGY6lIsFH1avmoFr1JJi8GmnZ_r7566E5ObKyJpkoTOWdwlpDqNzP_BP9I"/>
+</div>
+</div>
+</header>
+<div class="p-10 max-w-7xl mx-auto">
+<!-- Benchmarking Header -->
+<div class="mb-10 text-center">
+<span class="inline-block px-4 py-1.5 bg-blue-50 text-blue-700 text-xs font-bold tracking-widest uppercase rounded-full mb-4">Benchmarking Comparison</span>
+<h2 class="text-4xl font-bold text-on-surface mb-2">Battle of the Flags</h2>
+<p class="text-slate-500">Side-by-side analysis of consumer sentiment and product performance.</p>
+</div>
+<!-- Main Comparison Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+<!-- Product A -->
+<div class="bg-surface-container-lowest rounded-3xl overflow-hidden group shadow-[0_12px_32px_-4px_rgba(25,28,30,0.06)] border border-outline-variant/15">
+<div class="relative h-64 overflow-hidden">
+<img alt="Smartphone A" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" data-alt="high-end flagship smartphone with sleek titanium frame and curved display on a white tech-inspired pedestal" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKZNsMEHCngcd9eny6YaLZfL3WWrQ2gbjtoW_H7LfZ-Jn8A9ATu0HxrtF1sY9Y2OWRoWnnnkdNyoZKh9x7NBKHcSZCK6rRbDj_GgbkiICHVaDCG2KQ4B-dCjcdT7bGG33p_n6gwS_McuZJEozfPdSfT4i4jRyRxS774OR_6X1NhfH3-BKHJVoIxvIGMH23ntCQ-Zeco-3qWbIyzv3kpiBUNVa8hatv3tKcjsuhdnnmca_lH1riK6F-_OqYLIr4XHlBVq5tBf3XWCU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent"></div>
+<div class="absolute bottom-6 left-6 text-white">
+<p class="text-xs font-bold uppercase tracking-widest text-blue-300 mb-1">Product A</p>
+<h3 class="text-2xl font-bold">Lumina Pro Max</h3>
+</div>
+<div class="absolute top-6 right-6 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-bold flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+                            4.8 / 5
+                        </div>
+</div>
+<div class="p-8">
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="bg-surface-container-low p-4 rounded-2xl">
+<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Positive Score</p>
+<p class="text-2xl font-bold text-blue-600">92%</p>
+</div>
+<div class="bg-surface-container-low p-4 rounded-2xl">
+<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Mentions</p>
+<p class="text-2xl font-bold text-on-surface">14.2k</p>
+</div>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-500">Camera Quality</span>
+<div class="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+<div class="w-[95%] h-full bg-blue-600"></div>
+</div>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-500">Battery Life</span>
+<div class="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+<div class="w-[88%] h-full bg-blue-600"></div>
+</div>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-500">UI/UX Smoothness</span>
+<div class="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+<div class="w-[92%] h-full bg-blue-600"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Product B -->
+<div class="bg-surface-container-lowest rounded-3xl overflow-hidden group shadow-[0_12px_32px_-4px_rgba(25,28,30,0.06)] border border-outline-variant/15">
+<div class="relative h-64 overflow-hidden">
+<img alt="Smartphone B" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" data-alt="modern smartphone with multiple camera lenses and matte obsidian finish on a dark textured background with dramatic spotlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCq8ngGOcif8RIzxASvQ0iBK_E53RSu9WMYEd2jNRDGDFxWPQHgFepYpXhOY58pEWkSPTEyGz4kh52lFkBcAN3l62IrgjCyFuuNwMTY66rXsLM0OeRJUJHStEAKpP-ZElIZ4sirPzQUiZ01In6nFrgev78oiSvLjylhGF-1NUTqM9qUaBRN7F1EnoeKL8GOx-zh7TpnuyFtC4muRRQdTW6J6W_ho3PmJlMkx7j_L3CMiHpt7C1f0bm29SCOttUDRWjj9XtyOOZC1wY"/>
+<div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent"></div>
+<div class="absolute bottom-6 left-6 text-white">
+<p class="text-xs font-bold uppercase tracking-widest text-orange-300 mb-1">Product B</p>
+<h3 class="text-2xl font-bold">Zenith Ultra 5G</h3>
+</div>
+<div class="absolute top-6 right-6 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-bold flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+                            4.5 / 5
+                        </div>
+</div>
+<div class="p-8">
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="bg-surface-container-low p-4 rounded-2xl">
+<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Positive Score</p>
+<p class="text-2xl font-bold text-primary">84%</p>
+</div>
+<div class="bg-surface-container-low p-4 rounded-2xl">
+<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Mentions</p>
+<p class="text-2xl font-bold text-on-surface">11.8k</p>
+</div>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-500">Camera Quality</span>
+<div class="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+<div class="w-[82%] h-full bg-primary-container"></div>
+</div>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-500">Battery Life</span>
+<div class="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+<div class="w-[94%] h-full bg-primary-container"></div>
+</div>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-500">UI/UX Smoothness</span>
+<div class="w-32 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+<div class="w-[78%] h-full bg-primary-container"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Comparison Table Section -->
+<div class="mb-12 bg-surface-container-low rounded-[2rem] p-1 overflow-hidden shadow-inner">
+<div class="bg-surface-container-lowest rounded-[1.75rem] overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-widest border-b border-outline-variant/10">
+<th class="py-6 px-8">Metric Cluster</th>
+<th class="py-6 px-8">Lumina Pro Max</th>
+<th class="py-6 px-8">Zenith Ultra 5G</th>
+<th class="py-6 px-8 text-center">Verdict</th>
+</tr>
+</thead>
+<tbody class="text-sm font-medium">
+<tr class="border-b border-outline-variant/5">
+<td class="py-6 px-8 text-slate-500">Sentiment Ratio</td>
+<td class="py-6 px-8">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+<span class="font-bold">92% Positive</span>
+</div>
+</td>
+<td class="py-6 px-8">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-blue-500"></span>
+<span class="font-bold">84% Positive</span>
+</div>
+</td>
+<td class="py-6 px-8 text-center">
+<span class="material-symbols-outlined text-green-500" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</td>
+</tr>
+<tr class="border-b border-outline-variant/5">
+<td class="py-6 px-8 text-slate-500">Critical Complaints</td>
+<td class="py-6 px-8">
+<div class="space-y-1">
+<span class="block px-2 py-1 bg-red-50 text-red-700 text-[10px] rounded-lg w-max">Price point is high</span>
+<span class="block px-2 py-1 bg-red-50 text-red-700 text-[10px] rounded-lg w-max">Charging speed</span>
+</div>
+</td>
+<td class="py-6 px-8">
+<div class="space-y-1">
+<span class="block px-2 py-1 bg-red-50 text-red-700 text-[10px] rounded-lg w-max">Low light noise</span>
+<span class="block px-2 py-1 bg-red-50 text-red-700 text-[10px] rounded-lg w-max">Software bugs</span>
+</div>
+</td>
+<td class="py-6 px-8 text-center">
+<span class="material-symbols-outlined text-slate-300">remove</span>
+</td>
+</tr>
+<tr>
+<td class="py-6 px-8 text-slate-500">Market Momentum</td>
+<td class="py-6 px-8">
+<div class="flex items-center gap-1.5 text-green-600 font-bold">
+<span class="material-symbols-outlined text-sm">trending_up</span> +12% MoM
+                                    </div>
+</td>
+<td class="py-6 px-8">
+<div class="flex items-center gap-1.5 text-blue-600 font-bold">
+<span class="material-symbols-outlined text-sm">trending_up</span> +4% MoM
+                                    </div>
+</td>
+<td class="py-6 px-8 text-center">
+<span class="material-symbols-outlined text-green-500" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- AI Differentiation Engine -->
+<div class="relative overflow-hidden p-10 rounded-[2.5rem] bg-slate-900 text-white shadow-2xl">
+<!-- Abstract Grain/Glow Background -->
+<div class="absolute -top-24 -right-24 w-64 h-64 bg-blue-600/20 blur-[100px]"></div>
+<div class="absolute -bottom-24 -left-24 w-64 h-64 bg-primary/20 blur-[100px]"></div>
+<div class="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-12 items-center">
+<div class="md:col-span-4 flex flex-col items-center md:items-start text-center md:text-left">
+<div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center mb-6 shadow-lg shadow-blue-500/20">
+<span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<h4 class="text-2xl font-bold mb-4 headline">AI Differentiation Summary</h4>
+<p class="text-slate-400 text-sm leading-relaxed">How Lumina Pro Max wins over Zenith Ultra 5G based on 25,000+ customer reviews.</p>
+</div>
+<div class="md:col-span-8">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div class="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors">
+<div class="flex items-center gap-3 mb-3 text-blue-400">
+<span class="material-symbols-outlined">lens_blur</span>
+<span class="font-bold text-xs uppercase tracking-widest">The Optical Edge</span>
+</div>
+<p class="text-sm text-slate-300 leading-relaxed">
+                                    Lumina maintains a <span class="text-white font-bold">14% higher</span> satisfaction rate in nighttime photography, citing "unrivaled clarity" vs Zenith's "visible grain."
+                                </p>
+</div>
+<div class="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors">
+<div class="flex items-center gap-3 mb-3 text-blue-400">
+<span class="material-symbols-outlined">verified_user</span>
+<span class="font-bold text-xs uppercase tracking-widest">Ecosystem Loyalty</span>
+</div>
+<p class="text-sm text-slate-300 leading-relaxed">
+                                    Lumina users report <span class="text-white font-bold">3x fewer</span> complaints regarding software stability during first 90 days of ownership.
+                                </p>
+</div>
+<div class="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors">
+<div class="flex items-center gap-3 mb-3 text-blue-400">
+<span class="material-symbols-outlined">payments</span>
+<span class="font-bold text-xs uppercase tracking-widest">Perceived Value</span>
+</div>
+<p class="text-sm text-slate-300 leading-relaxed">
+                                    Despite the $200 price premium, <span class="text-white font-bold">78%</span> of reviewers claim the "premium materials justify the cost" over Zenith's build.
+                                </p>
+</div>
+<div class="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors">
+<div class="flex items-center gap-3 mb-3 text-blue-400">
+<span class="material-symbols-outlined">speed</span>
+<span class="font-bold text-xs uppercase tracking-widest">Processing Lead</span>
+</div>
+<p class="text-sm text-slate-300 leading-relaxed">
+                                    Review AI detected <span class="text-white font-bold">8,400+</span> mentions of "instant responsiveness," leading Zenith in gaming performance metrics by 22%.
+                                </p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

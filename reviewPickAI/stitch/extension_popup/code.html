@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ReviewPick AI - Ready to Analyze</title>
+<!-- Fonts & Icons -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#c3c5d9",
+                    "on-secondary-fixed-variant": "#3d4856",
+                    "secondary-container": "#d5e0f3",
+                    "tertiary-fixed": "#ffdad9",
+                    "surface-dim": "#d8dadc",
+                    "inverse-on-surface": "#eff1f3",
+                    "background": "#f8f9fb",
+                    "primary": "#003dc7",
+                    "on-primary-container": "#dee2ff",
+                    "inverse-primary": "#b7c4ff",
+                    "surface-container-high": "#e6e8ea",
+                    "secondary-fixed-dim": "#bcc7d9",
+                    "on-secondary-fixed": "#111c29",
+                    "on-error-container": "#93000a",
+                    "on-primary-fixed": "#001452",
+                    "tertiary": "#9f0023",
+                    "on-tertiary-fixed": "#410008",
+                    "error": "#ba1a1a",
+                    "secondary": "#545f6e",
+                    "tertiary-fixed-dim": "#ffb3b2",
+                    "on-tertiary-container": "#ffdcdb",
+                    "surface-container-low": "#f2f4f6",
+                    "surface-container": "#eceef0",
+                    "primary-fixed": "#dde1ff",
+                    "surface-variant": "#e0e3e5",
+                    "primary-fixed-dim": "#b7c4ff",
+                    "on-tertiary-fixed-variant": "#92001f",
+                    "inverse-surface": "#2d3133",
+                    "secondary-fixed": "#d8e3f5",
+                    "on-background": "#191c1e",
+                    "on-surface-variant": "#434656",
+                    "tertiary-container": "#c42237",
+                    "primary-container": "#0051ff",
+                    "on-tertiary": "#ffffff",
+                    "surface-container-highest": "#e0e3e5",
+                    "on-error": "#ffffff",
+                    "on-secondary-container": "#586373",
+                    "on-secondary": "#ffffff",
+                    "surface-tint": "#004bee",
+                    "on-primary-fixed-variant": "#0038b7",
+                    "on-primary": "#ffffff",
+                    "outline": "#737688",
+                    "surface-bright": "#f8f9fb",
+                    "surface-container-lowest": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "on-surface": "#191c1e",
+                    "surface": "#f8f9fb"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Plus Jakarta Sans"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-headline { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .whisper-shadow {
+            box-shadow: 0 12px 32px -4px rgba(25, 28, 30, 0.06);
+        }
+    </style>
+</head>
+<body class="bg-slate-200/50 flex items-center justify-center min-h-screen p-4">
+<!-- Chrome Extension Wrapper (Simulating the 400x600 popup) -->
+<div class="w-[400px] h-[600px] bg-background rounded-[2rem] overflow-hidden flex flex-col whisper-shadow relative border border-white/20">
+<!-- SideNavBar (Shared Component Logic - Integrated as top-level identity) -->
+<!-- Note: In a popup context, the SideNavBar transforms into a header-style controller per "ReviewPick Logo" and "Chrome Extension v1.2" identity -->
+<header class="bg-surface-container-low p-6 flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">analytics</span>
+</div>
+<div>
+<h1 class="text-lg font-extrabold text-on-surface font-headline leading-tight">ReviewPick AI</h1>
+<p class="text-[10px] uppercase tracking-widest text-secondary font-medium">Chrome Extension v1.2</p>
+</div>
+</div>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">settings</span>
+</button>
+</div>
+</header>
+<!-- Main Content Area (The Curator Aesthetic) -->
+<main class="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
+<!-- Analysis Possible Status Card -->
+<div class="bg-surface-container-lowest rounded-3xl p-5 whisper-shadow border border-outline-variant/10">
+<div class="flex items-center gap-3 mb-4">
+<div class="flex h-2 w-2 relative">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+</div>
+<span class="text-xs font-semibold text-emerald-600 tracking-wide uppercase">Analysis possible</span>
+</div>
+<!-- Product Preview Section -->
+<div class="relative aspect-square w-full rounded-2xl overflow-hidden bg-surface-container mb-4">
+<img alt="Product Preview" class="w-full h-full object-cover" data-alt="Modern studio photograph of premium noise-canceling headphones on a minimal stone pedestal with soft directional lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-DEpdxoJMOybtNUznpH1acVyJ9JXDdXjgJhiKz8hnpwHMJrXu_2v56f6PdT47FqPsvNEM5Kyt9rWyHDFLYP62EP220Zqi6y8v45Iawz-ttRnQGtZy8cpoaza53xiMdoYBdKS-40_6Fc1J0onGKq_daJQrji7bycUMXTCtDRL78vxh_qiJ84Tr9yJFclnm5maLtS7C53zeNv_vFYqR7w4Dtu9QQICEhCpRBjoVG539O1TOy2vOCn1czPALX9lol_IDa-iJbQhW-2w"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+<div class="absolute bottom-3 left-3 right-3">
+<div class="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full inline-flex items-center gap-2">
+<span class="material-symbols-outlined text-white text-sm" style="font-variation-settings: 'FILL' 1;">shopping_cart</span>
+<span class="text-[10px] font-bold text-white uppercase tracking-tighter">Detected on Coupang</span>
+</div>
+</div>
+</div>
+<h2 class="text-xl font-bold text-on-surface font-headline leading-snug mb-1">Ready to Analyze</h2>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                    We've found <span class="font-bold text-primary">2,480+ reviews</span> for this product. Let AI distill the truth for you.
+                </p>
+</div>
+<!-- Feature Highlight (Bento style) -->
+<div class="grid grid-cols-2 gap-3">
+<div class="bg-surface-container-low p-4 rounded-2xl flex flex-col gap-2">
+<span class="material-symbols-outlined text-primary text-xl">hub</span>
+<span class="text-xs font-bold text-on-surface">Review Map</span>
+</div>
+<div class="bg-surface-container-low p-4 rounded-2xl flex flex-col gap-2">
+<span class="material-symbols-outlined text-primary text-xl">compare_arrows</span>
+<span class="text-xs font-bold text-on-surface">Benchmark</span>
+</div>
+</div>
+</main>
+<!-- Fixed Footer Action -->
+<footer class="p-6 pt-2 bg-surface-container-lowest/80 backdrop-blur-xl border-t border-outline-variant/10">
+<button class="w-full h-14 bg-gradient-to-br from-primary to-primary-container text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined">analytics</span>
+                Analyze Now
+            </button>
+<!-- Quick Navigation (Shared Component Integration) -->
+<div class="mt-6 flex justify-between items-center px-4">
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="text-[10px] font-bold text-primary tracking-tight">Analysis</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">history</span>
+<span class="text-[10px] font-medium text-secondary tracking-tight group-hover:text-primary">History</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-secondary group-hover:text-primary transition-colors">help</span>
+<span class="text-[10px] font-medium text-secondary tracking-tight group-hover:text-primary">Help</span>
+</button>
+</div>
+</footer>
+<!-- Glass Overlay for Texture -->
+<div class="absolute inset-0 pointer-events-none border-[12px] border-white/5 rounded-[2rem]"></div>
+</div>
+</body></html>
