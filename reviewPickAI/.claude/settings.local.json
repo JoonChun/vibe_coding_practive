@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ':*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(wc -l /home/joon/vibe_ws/revewPickAI/src/**/*.ts /home/joon/vibe_ws/revewPickAI/src/**/*.tsx)",
+      "Bash(file /home/joon/vibe_ws/revewPickAI/stitch/*/screen.png)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

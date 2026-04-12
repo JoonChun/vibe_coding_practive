@@ -1,0 +1,36 @@
+{
+  "name": "reviewpick-ai",
+  "version": "1.0.0",
+  "description": "쿠팡·네이버 리뷰 AI 분석 크롬 확장 프로그램",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch & vite build --config vite.content.config.ts --watch",
+    "build": "vite build && vite build --config vite.content.config.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "d3": "^7.9.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.400.0",
+    "react": "^18.3.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@types/d3": "^7.4.3",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^9.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.4.5",
+    "vite": "^5.3.0"
+  }
+}
