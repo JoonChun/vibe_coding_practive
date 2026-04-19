@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database.database import init_db
 from routers import keywords, settings, archives
+from ws.manager import manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,3 +27,12 @@ app.include_router(archives.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.websocket("/ws/logs")
+async def websocket_logs(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
