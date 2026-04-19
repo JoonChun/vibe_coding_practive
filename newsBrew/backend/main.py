@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database.database import init_db
-from routers import keywords, settings, archives
+from routers import keywords, settings, archives, brew
 from ws.manager import manager
 
 @asynccontextmanager
@@ -23,6 +23,7 @@ app.add_middleware(
 app.include_router(keywords.router)
 app.include_router(settings.router)
 app.include_router(archives.router)
+app.include_router(brew.router)
 
 @app.get("/health")
 async def health():
