@@ -1,14 +1,24 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from database.database import init_db
+from database.database import init_db, AsyncSessionLocal
 from routers import keywords, settings, archives, brew
 from ws.manager import manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    async with AsyncSessionLocal() as db:
+        from database.models import Setting
+        from sqlalchemy import select as sa_select
+        result = await db.execute(sa_select(Setting).where(Setting.key == "schedule_time"))
+        setting = result.scalar_one_or_none()
+        schedule_time = setting.value if setting else "08:00"
+    from services.scheduler import setup_scheduler, start_scheduler, stop_scheduler
+    setup_scheduler(schedule_time)
+    start_scheduler()
     yield
+    stop_scheduler()
 
 app = FastAPI(title="News Brew API", lifespan=lifespan)
 
