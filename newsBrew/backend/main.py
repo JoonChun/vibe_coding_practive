@@ -9,6 +9,9 @@ from ws.manager import manager
 async def lifespan(app: FastAPI):
     await init_db()
     async with AsyncSessionLocal() as db:
+        from services.env_seed import seed_settings_from_env
+        await seed_settings_from_env(db)
+
         from database.models import Setting
         from sqlalchemy import select as sa_select
         result = await db.execute(sa_select(Setting).where(Setting.key == "schedule_time"))
@@ -24,7 +27,12 @@ app = FastAPI(title="News Brew API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",  # Vite fallback port
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

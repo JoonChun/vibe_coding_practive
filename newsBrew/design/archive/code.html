@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Archive - News Brew</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&amp;family=Manrope:wght@400;500;600&amp;family=Space+Grotesk:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#705a46",
+                        "inverse-surface": "#303221",
+                        "tertiary-container": "#5c2f00",
+                        "background": "#fbfbe2",
+                        "secondary-fixed": "#fbddc3",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-primary": "#e1c1a4",
+                        "surface-container-low": "#f5f5dc",
+                        "surface-container-high": "#eaead1",
+                        "primary-fixed-dim": "#e1c1a4",
+                        "primary-fixed": "#fedcbe",
+                        "outline": "#80756c",
+                        "on-secondary-fixed": "#271909",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed-dim": "#ffb77d",
+                        "surface-tint": "#725a42",
+                        "inverse-on-surface": "#f2f2d9",
+                        "primary": "#33210d",
+                        "on-primary-container": "#bd9f83",
+                        "outline-variant": "#d2c4ba",
+                        "on-secondary-container": "#76604c",
+                        "on-secondary": "#ffffff",
+                        "surface-variant": "#e4e4cc",
+                        "on-background": "#1b1d0e",
+                        "tertiary": "#3c1d00",
+                        "surface-dim": "#dbdcc3",
+                        "on-surface-variant": "#4e453d",
+                        "on-secondary-fixed-variant": "#564330",
+                        "surface-container": "#efefd7",
+                        "tertiary-fixed": "#ffdcc3",
+                        "on-primary-fixed": "#291806",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#4b3621",
+                        "on-tertiary-container": "#f78700",
+                        "secondary-fixed-dim": "#ddc2a9",
+                        "on-tertiary-fixed": "#2f1500",
+                        "on-error": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "surface-container-highest": "#e4e4cc",
+                        "on-surface": "#1b1d0e",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed-variant": "#6e3900",
+                        "secondary-container": "#fbddc3",
+                        "surface": "#fbfbe2",
+                        "surface-bright": "#fbfbe2",
+                        "on-primary-fixed-variant": "#59422c",
+                        "on-tertiary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Plus Jakarta Sans", "sans-serif"],
+                        "body": ["Manrope", "sans-serif"],
+                        "label": ["Space Grotesk", "monospace"]
+                    }
+                }
+            }
+        }
+    </script>
+<style type="text/tailwindcss">
+        @layer utilities {
+            .glass-panel {
+                @apply bg-surface/80 backdrop-blur-xl border border-outline-variant/15;
+            }
+            .text-balance {
+                text-wrap: balance;
+            }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body min-h-screen flex selection:bg-tertiary-fixed-dim selection:text-on-tertiary-fixed">
+<!-- SideNavBar (Web) -->
+<nav class="hidden md:flex flex-col p-4 gap-2 h-screen w-64 border-r border-transparent bg-background dark:bg-[#33210d] text-[#33210d] dark:text-[#fbfbe2] font-['Plus_Jakarta_Sans'] text-sm font-medium z-40 fixed left-0 top-0">
+<div class="px-4 py-6 mb-4">
+<h1 class="text-xl font-black text-[#4b3621]">News Brew</h1>
+</div>
+<div class="flex-1 flex flex-col gap-2">
+<a class="flex items-center gap-3 px-4 py-3 text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="temp_preferences_custom">temp_preferences_custom</span>
+<span>Keywords</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 bg-[#4b3621] text-[#fbfbe2] rounded-lg shadow-lg shadow-[#4b3621]/20 ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="auto_stories">auto_stories</span>
+<span>Archive</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+</div>
+<div class="mt-auto border-t border-outline-variant/15 pt-4 flex flex-col gap-2">
+<a class="flex items-center gap-3 px-4 py-3 text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span>Help</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span>Logout</span>
+</a>
+<div class="mt-4 p-4 bg-surface-container-low rounded-xl flex items-center gap-3">
+<img alt="Sommelier Profile" class="w-10 h-10 rounded-full object-cover" data-alt="Portrait of a distinguished man in a dimly lit cafe with warm ambient light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_LQBKIXCWX328bCxUzKTbEY1rGBdBMftIdcCTV_0WFMn-vcznaH3nx5zYx30cDNrZN8Fy8kQyzG4HZ244XIJTFG0DXammDnKHNVQncLB4h3ZEtBOqTcW52I7Y8XowY_BHjNY56otAHiFN4BGT8MT8QWvy2OjVNHj3X2oFUFGoWkPasJ1e6jROkqwshr57Gt4Vdmil9NL2BGccOCTsUG3WviS0yv2c2rYmdWyy_oQYw3oUiW3-ddzjUP9bIdpLX8iCmi1cVfKzioQ"/>
+<div class="flex flex-col">
+<span class="font-headline font-bold text-sm text-primary">The Brew Master</span>
+<span class="font-label text-xs text-on-surface-variant">Automation Active</span>
+</div>
+</div>
+<button class="mt-2 w-full bg-primary-container text-on-primary rounded-md py-3 font-bold hover:bg-tertiary-container transition-colors shadow-sm shadow-primary/5">
+                Start Brewing
+            </button>
+</div>
+</nav>
+<!-- TopAppBar (Mobile) -->
+<header class="md:hidden fixed top-0 w-full z-50 bg-[#fbfbe2]/80 backdrop-blur-xl dark:bg-[#33210d]/80 border-b border-[#33210d]/5 shadow-sm shadow-[#33210d]/5">
+<div class="flex justify-between items-center h-16 px-6 w-full max-w-screen-2xl mx-auto">
+<div class="text-2xl font-extrabold text-[#33210d] dark:text-[#ff8c00] tracking-tighter italic font-['Plus_Jakarta_Sans']">
+                News Brew
+            </div>
+<div class="flex items-center gap-4 text-[#33210d] dark:text-[#fbfbe2]">
+<button class="hover:bg-[#4b3621]/5 p-2 rounded-full transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+<button class="hover:bg-[#4b3621]/5 p-2 rounded-full transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+<button class="hover:bg-[#4b3621]/5 p-2 rounded-full transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="coffee">coffee</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex-1 md:ml-64 pt-20 md:pt-8 pb-24 md:pb-8 px-4 md:px-12 max-w-7xl mx-auto w-full">
+<header class="mb-12 max-w-3xl">
+<h2 class="font-headline text-4xl md:text-5xl font-extrabold text-primary tracking-tight mb-4 text-balance">The Archive</h2>
+<p class="text-lg text-on-surface-variant font-medium leading-relaxed">A curated collection of your past brews. Revisit the stories that shaped the days.</p>
+</header>
+<!-- Search and Filter Bar -->
+<div class="mb-10 flex flex-col sm:flex-row gap-4 items-end sm:items-center">
+<div class="relative flex-1 w-full max-w-md group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-tertiary transition-colors" data-icon="search">search</span>
+<input class="w-full bg-surface-container-lowest border-b border-outline-variant focus:border-tertiary-fixed-dim bg-transparent py-3 pl-12 pr-4 text-primary placeholder-on-surface-variant focus:ring-0 transition-colors font-label text-sm tracking-wide uppercase" placeholder="Search the archives..." type="text"/>
+</div>
+<div class="flex items-center gap-3 overflow-x-auto pb-2 sm:pb-0 hide-scrollbar w-full sm:w-auto">
+<button class="whitespace-nowrap px-4 py-2 bg-surface-container-high text-primary rounded-full font-label text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors">
+                    All Time
+                </button>
+<button class="whitespace-nowrap px-4 py-2 border border-outline-variant/30 text-on-surface-variant rounded-full font-label text-xs uppercase tracking-widest hover:bg-surface-container-low transition-colors">
+                    This Month
+                </button>
+<button class="whitespace-nowrap px-4 py-2 border border-outline-variant/30 text-on-surface-variant rounded-full font-label text-xs uppercase tracking-widest hover:bg-surface-container-low transition-colors">
+                    High Importance
+                </button>
+</div>
+</div>
+<!-- Archive Grid (Bento Style) -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Item 1 (Featured/Large) -->
+<article class="col-span-1 md:col-span-2 lg:col-span-2 bg-surface-container-low rounded-2xl p-6 lg:p-8 flex flex-col justify-between hover:bg-surface-container-high transition-colors duration-300 group cursor-pointer relative overflow-hidden">
+<div class="absolute top-0 right-0 w-64 h-64 bg-tertiary-container/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+<div>
+<div class="flex justify-between items-start mb-6 relative z-10">
+<div class="flex items-center gap-3">
+<span class="font-label text-sm font-semibold text-tertiary tracking-widest uppercase">Oct 24, 2023</span>
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label text-xs font-medium text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]" data-icon="bolt">bolt</span>
+                                Score: 9.2
+                            </span>
+</div>
+</div>
+<h3 class="font-headline text-2xl md:text-3xl font-bold text-primary mb-4 leading-tight group-hover:text-tertiary transition-colors z-10 relative">Global Markets Rally Amidst Tech Sector Breakthroughs</h3>
+<p class="text-on-surface-variant text-base leading-relaxed mb-8 max-w-2xl z-10 relative">
+                        AI advancements push major indices to record highs. European central banks signal potential rate pauses, easing inflation fears. Meanwhile, a breakthrough in solid-state battery tech promises a 40% range increase for upcoming EVs.
+                    </p>
+</div>
+<div class="flex items-center justify-between mt-4 border-t border-outline-variant/20 pt-6 relative z-10">
+<div class="flex gap-2">
+<span class="px-3 py-1 bg-surface rounded-md font-label text-[10px] uppercase tracking-widest text-on-surface-variant shadow-sm shadow-primary/5">Finance</span>
+<span class="px-3 py-1 bg-surface rounded-md font-label text-[10px] uppercase tracking-widest text-on-surface-variant shadow-sm shadow-primary/5">Technology</span>
+</div>
+<button class="flex items-center gap-2 text-primary font-bold hover:text-tertiary transition-colors group/btn">
+                        Read Brew
+                        <span class="material-symbols-outlined group-hover/btn:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Item 2 -->
+<article class="col-span-1 bg-surface-container-low rounded-2xl p-6 flex flex-col justify-between hover:bg-surface-container-high transition-colors duration-300 group cursor-pointer">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="font-label text-xs font-semibold text-tertiary tracking-widest uppercase">Oct 23, 2023</span>
+</div>
+<h3 class="font-headline text-xl font-bold text-primary mb-3 leading-snug group-hover:text-tertiary transition-colors">Sustainable Aviation Fuel Hits Commercial Milestone</h3>
+<p class="text-on-surface-variant text-sm leading-relaxed mb-6 line-clamp-3">
+                        First transatlantic flight using 100% SAF lands successfully. Major carriers pledge 20% integration by 2030, though supply chain constraints remain the primary hurdle.
+                    </p>
+</div>
+<div class="flex items-center justify-between mt-auto border-t border-outline-variant/20 pt-4">
+<span class="font-label text-[10px] font-medium text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="bolt">bolt</span>
+                        Score: 7.8
+                    </span>
+<button class="text-primary font-bold hover:text-tertiary transition-colors">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Item 3 -->
+<article class="col-span-1 bg-surface-container-low rounded-2xl p-6 flex flex-col justify-between hover:bg-surface-container-high transition-colors duration-300 group cursor-pointer">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="font-label text-xs font-semibold text-tertiary tracking-widest uppercase">Oct 22, 2023</span>
+</div>
+<h3 class="font-headline text-xl font-bold text-primary mb-3 leading-snug group-hover:text-tertiary transition-colors">New Urban Architecture Focuses on Micro-Biomes</h3>
+<p class="text-on-surface-variant text-sm leading-relaxed mb-6 line-clamp-3">
+                        Architects shift focus to buildings that actively clean local air. The 'Living Skyscraper' concept gains traction in dense Asian metropolises, promising to reduce local smog by up to 15%.
+                    </p>
+</div>
+<div class="flex items-center justify-between mt-auto border-t border-outline-variant/20 pt-4">
+<span class="font-label text-[10px] font-medium text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="bolt">bolt</span>
+                        Score: 6.5
+                    </span>
+<button class="text-primary font-bold hover:text-tertiary transition-colors">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Item 4 (Wide) -->
+<article class="col-span-1 md:col-span-2 lg:col-span-2 bg-surface-container-low rounded-2xl p-6 lg:p-8 flex flex-col justify-between hover:bg-surface-container-high transition-colors duration-300 group cursor-pointer">
+<div>
+<div class="flex items-center gap-3 mb-4">
+<span class="font-label text-xs font-semibold text-tertiary tracking-widest uppercase">Oct 21, 2023</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Deep Dive</span>
+</div>
+<h3 class="font-headline text-2xl font-bold text-primary mb-3 leading-tight group-hover:text-tertiary transition-colors">The Renaissance of Analog Tech in a Digital Age</h3>
+<p class="text-on-surface-variant text-base leading-relaxed mb-6 max-w-2xl">
+                        Vinyl sales surpass CDs for the first time in decades, while 'dumb phone' sales among Gen Z surge by 40%. A growing movement seeks digital detox, favoring tactile experiences over algorithmic feeds.
+                    </p>
+</div>
+<div class="flex items-center justify-between mt-4 border-t border-outline-variant/20 pt-6">
+<div class="flex gap-2">
+<span class="px-3 py-1 bg-surface rounded-md font-label text-[10px] uppercase tracking-widest text-on-surface-variant shadow-sm shadow-primary/5">Culture</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-label text-[10px] font-medium text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="bolt">bolt</span>
+                            Score: 8.1
+                        </span>
+<button class="flex items-center gap-2 text-primary font-bold hover:text-tertiary transition-colors">
+                            Read Brew
+                            <span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</article>
+</div>
+<div class="mt-12 flex justify-center">
+<button class="px-8 py-3 border border-outline-variant/30 text-primary rounded-full font-label text-sm uppercase tracking-widest hover:bg-surface-container-low transition-colors shadow-sm shadow-primary/5">
+                Load Older Brews
+            </button>
+</div>
+</main>
+<!-- Detailed View Side Panel (Hidden by default, shown for demonstration) -->
+<!-- Add class 'translate-x-full' to hide -->
+<div class="fixed inset-y-0 right-0 w-full md:w-[500px] bg-surface-container-lowest glass-panel z-50 transform transition-transform duration-500 ease-in-out translate-x-full flex flex-col shadow-[-10px_0_40px_rgb(51,33,13,0.08)]" id="detailPanel">
+<header class="px-8 py-6 flex items-center justify-between border-b border-outline-variant/15">
+<div class="flex items-center gap-3">
+<span class="font-label text-xs font-semibold text-tertiary tracking-widest uppercase">Oct 24, 2023</span>
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span>
+<span class="font-label text-xs font-medium text-on-surface-variant">Archived Brew</span>
+</div>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors bg-surface-container-low rounded-full" onclick="document.getElementById('detailPanel').classList.add('translate-x-full')">
+<span class="material-symbols-outlined" data-icon="close">close</span>
+</button>
+</header>
+<div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+<div class="mb-10">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-tertiary-fixed-dim" data-icon="bolt" data-weight="fill">bolt</span>
+<span class="font-label text-sm font-bold text-primary uppercase tracking-widest">AI Importance Score: 9.2</span>
+</div>
+<h2 class="font-headline text-3xl font-bold text-primary mb-6 leading-tight">Global Markets Rally Amidst Tech Sector Breakthroughs</h2>
+<div class="bg-primary-container/5 p-6 rounded-xl border border-primary/5 mb-8">
+<h4 class="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]" data-icon="psychology">psychology</span>
+                        The AI Summary
+                    </h4>
+<p class="text-primary text-base leading-relaxed font-medium">
+                        AI advancements push major indices to record highs. European central banks signal potential rate pauses, easing inflation fears. Meanwhile, a breakthrough in solid-state battery tech promises a 40% range increase for upcoming EVs, fundamentally altering automotive market forecasts for Q4.
+                    </p>
+</div>
+</div>
+<div>
+<h4 class="font-headline text-lg font-bold text-primary mb-6 border-b border-outline-variant/15 pb-2">Source Headlines</h4>
+<ul class="space-y-5">
+<li class="group">
+<a class="block" href="#">
+<span class="text-xs font-label text-on-surface-variant uppercase tracking-widest block mb-1">Financial Times</span>
+<h5 class="font-headline text-base font-semibold text-primary group-hover:text-tertiary transition-colors">Tech surge lifts S&amp;P 500 to historic peak as AI optimism holds firm</h5>
+</a>
+</li>
+<li class="group">
+<a class="block" href="#">
+<span class="text-xs font-label text-on-surface-variant uppercase tracking-widest block mb-1">Bloomberg Green</span>
+<h5 class="font-headline text-base font-semibold text-primary group-hover:text-tertiary transition-colors">Toyota announces pilot production facility for solid-state batteries in late 2024</h5>
+</a>
+</li>
+<li class="group">
+<a class="block" href="#">
+<span class="text-xs font-label text-on-surface-variant uppercase tracking-widest block mb-1">Reuters</span>
+<h5 class="font-headline text-base font-semibold text-primary group-hover:text-tertiary transition-colors">ECB President hints at holding pattern for interest rates amidst cooling inflation data</h5>
+</a>
+</li>
+</ul>
+</div>
+</div>
+<footer class="p-6 border-t border-outline-variant/15 bg-surface-container-lowest">
+<button class="w-full bg-surface-container-high text-primary rounded-xl py-4 font-bold hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2 shadow-sm shadow-primary/5">
+<span class="material-symbols-outlined" data-icon="ios_share">ios_share</span>
+                Share This Brew
+            </button>
+</footer>
+</div>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-8 bg-[#fbfbe2]/90 backdrop-blur-md dark:bg-[#33210d]/90 rounded-t-3xl border-t border-transparent shadow-[0_-8px_30px_rgb(51,33,13,0.05)]">
+<a class="flex flex-col items-center justify-center text-[#4b3621]/60 hover:text-[#ff8c00] tap-highlight-transparent font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="home">home</span>
+            Home
+        </a>
+<a class="flex flex-col items-center justify-center text-[#4b3621]/60 hover:text-[#ff8c00] tap-highlight-transparent font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="key">key</span>
+            Keywords
+        </a>
+<a class="flex flex-col items-center justify-center text-[#ff8c00] bg-[#4b3621]/5 rounded-xl px-4 py-1 tap-highlight-transparent font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="history">history</span>
+            Archive
+        </a>
+<a class="flex flex-col items-center justify-center text-[#4b3621]/60 hover:text-[#ff8c00] tap-highlight-transparent font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="tune">tune</span>
+            Settings
+        </a>
+</nav>
+</body></html>

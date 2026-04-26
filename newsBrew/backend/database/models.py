@@ -10,6 +10,9 @@ class Keyword(Base):
     id = Column(Integer, primary_key=True, index=True)
     word = Column(String(100), nullable=False, unique=True)
     exclude_words = Column(String(500), default="")
+    max_results = Column(Integer, default=15)
+    time_range_hours = Column(Integer, default=24)
+    is_active = Column(Integer, default=1)  # 1=활성, 0=비활성
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Archive(Base):

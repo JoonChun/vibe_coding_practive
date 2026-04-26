@@ -3,7 +3,7 @@ import html
 import resend
 from services.ai_brewer import BrewedArticle
 
-_SECRET_KEYS = {"serpapi_key", "openai_key", "resend_key", "google_service_account_json"}
+# _SECRET_KEYS의 단일 정의 지점은 routers/settings.py — 여기서는 사용하지 않음
 
 
 def _safe_url(url: str) -> str:

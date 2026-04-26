@@ -13,10 +13,25 @@ def _sync_archive_to_sheets(
     brew_date: str,
     keyword_results: dict[str, list[BrewedArticle]],
 ) -> None:
-    creds_data = json.loads(service_account_json)
+    try:
+        creds_data = json.loads(service_account_json)
+    except json.JSONDecodeError:
+        raise ValueError("서비스 계정 JSON 형식이 올바르지 않습니다.")
+
     creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
     gc = gspread.authorize(creds)
-    spreadsheet = gc.open_by_key(sheet_id)
+
+    try:
+        spreadsheet = gc.open_by_key(sheet_id)
+    except gspread.exceptions.APIError as e:
+        status = e.response.status_code if hasattr(e, 'response') else 0
+        if status == 404:
+            raise ValueError(
+                f"스프레드시트를 찾을 수 없습니다 (Sheet ID: {sheet_id}). "
+                "ID가 맞는지 확인하고, 서비스 계정 이메일을 시트에 편집자로 공유했는지 확인하세요. "
+                f"서비스 계정: {creds_data.get('client_email', '?')}"
+            )
+        raise
 
     try:
         worksheet = spreadsheet.worksheet("뉴스 아카이브")
