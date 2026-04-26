@@ -1,50 +1,23 @@
-# React + TypeScript + Vite
+# mapf-analyzer (React + Vite 앱)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[MAPF Post-Mortem Analyzer](../README.md)의 프론트엔드 앱입니다. 상세한 기능·아키텍처 설명은 상위 README를 참고하세요.
 
-Currently, two official plugins are available:
+## 스크립트
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+| 명령 | 설명 |
+| --- | --- |
+| `npm run dev` | Vite 개발 서버 실행 (HMR) |
+| `npm run build` | TypeScript 검증 후 프로덕션 빌드 (`dist/`) |
+| `npm run preview` | 빌드 결과 미리보기 |
+| `npm run lint` | ESLint 검사 |
 
-## Expanding the ESLint configuration
+## 환경 변수
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+Gemini 프록시(BFF)를 사용하려면 Vercel Serverless 환경에 `GEMINI_API_KEY`를 등록하세요. 로컬에서는 `api/` 핸들러가 호출되지 않는 한 키 없이도 핵심 분석 기능(파싱·그래프 추출·Re-plan)은 동작합니다.
 
-- Configure the top-level `parserOptions` property like this:
+## 기술 스택
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
-
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
-
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+- React 18 + Vite + TypeScript
+- Zustand (상태), React Flow (그래프), Tailwind CSS v4
+- Web Workers (A*, DFS), Canvas 2D
+- `@google/genai` (스키마 어댑터)
