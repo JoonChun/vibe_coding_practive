@@ -1,0 +1,73 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: ["class"],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        "secondary": "#705a46",
+        "inverse-surface": "#303221",
+        "tertiary-container": "#5c2f00",
+        "background": "#fbfbe2",
+        "secondary-fixed": "#fbddc3",
+        "surface-container-lowest": "#ffffff",
+        "inverse-primary": "#e1c1a4",
+        "surface-container-low": "#f5f5dc",
+        "surface-container-high": "#eaead1",
+        "primary-fixed-dim": "#e1c1a4",
+        "primary-fixed": "#fedcbe",
+        "outline": "#80756c",
+        "on-secondary-fixed": "#271909",
+        "error-container": "#ffdad6",
+        "tertiary-fixed-dim": "#ffb77d",
+        "surface-tint": "#725a42",
+        "inverse-on-surface": "#f2f2d9",
+        "primary": "#33210d",
+        "on-primary-container": "#bd9f83",
+        "outline-variant": "#d2c4ba",
+        "on-secondary-container": "#76604c",
+        "on-secondary": "#ffffff",
+        "surface-variant": "#e4e4cc",
+        "on-background": "#1b1d0e",
+        "tertiary": "#3c1d00",
+        "surface-dim": "#dbdcc3",
+        "on-surface-variant": "#4e453d",
+        "on-secondary-fixed-variant": "#564330",
+        "surface-container": "#efefd7",
+        "tertiary-fixed": "#ffdcc3",
+        "on-primary-fixed": "#291806",
+        "on-primary": "#ffffff",
+        "primary-container": "#4b3621",
+        "on-tertiary-container": "#f78700",
+        "secondary-fixed-dim": "#ddc2a9",
+        "on-tertiary-fixed": "#2f1500",
+        "on-error": "#ffffff",
+        "on-error-container": "#93000a",
+        "surface-container-highest": "#e4e4cc",
+        "on-surface": "#1b1d0e",
+        "error": "#ba1a1a",
+        "on-tertiary-fixed-variant": "#6e3900",
+        "secondary-container": "#fbddc3",
+        "surface": "#fbfbe2",
+        "surface-bright": "#fbfbe2",
+        "on-primary-fixed-variant": "#59422c",
+        "on-tertiary": "#ffffff"
+      },
+      borderRadius: {
+        "DEFAULT": "0.25rem",
+        "lg": "0.5rem",
+        "xl": "0.75rem",
+        "full": "9999px"
+      },
+      fontFamily: {
+        "headline": ["Plus Jakarta Sans"],
+        "body": ["Manrope"],
+        "label": ["Space Grotesk"]
+      }
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+}

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Settings - News Brew</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..800&amp;family=Manrope:wght@400..700&amp;family=Space+Grotesk:wght@400..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#705a46",
+                        "inverse-surface": "#303221",
+                        "tertiary-container": "#5c2f00",
+                        "background": "#fbfbe2",
+                        "secondary-fixed": "#fbddc3",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-primary": "#e1c1a4",
+                        "surface-container-low": "#f5f5dc",
+                        "surface-container-high": "#eaead1",
+                        "primary-fixed-dim": "#e1c1a4",
+                        "primary-fixed": "#fedcbe",
+                        "outline": "#80756c",
+                        "on-secondary-fixed": "#271909",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed-dim": "#ffb77d",
+                        "surface-tint": "#725a42",
+                        "inverse-on-surface": "#f2f2d9",
+                        "primary": "#33210d",
+                        "on-primary-container": "#bd9f83",
+                        "outline-variant": "#d2c4ba",
+                        "on-secondary-container": "#76604c",
+                        "on-secondary": "#ffffff",
+                        "surface-variant": "#e4e4cc",
+                        "on-background": "#1b1d0e",
+                        "tertiary": "#3c1d00",
+                        "surface-dim": "#dbdcc3",
+                        "on-surface-variant": "#4e453d",
+                        "on-secondary-fixed-variant": "#564330",
+                        "surface-container": "#efefd7",
+                        "tertiary-fixed": "#ffdcc3",
+                        "on-primary-fixed": "#291806",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#4b3621",
+                        "on-tertiary-container": "#f78700",
+                        "secondary-fixed-dim": "#ddc2a9",
+                        "on-tertiary-fixed": "#2f1500",
+                        "on-error": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "surface-container-highest": "#e4e4cc",
+                        "on-surface": "#1b1d0e",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed-variant": "#6e3900",
+                        "secondary-container": "#fbddc3",
+                        "surface": "#fbfbe2",
+                        "surface-bright": "#fbfbe2",
+                        "on-primary-fixed-variant": "#59422c",
+                        "on-tertiary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {},
+                    "fontFamily": {
+                        "headline": ["Plus Jakarta Sans"],
+                        "body": ["Manrope"],
+                        "label": ["Space Grotesk"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Manrope', sans-serif; background-color: #fbfbe2; color: #1b1d0e; }
+        h1, h2, h3, h4, h5, h6, .font-headline { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-label, input, select, textarea { font-family: 'Space Grotesk', monospace; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .material-symbols-outlined[data-weight="fill"] { font-variation-settings: 'FILL' 1; }
+        
+        /* Custom Input Styling */
+        input[type="text"], input[type="email"], input[type="password"], input[type="time"] {
+            border: none;
+            border-bottom: 0.5px solid #d2c4ba; /* outline-variant */
+            background: transparent;
+            padding: 0.5rem 0;
+            border-radius: 0;
+            transition: all 0.2s ease;
+            box-shadow: none !important;
+            outline: none !important;
+            font-size: 0.875rem;
+        }
+        input:focus {
+            border-bottom: 1.5px solid #ff8c00; /* accent */
+            box-shadow: 0 4px 10px rgba(255, 140, 0, 0.05) !important;
+        }
+        input::placeholder { color: #80756c; opacity: 0.6; }
+        
+        /* Toggle Switch Styling */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #33210d;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #33210d;
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex selection:bg-primary-container selection:text-surface">
+<!-- SideNavBar (Web) -->
+<nav class="hidden md:flex h-screen w-64 border-r border-transparent bg-[#fbfbe2] dark:bg-[#33210d] flex-col p-4 gap-2 fixed left-0 top-0 z-40 bg-[#f5f5dc] dark:bg-[#4b3621]/20">
+<div class="mb-8 px-2 flex items-center justify-between">
+<span class="text-xl font-black text-[#4b3621] font-['Plus_Jakarta_Sans']">News Brew</span>
+<span class="material-symbols-outlined text-[#4b3621]">coffee</span>
+</div>
+<div class="flex items-center gap-3 mb-6 px-2 py-3 bg-surface-container-low rounded-lg shadow-sm shadow-[#33210d]/5">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-primary-container/20 flex items-center justify-center">
+<img alt="Sommelier Profile" class="w-full h-full object-cover" data-alt="Portrait of a sophisticated man with a beard wearing a dark linen shirt, warm studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJASDdhu-5yYmRK1yB7WBKrjUkdU8y2Oxib44Hb90f7lREKS4I0RFAPUOWJF10vtS3SuhqlSpGaH9_MqT2We9owS00YIeITqkS4JjrwE_AvOM5NNKyaB9I8ToyyuNltKPnqwPvpUvRf_Ip8G3aKGWEafpjgtraQzZNy6WZNI4rCCJontOdEMutYctZ8NQx3znPU_jADAQkD3vwPnNMV7TIA_wsltAUH2ra6InVpPjvb76k8VvRYwcLmqeRwRNpuhhPYVBoRDI3hlA"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-bold text-primary font-headline">The Brew Master</span>
+<span class="text-[10px] text-tertiary-fixed-dim uppercase tracking-wider font-label font-medium flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span> Automation Active
+                </span>
+</div>
+</div>
+<div class="flex-1 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2.5 font-['Plus_Jakarta_Sans'] text-sm font-medium text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-3 px-3 py-2.5 font-['Plus_Jakarta_Sans'] text-sm font-medium text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="temp_preferences_custom">temp_preferences_custom</span>
+                Keywords
+            </a>
+<a class="flex items-center gap-3 px-3 py-2.5 font-['Plus_Jakarta_Sans'] text-sm font-medium text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg hover:translate-x-1 transition-transform ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="auto_stories">auto_stories</span>
+                Archive
+            </a>
+<a class="flex items-center gap-3 px-3 py-2.5 font-['Plus_Jakarta_Sans'] text-sm font-medium bg-[#4b3621] text-[#fbfbe2] rounded-lg shadow-lg shadow-[#4b3621]/20 ease-out duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="settings" data-weight="fill">settings</span>
+                Settings
+            </a>
+</div>
+<div class="mt-auto flex flex-col gap-1 border-t border-primary/5 pt-4">
+<button class="w-full mb-4 bg-primary-container text-on-primary rounded-md py-2.5 px-4 font-headline text-sm font-bold shadow-[0_4px_24px_rgba(51,33,13,0.12)] hover:bg-tertiary-container transition-colors duration-300">
+                Start Brewing
+            </button>
+<a class="flex items-center gap-3 px-3 py-2 font-['Plus_Jakarta_Sans'] text-sm font-medium text-[#4b3621] hover:bg-[#4b3621]/5 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="help">help</span>
+                Help
+            </a>
+<a class="flex items-center gap-3 px-3 py-2 font-['Plus_Jakarta_Sans'] text-sm font-medium text-error hover:bg-error/5 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="logout">logout</span>
+                Logout
+            </a>
+</div>
+</nav>
+<!-- TopAppBar (Mobile & Top Anchor) -->
+<header class="fixed top-0 w-full z-50 bg-[#fbfbe2]/80 backdrop-blur-xl dark:bg-[#33210d]/80 border-b border-[#33210d]/5 shadow-sm shadow-[#33210d]/5 flex justify-between items-center h-16 px-6 w-full max-w-screen-2xl mx-auto md:ml-64 md:w-[calc(100%-16rem)]">
+<div class="flex items-center gap-3">
+<span class="md:hidden text-2xl font-extrabold text-[#33210d] dark:text-[#ff8c00] tracking-tighter italic font-['Plus_Jakarta_Sans']">News Brew</span>
+<h1 class="hidden md:block font-['Plus_Jakarta_Sans'] font-bold tracking-tight text-[#33210d] dark:text-[#fbfbe2] text-xl">Settings Configuration</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-[#33210d] dark:text-[#fbfbe2] hover:bg-[#4b3621]/5 transition-colors rounded-full active:scale-95 duration-200 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+<button class="p-2 text-[#33210d] dark:text-[#fbfbe2] hover:bg-[#4b3621]/5 transition-colors rounded-full active:scale-95 duration-200 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="coffee">coffee</span>
+</button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 w-full pt-24 pb-28 md:pb-12 px-6 md:px-12 md:ml-64 max-w-6xl mx-auto flex flex-col gap-12">
+<header class="max-w-2xl">
+<h2 class="text-4xl md:text-5xl font-headline font-extrabold text-primary tracking-tight leading-tight mb-4">The Engine Room.</h2>
+<p class="text-on-surface-variant font-body text-lg max-w-xl leading-relaxed">Configure the mechanical aspects of your daily brew. These credentials allow the automation to curate, distill, and deliver your news.</p>
+</header>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+<!-- Left Column: Primary Settings -->
+<div class="lg:col-span-8 flex flex-col gap-8">
+<!-- API Keys Section -->
+<section class="bg-surface-container-lowest p-8 rounded-xl shadow-[0_8px_32px_rgba(51,33,13,0.04)] flex flex-col gap-6">
+<div class="flex items-start gap-4 mb-2">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined" data-icon="vpn_key">vpn_key</span>
+</div>
+<div>
+<h3 class="font-headline text-xl font-bold text-primary mb-1">API Credentials</h3>
+<p class="text-sm font-body text-on-surface-variant">Securely store the keys required for data aggregation and language processing.</p>
+</div>
+</div>
+<div class="flex flex-col gap-6 pl-14">
+<!-- Google Search -->
+<div class="flex flex-col sm:flex-row sm:items-end gap-4 group">
+<div class="flex-1 flex flex-col">
+<label class="font-label text-[10px] text-outline uppercase tracking-widest font-bold mb-1">Google Custom Search API</label>
+<input placeholder="Enter API Key" type="password" value="AIzaSyB-xxxxxxxxxxxxxxxxxxxx"/>
+</div>
+<button class="bg-transparent text-primary-container border border-outline-variant/30 hover:border-outline-variant hover:bg-surface-container-low px-4 py-1.5 rounded-md text-sm font-headline font-bold transition-all shrink-0">
+                                Update
+                            </button>
+</div>
+<!-- OpenAI/Gemini -->
+<div class="flex flex-col sm:flex-row sm:items-end gap-4 group">
+<div class="flex-1 flex flex-col">
+<label class="font-label text-[10px] text-outline uppercase tracking-widest font-bold mb-1">LLM Provider (OpenAI / Gemini)</label>
+<input placeholder="Enter API Key" type="password" value="sk-proj-xxxxxxxxxxxxxxxxxxxx"/>
+</div>
+<button class="bg-transparent text-primary-container border border-outline-variant/30 hover:border-outline-variant hover:bg-surface-container-low px-4 py-1.5 rounded-md text-sm font-headline font-bold transition-all shrink-0">
+                                Update
+                            </button>
+</div>
+<!-- Resend -->
+<div class="flex flex-col sm:flex-row sm:items-end gap-4 group">
+<div class="flex-1 flex flex-col">
+<label class="font-label text-[10px] text-outline uppercase tracking-widest font-bold mb-1">Resend Email API</label>
+<input placeholder="re_xxxxxxxxxxxxxxxxxxxx" type="password"/>
+</div>
+<button class="bg-primary-container text-on-primary px-4 py-1.5 rounded-md text-sm font-headline font-bold shadow-md shadow-primary/10 hover:bg-tertiary-container transition-all shrink-0">
+                                Save
+                            </button>
+</div>
+</div>
+</section>
+<!-- Delivery & Notifications Section -->
+<section class="bg-surface-container-lowest p-8 rounded-xl shadow-[0_8px_32px_rgba(51,33,13,0.04)] flex flex-col gap-6">
+<div class="flex items-start gap-4 mb-2">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined" data-icon="outgoing_mail">outgoing_mail</span>
+</div>
+<div>
+<h3 class="font-headline text-xl font-bold text-primary mb-1">Delivery Preferences</h3>
+<p class="text-sm font-body text-on-surface-variant">Where and how you receive your daily digest.</p>
+</div>
+</div>
+<div class="flex flex-col gap-8 pl-14">
+<div class="flex flex-col">
+<label class="font-label text-[10px] text-outline uppercase tracking-widest font-bold mb-1">Primary Recipient Email</label>
+<input placeholder="name@domain.com" type="email" value="reader@example.com"/>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-lg border border-outline-variant/10">
+<div class="flex flex-col pr-4">
+<span class="font-headline font-bold text-primary text-sm">Google Sheets Archiving</span>
+<span class="font-body text-xs text-on-surface-variant mt-0.5">Automatically append daily summaries to a connected spreadsheet.</span>
+</div>
+<!-- Toggle Switch -->
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in shrink-0">
+<input checked="" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out border-surface-container z-10 focus:ring-0 focus:outline-none" id="toggle1" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-5 rounded-full bg-surface-variant cursor-pointer transition-colors duration-200 ease-in-out shadow-inner" for="toggle1"></label>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Secondary / Contextual -->
+<div class="lg:col-span-4 flex flex-col gap-6">
+<!-- Schedule Card (Glassmorphism / Tonal) -->
+<div class="bg-primary-container p-6 rounded-xl relative overflow-hidden text-on-primary-container group hover:bg-tertiary-container transition-colors duration-500">
+<!-- Ambient Glow -->
+<div class="absolute -top-12 -right-12 w-32 h-32 bg-[#ff8c00] rounded-full blur-[40px] opacity-20 group-hover:opacity-30 transition-opacity"></div>
+<div class="relative z-10 flex flex-col h-full">
+<div class="flex items-center justify-between mb-8">
+<span class="font-headline font-bold text-on-primary text-lg">Brew Schedule</span>
+<span class="material-symbols-outlined text-on-tertiary-container" data-icon="schedule">schedule</span>
+</div>
+<div class="mb-6">
+<p class="font-body text-sm mb-4 opacity-90 leading-relaxed">Set the time for the automation to begin searching and summarizing. Ensure this is at least 1 hour before you want to read it.</p>
+<div class="bg-primary/40 p-4 rounded-lg flex items-center justify-center border border-on-primary/5">
+<input class="text-3xl font-headline font-extrabold text-on-primary bg-transparent border-none focus:ring-0 p-0 text-center !shadow-none !border-b-0 cursor-pointer" type="time" value="06:00"/>
+</div>
+</div>
+<button class="mt-auto w-full py-2.5 bg-on-primary text-primary-container font-headline font-bold rounded-md hover:bg-surface transition-colors shadow-lg shadow-primary/20">
+                            Set Schedule
+                        </button>
+</div>
+</div>
+<!-- Status Log (Terminal style) -->
+<div class="bg-primary p-5 rounded-xl flex flex-col shadow-[0_4px_24px_rgba(51,33,13,0.1)] relative h-48 overflow-hidden">
+<div class="flex items-center justify-between mb-3 border-b border-on-primary/10 pb-2">
+<span class="font-label text-xs uppercase tracking-widest text-on-primary/60">System Log</span>
+<div class="flex gap-1.5">
+<div class="w-2 h-2 rounded-full bg-error"></div>
+<div class="w-2 h-2 rounded-full bg-tertiary-fixed-dim"></div>
+<div class="w-2 h-2 rounded-full bg-surface-container-lowest"></div>
+</div>
+</div>
+<div class="font-label text-xs text-on-primary/80 flex flex-col gap-1.5 relative z-10">
+<div class="flex gap-2">
+<span class="text-tertiary-fixed-dim opacity-70">[08:42]</span>
+<span>System authenticated.</span>
+</div>
+<div class="flex gap-2">
+<span class="text-tertiary-fixed-dim opacity-70">[08:42]</span>
+<span>Checking API rate limits... <span class="text-[#86efac]">OK</span></span>
+</div>
+<div class="flex gap-2">
+<span class="text-tertiary-fixed-dim opacity-70">[08:43]</span>
+<span>Awaiting next brew cycle.</span>
+</div>
+<div class="flex gap-2 animate-pulse mt-1">
+<span class="text-on-tertiary-container">_</span>
+</div>
+</div>
+<!-- Fade bottom -->
+<div class="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-primary to-transparent z-20"></div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-8 bg-[#fbfbe2]/90 backdrop-blur-md dark:bg-[#33210d]/90 rounded-t-3xl shadow-[0_-8px_30px_rgb(51,33,13,0.05)] border-t-0 border-[#33210d]/5">
+<a class="flex flex-col items-center justify-center text-[#4b3621]/60 hover:text-[#ff8c00]" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="home">home</span>
+<span class="font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#4b3621]/60 hover:text-[#ff8c00]" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="key">key</span>
+<span class="font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest">Keywords</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#4b3621]/60 hover:text-[#ff8c00]" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="history">history</span>
+<span class="font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest">Archive</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#ff8c00] bg-[#4b3621]/5 rounded-xl px-4 py-1" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="tune" data-weight="fill">tune</span>
+<span class="font-['Plus_Jakarta_Sans'] text-[10px] uppercase tracking-widest font-bold">Settings</span>
+</a>
+</nav>
+</body></html>

@@ -1,0 +1,20 @@
+# 시크릿
+.env
+.env.local
+docs/*.json
+
+# Claude Code 로컬 설정 (개인 권한/실험용 자격증명 포함될 수 있음)
+.claude/
+
+# 분리된 임베디드 git 백업
+.git.bak/
+
+# WSL 다운로드 메타파일
+*:Zone.Identifier
+
+# Node
+node_modules/
+
+# Python (백엔드 .gitignore도 참고)
+__pycache__/
+*.pyc
