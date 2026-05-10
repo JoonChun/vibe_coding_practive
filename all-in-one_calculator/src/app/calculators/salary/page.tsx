@@ -130,7 +130,7 @@ function SalaryPageInner() {
                 value={[annualSalary]}
                 onValueChange={(v) => setAnnualSalary(v[0])}
                 min={20_000_000}
-                max={300_000_000}
+                max={200_000_000}
                 step={1_000_000}
               />
             </div>
