@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef, Suspense } from "react";
+import { useCallback, useState, Suspense } from "react";
 import {
   AreaChart,
   Area,
@@ -97,7 +97,7 @@ function CompoundPageInner() {
   const [annualRate, setAnnualRate] = useState(5);
   const [years, setYears] = useState(10);
   const [frequency, setFrequency] = useState<CompoundFrequency>("monthly");
-  const savedIdRef = useRef<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const applyInputs = useCallback((inputs: Record<string, number | string>) => {
     if (inputs.principal != null) setPrincipal(Number(inputs.principal));
@@ -124,6 +124,7 @@ function CompoundPageInner() {
 
   const setResult = useCalculatorStore((s) => s.setResult);
   const addToHistory = useHistoryStore((s) => s.addToHistory);
+  const pins = usePinStore((s) => s.pins);
   const { addPin, removePin, isPinned } = usePinStore();
 
   const saveResult = () => {
@@ -143,14 +144,14 @@ function CompoundPageInner() {
     };
     setResult(calcResult);
     addToHistory(calcResult);
-    savedIdRef.current = id;
+    setSavedId(id);
     return id;
   };
 
   const handleTogglePin = () => {
-    if (savedIdRef.current && isPinned(savedIdRef.current)) {
-      removePin(savedIdRef.current);
-      savedIdRef.current = null;
+    if (savedId && isPinned(savedId)) {
+      removePin(savedId);
+      setSavedId(null);
       return;
     }
     const id = saveResult();
@@ -159,7 +160,7 @@ function CompoundPageInner() {
     }
   };
 
-  const pinned = savedIdRef.current ? isPinned(savedIdRef.current) : false;
+  const pinned = savedId ? pins.some((p) => p.resultId === savedId) : false;
 
   const pieData = result
     ? [

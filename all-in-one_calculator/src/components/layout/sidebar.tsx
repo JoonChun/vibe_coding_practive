@@ -10,6 +10,7 @@ import {
   ArrowLeftRight,
   Calendar,
   BarChart3,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/calculators/salary", label: "연봉 실수령액", icon: Wallet },
   { href: "/calculators/unit", label: "단위 변환", icon: ArrowLeftRight },
   { href: "/calculators/dday", label: "디데이", icon: Calendar },
+  { href: "/calculators/bmi", label: "BMI", icon: Activity },
   { href: "/report", label: "비교 리포트", icon: BarChart3 },
 ];
 
