@@ -74,3 +74,5 @@ focusBear/
 
 ---
 *Built with ❤️ by Antigravity (vi.joon)*
+
+개발도감(devDogam)에서 라이브 통합 시험 대상으로 활용됨. (Phase 1 M2.4 시연)

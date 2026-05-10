@@ -1,7 +1,13 @@
+"use client";
+
+import { useEffect } from "react";
 import TaskScroll from "@/components/scroll/TaskScroll";
 import ManagerCharacter from "@/components/characters/ManagerCharacter";
 import ChatBubble from "@/components/chat/ChatBubble";
 import KingInput from "@/components/input/KingInput";
+import { useEventStore, selectLatestMessages } from "@/stores/eventStore";
+import { CHARACTERS } from "@/lib/characters";
+import { createEventStream } from "@/lib/eventStream";
 
 /** 단청 오방색 — 화공 variant A 균등 5등분 */
 const DANCHEONG_COLORS = [
@@ -12,7 +18,37 @@ const DANCHEONG_COLORS = [
   { name: "흑", hex: "#2D2926" },
 ] as const;
 
+/** 매니저 4인 고정 목록 */
+const MANAGER_NAMES = [
+  "planner-dojeon",
+  "implementer-yeongsil",
+  "reviewer-sunsin",
+  "ideator-yagyong",
+] as const;
+
 export default function Page() {
+  // ── M2.2 SSE 연결 (eventStream 클라이언트 래퍼) ───────────────────────────
+  useEffect(() => {
+    const addEvent = useEventStore.getState().addEvent;
+    const setConnected = useEventStore.getState().setConnected;
+    const cleanup = createEventStream(addEvent, setConnected);
+    return cleanup;
+  }, []);
+
+  // ── store 구독 ─────────────────────────────────────────────────────────────
+  const activeManagers = useEventStore((s) => s.activeManagers);
+  const activeDojes = useEventStore((s) => s.activeDojes);
+  const currentTask = useEventStore((s) => s.currentTask);
+  const isConnected = useEventStore((s) => s.isConnected);
+  const latestMessages = useEventStore((s) => selectLatestMessages(s, 5));
+
+  const taskTitle = currentTask?.title ?? "대기 중";
+  // currentTask 이벤트 수를 진행 단계로 임시 표시 (M2.x에서 step 구조화 예정)
+  const taskStep =
+    currentTask != null && currentTask.events.length > 0
+      ? { current: currentTask.events.length, total: currentTask.events.length }
+      : undefined;
+
   return (
     <main
       className="flex flex-col h-screen overflow-hidden"
@@ -42,28 +78,32 @@ export default function Page() {
           >
             개발도감(開發都監)
           </h1>
+
+          {/* 연결 상태 표시 */}
           <span
             className="text-xs flex items-center gap-1"
             style={{
               color: "#E0E0E0",
               textShadow: "0 1px 3px rgba(0,0,0,0.8)",
             }}
-            aria-label="연결 상태: 정적"
+            aria-label={isConnected ? "연결 상태: 실시간" : "연결 상태: 끊김"}
           >
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: "#9CA3AF" }}
+              style={{
+                backgroundColor: isConnected ? "#22C55E" : "#9CA3AF",
+              }}
               aria-hidden="true"
             />
-            정적
+            {isConnected ? "실시간" : "끊김"}
           </span>
         </div>
       </header>
 
       {/* ── 두루마리 (TaskScroll) ── */}
       <TaskScroll
-        title="개발도감 Phase 1 시연"
-        step={{ current: 3, total: 6 }}
+        title={taskTitle}
+        step={taskStep}
       />
 
       {/* ── 매니저 무대 ── */}
@@ -71,14 +111,16 @@ export default function Page() {
         className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-8 items-center justify-items-center px-4 py-6"
         aria-label="매니저 회의실"
       >
-        <ManagerCharacter
-          agentName="planner-dojeon"
-          isActive
-          visibleDojes={["planning-hojo"]}
-        />
-        <ManagerCharacter agentName="implementer-yeongsil" />
-        <ManagerCharacter agentName="reviewer-sunsin" />
-        <ManagerCharacter agentName="ideator-yagyong" />
+        {MANAGER_NAMES.map((managerName) => (
+          <ManagerCharacter
+            key={managerName}
+            agentName={managerName}
+            isActive={activeManagers.has(managerName)}
+            visibleDojes={Array.from(activeDojes).filter(
+              (name) => CHARACTERS[name]?.parent === managerName
+            )}
+          />
+        ))}
       </section>
 
       {/* ── 말풍선 로그 ── */}
@@ -92,18 +134,22 @@ export default function Page() {
         role="log"
         aria-live="polite"
       >
-        <ChatBubble
-          agentName="planner-dojeon"
-          message="단계별 설계 올립니다."
-        />
-        <ChatBubble
-          agentName="planning-hojo"
-          message="P0 셋을 우선 처리하겠소이다."
-        />
-        <ChatBubble
-          agentName="reviewer-sunsin"
-          message="검수 통과 가능합니다."
-        />
+        {latestMessages.length > 0 ? (
+          latestMessages.map((e) => (
+            <ChatBubble
+              key={e.id}
+              agentName={e.agentName}
+              message={e.message ?? ""}
+            />
+          ))
+        ) : (
+          <p
+            className="text-sm text-center mt-8"
+            style={{ color: "#9CA3AF", fontFamily: "var(--font-serif)" }}
+          >
+            임금의 명을 기다립니다…
+          </p>
+        )}
       </section>
 
       {/* ── 임금 입력창 ── */}
