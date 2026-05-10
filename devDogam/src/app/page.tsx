@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import TaskScroll from "@/components/scroll/TaskScroll";
 import ManagerCharacter from "@/components/characters/ManagerCharacter";
 import ChatBubble from "@/components/chat/ChatBubble";
 import KingInput from "@/components/input/KingInput";
-import { useEventStore, selectLatestMessages } from "@/stores/eventStore";
+import { useEventStore } from "@/stores/eventStore";
 import { CHARACTERS } from "@/lib/characters";
 import { createEventStream } from "@/lib/eventStream";
 
@@ -26,6 +26,33 @@ const MANAGER_NAMES = [
   "ideator-yagyong",
 ] as const;
 
+/**
+ * 말풍선에 표시할 이벤트 종류.
+ * Claude Code 훅이 agent_message를 직접 emit하지 않으므로
+ * 라이프사이클 이벤트도 포함시켜 *흐름 가시화*.
+ * (진짜 발화 텍스트는 Phase 2의 transcript 파싱으로 대체 예정)
+ */
+const BUBBLE_EVENT_TYPES = new Set([
+  "agent_start",
+  "agent_end",
+  "agent_dispatch",
+  "agent_message",
+]);
+
+/** 라이프사이클 이벤트의 합성 메시지 */
+function synthesizeBubbleMessage(type: string): string {
+  switch (type) {
+    case "agent_start":
+      return "작업을 시작합니다.";
+    case "agent_end":
+      return "작업을 마쳤습니다.";
+    case "agent_dispatch":
+      return "명을 받습니다.";
+    default:
+      return "";
+  }
+}
+
 export default function Page() {
   // ── M2.2 SSE 연결 (eventStream 클라이언트 래퍼) ───────────────────────────
   useEffect(() => {
@@ -40,14 +67,43 @@ export default function Page() {
   const activeDojes = useEventStore((s) => s.activeDojes);
   const currentTask = useEventStore((s) => s.currentTask);
   const isConnected = useEventStore((s) => s.isConnected);
-  const latestMessages = useEventStore((s) => selectLatestMessages(s, 5));
+  // 결함 수정: selector를 store에서 직접 쓰면 매 호출마다 새 배열을 반환해
+  // useSyncExternalStore가 무한 루프 의심함.
+  // → events 배열만 구독하고 useMemo로 derived 계산.
+  // 또한 훅이 agent_message를 emit하지 않으므로 라이프사이클 이벤트도
+  // 합성 메시지로 말풍선화 (Phase 2 transcript 파싱 전까지 임시).
+  const events = useEventStore((s) => s.events);
+  const bubbles = useMemo(
+    () =>
+      events
+        .filter((e) => BUBBLE_EVENT_TYPES.has(e.type))
+        .slice(-5)
+        .map((e) => ({
+          id: e.id,
+          agentName: e.agentName,
+          message: e.message?.trim()
+            ? e.message
+            : synthesizeBubbleMessage(e.type),
+        })),
+    [events]
+  );
 
-  const taskTitle = currentTask?.title ?? "대기 중";
+  // 훅이 task_start를 emit하지 않으므로 currentTask?.title 은 항상 null.
+  // → activeManagers/activeDojes 상태로 합성 제목 도출.
+  // (진짜 user prompt 텍스트는 Phase 2의 UserPromptSubmit 훅으로 대체 예정)
+  const isActive = activeManagers.size > 0 || activeDojes.size > 0;
+  const taskTitle =
+    currentTask?.title ??
+    (isActive ? "사건 진행 중…" : "대기 중");
   // currentTask 이벤트 수를 진행 단계로 임시 표시 (M2.x에서 step 구조화 예정)
+  // currentTask 없을 때는 활성 에이전트 수로 대체
+  const activeCount = activeManagers.size + activeDojes.size;
   const taskStep =
     currentTask != null && currentTask.events.length > 0
       ? { current: currentTask.events.length, total: currentTask.events.length }
-      : undefined;
+      : isActive
+        ? { current: activeCount, total: activeCount }
+        : undefined;
 
   return (
     <main
@@ -134,12 +190,12 @@ export default function Page() {
         role="log"
         aria-live="polite"
       >
-        {latestMessages.length > 0 ? (
-          latestMessages.map((e) => (
+        {bubbles.length > 0 ? (
+          bubbles.map((b) => (
             <ChatBubble
-              key={e.id}
-              agentName={e.agentName}
-              message={e.message ?? ""}
+              key={b.id}
+              agentName={b.agentName}
+              message={b.message}
             />
           ))
         ) : (
