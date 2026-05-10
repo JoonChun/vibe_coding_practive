@@ -43,6 +43,7 @@ const typeLabels: Record<CalculatorType, string> = {
   salary: "연봉 실수령액",
   unit: "단위 변환",
   dday: "디데이",
+  bmi: "BMI",
 };
 
 // --- Sortable Item Component ---

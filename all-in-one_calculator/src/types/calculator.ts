@@ -3,7 +3,8 @@ export type CalculatorType =
   | "loan"
   | "salary"
   | "unit"
-  | "dday";
+  | "dday"
+  | "bmi";
 
 export interface CalculationResult {
   id: string;
@@ -25,4 +26,5 @@ export const CALCULATOR_LABELS: Record<CalculatorType, string> = {
   salary: "연봉 실수령액",
   unit: "단위 변환",
   dday: "디데이 계산기",
+  bmi: "BMI 계산기",
 };

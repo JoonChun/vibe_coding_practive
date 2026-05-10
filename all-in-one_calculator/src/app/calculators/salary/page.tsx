@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef, Suspense } from "react";
+import { useCallback, useState, Suspense } from "react";
 import {
   BarChart,
   Bar,
@@ -55,7 +55,7 @@ function SalaryPageInner() {
   const [annualSalary, setAnnualSalary] = useState(50_000_000);
   const [dependents, setDependents] = useState(1);
   const [nonTaxableAllowance, setNonTaxableAllowance] = useState(200_000);
-  const savedIdRef = useRef<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const applyInputs = useCallback((inputs: Record<string, number | string>) => {
     if (inputs.annualSalary != null) setAnnualSalary(Number(inputs.annualSalary));
@@ -71,6 +71,7 @@ function SalaryPageInner() {
 
   const setResult = useCalculatorStore((s) => s.setResult);
   const addToHistory = useHistoryStore((s) => s.addToHistory);
+  const pins = usePinStore((s) => s.pins);
   const { addPin, removePin, isPinned } = usePinStore();
 
   const saveResult = () => {
@@ -90,14 +91,14 @@ function SalaryPageInner() {
     };
     setResult(calcResult);
     addToHistory(calcResult);
-    savedIdRef.current = id;
+    setSavedId(id);
     return id;
   };
 
   const handleTogglePin = () => {
-    if (savedIdRef.current && isPinned(savedIdRef.current)) {
-      removePin(savedIdRef.current);
-      savedIdRef.current = null;
+    if (savedId && isPinned(savedId)) {
+      removePin(savedId);
+      setSavedId(null);
       return;
     }
     const id = saveResult();
@@ -106,7 +107,7 @@ function SalaryPageInner() {
     }
   };
 
-  const pinned = savedIdRef.current ? isPinned(savedIdRef.current) : false;
+  const pinned = savedId ? pins.some((p) => p.resultId === savedId) : false;
 
   const chartData = result
     ? result.deductions.map((d) => ({

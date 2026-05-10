@@ -8,6 +8,7 @@ import {
   Wallet,
   ArrowLeftRight,
   Calendar,
+  Activity,
   PinOff,
   Trash2,
 } from "lucide-react";
@@ -17,8 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { usePinStore } from "@/stores/pin-store";
 import { useCalculatorStore } from "@/stores/calculator-store";
 import { useHistoryStore } from "@/stores/history-store";
-import { formatCurrency, formatNumber } from "@/lib/utils";
-import type { CalculatorType, CALCULATOR_LABELS } from "@/types/calculator";
+import { formatCurrency } from "@/lib/utils";
+import type { CalculatorType } from "@/types/calculator";
 
 const typeIcons: Record<CalculatorType, typeof TrendingUp> = {
   compound: TrendingUp,
@@ -26,6 +27,7 @@ const typeIcons: Record<CalculatorType, typeof TrendingUp> = {
   salary: Wallet,
   unit: ArrowLeftRight,
   dday: Calendar,
+  bmi: Activity,
 };
 
 const typeLabels: Record<CalculatorType, string> = {
@@ -34,6 +36,7 @@ const typeLabels: Record<CalculatorType, string> = {
   salary: "연봉 실수령액",
   unit: "단위 변환",
   dday: "디데이",
+  bmi: "BMI",
 };
 
 const typeLinks: Record<CalculatorType, string> = {
@@ -42,6 +45,7 @@ const typeLinks: Record<CalculatorType, string> = {
   salary: "/calculators/salary",
   unit: "/calculators/unit",
   dday: "/calculators/dday",
+  bmi: "/calculators/bmi",
 };
 
 export default function Dashboard() {
@@ -101,9 +105,12 @@ export default function Dashboard() {
                     </div>
                     <Link href={`${typeLinks[r.type]}?restore=${r.id}`}>
                       <p className="text-lg font-bold font-mono">
-                        {typeof value === "number"
-                          ? formatCurrency(value)
-                          : value}
+                        {(() => {
+                          if (r.type === "bmi" && typeof value === "number") {
+                            return (value / 10).toFixed(1);
+                          }
+                          return typeof value === "number" ? formatCurrency(value) : value;
+                        })()}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1 truncate">
                         {r.label}

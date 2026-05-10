@@ -12,6 +12,7 @@ import {
   Wallet,
   ArrowLeftRight,
   Calendar,
+  Activity,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ const calcLinks = [
   { href: "/calculators/salary", label: "연봉 실수령", icon: Wallet },
   { href: "/calculators/unit", label: "단위 변환", icon: ArrowLeftRight },
   { href: "/calculators/dday", label: "디데이", icon: Calendar },
+  { href: "/calculators/bmi", label: "BMI", icon: Activity },
 ];
 
 export function MobileNav() {

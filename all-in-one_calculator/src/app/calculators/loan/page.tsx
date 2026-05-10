@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef, Suspense } from "react";
+import { useCallback, useState, Suspense } from "react";
 import {
   BarChart,
   Bar,
@@ -65,7 +65,7 @@ function LoanPageInner() {
   const [annualRate, setAnnualRate] = useState(3.5);
   const [termYears, setTermYears] = useState(30);
   const [method, setMethod] = useState<RepaymentMethod>("equal-payment");
-  const savedIdRef = useRef<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const applyInputs = useCallback((inputs: Record<string, number | string>) => {
     if (inputs.loanAmount != null) setLoanAmount(Number(inputs.loanAmount));
@@ -87,6 +87,7 @@ function LoanPageInner() {
 
   const setResult = useCalculatorStore((s) => s.setResult);
   const addToHistory = useHistoryStore((s) => s.addToHistory);
+  const pins = usePinStore((s) => s.pins);
   const { addPin, removePin, isPinned } = usePinStore();
 
   const saveResult = () => {
@@ -106,14 +107,14 @@ function LoanPageInner() {
     };
     setResult(calcResult);
     addToHistory(calcResult);
-    savedIdRef.current = id;
+    setSavedId(id);
     return id;
   };
 
   const handleTogglePin = () => {
-    if (savedIdRef.current && isPinned(savedIdRef.current)) {
-      removePin(savedIdRef.current);
-      savedIdRef.current = null;
+    if (savedId && isPinned(savedId)) {
+      removePin(savedId);
+      setSavedId(null);
       return;
     }
     const id = saveResult();
@@ -122,7 +123,7 @@ function LoanPageInner() {
     }
   };
 
-  const pinned = savedIdRef.current ? isPinned(savedIdRef.current) : false;
+  const pinned = savedId ? pins.some((p) => p.resultId === savedId) : false;
 
   const chartData = result
     ? result.schedule
