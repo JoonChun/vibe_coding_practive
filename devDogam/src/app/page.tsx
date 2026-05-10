@@ -22,12 +22,12 @@ const DANCHEONG_COLORS = [
 
 /** 말풍선 폴백 — 이벤트 없을 때 말풍선 숨김 (idle 시 조용한 어전) */
 
-/** 매니저 4인 어전 도열 좌표 — 임금 분부 V5: 가장자리·하단 분산 */
+/** 매니저 4인 어전 도열 좌표 — v2.2: 마룻바닥 안착 (발 끝 기준 translate(-50%,-100%)) */
 const MANAGER_LAYOUT = [
-  { name: "planner-dojeon",       side: "left"  as const, style: { left: "12%", top: "55%" } },
-  { name: "ideator-yagyong",      side: "left"  as const, style: { left: "8%",  top: "78%" } },
-  { name: "implementer-yeongsil", side: "right" as const, style: { left: "88%", top: "78%" } },
-  { name: "reviewer-sunsin",      side: "right" as const, style: { left: "92%", top: "55%" } },
+  { name: "planner-dojeon",       side: "left"  as const, style: { left: "35%", top: "70%" } },
+  { name: "ideator-yagyong",      side: "left"  as const, style: { left: "15%", top: "88%" } },
+  { name: "implementer-yeongsil", side: "right" as const, style: { left: "85%", top: "88%" } },
+  { name: "reviewer-sunsin",      side: "right" as const, style: { left: "65%", top: "70%" } },
 ] as const;
 
 // BUBBLE_EVENT_TYPES, synthesizeBubbleMessage → @/lib/managerBubbles 로 분리됨
@@ -158,10 +158,10 @@ export default function Page() {
         {/* 일월오봉도 배경 (z:0) */}
         <IlwolObongdo />
 
-        {/* 임금 (z:20) — LAYOUT-V4 §4: top 40%, 단상 위 정합, translate(-50%,-100%) */}
+        {/* 임금 (z:20) — v2.2: top 45%, 옥좌 단상 윗면(SVG y≈240~280) 정합, translate(-50%,-100%) */}
         <div
           className="absolute"
-          style={{ left: "50%", top: "40%", transform: "translate(-50%, -100%)", zIndex: 20 }}
+          style={{ left: "50%", top: "45%", transform: "translate(-50%, -100%)", zIndex: 20 }}
         >
           <KingCharacter
             message={managerBubbles["king"]}

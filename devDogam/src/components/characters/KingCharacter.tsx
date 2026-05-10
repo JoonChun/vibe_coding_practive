@@ -61,7 +61,7 @@ export default function KingCharacter({
       <span
         className="block text-center text-sm mt-4 whitespace-nowrap"
         style={{
-          color: "#C0392B",
+          color: "#F4ECD8",
           fontFamily: "var(--font-serif)",
         }}
       >

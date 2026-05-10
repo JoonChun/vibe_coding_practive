@@ -39,7 +39,7 @@ export default function DojeCharacter({
       {/* 이름 라벨 */}
       <span
         className="text-xs whitespace-nowrap"
-        style={{ color: character.hex, fontFamily: "var(--font-serif)" }}
+        style={{ color: "#F4ECD8", fontFamily: "var(--font-serif)" }}
       >
         {character.displayName}
       </span>

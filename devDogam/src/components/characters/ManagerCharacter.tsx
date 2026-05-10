@@ -125,29 +125,12 @@ export default function ManagerCharacter({
       {/* 이름 라벨 */}
       <span
         className="text-sm mt-1 whitespace-nowrap"
-        style={{ color: character.hex, fontFamily: "var(--font-serif)" }}
+        style={{ color: "#F4ECD8", fontFamily: "var(--font-serif)" }}
       >
         {character.emoji} {character.displayName}
       </span>
 
-      {/* 품계석 — 발 바로 아래 작은 직사각 돌 (24×16px) — LAYOUT-V3 §4 */}
-      <svg
-        width="24"
-        height="16"
-        viewBox="0 0 24 16"
-        style={{
-          position: "absolute",
-          bottom: "-16px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: -1,
-        }}
-        aria-hidden="true"
-      >
-        <rect x="0" y="0" width="24" height="16" rx="1" fill="#6B7280" stroke="#4B5563" strokeWidth="1" />
-        <rect x="2" y="3" width="20" height="2"  rx="0" fill="#9CA3AF" opacity="0.4" />
-        <rect x="2" y="8" width="20" height="2"  rx="0" fill="#4B5563" opacity="0.4" />
-      </svg>
+      {/* 품계석 — v2.1-C: 회색 직사각이 흙 자국처럼 보여 제거 */}
 
       {/* 도제 발밑 클러스터 — AnimatePresence로 감싸 등장·퇴장 motion 작동 */}
       <AnimatePresence>
