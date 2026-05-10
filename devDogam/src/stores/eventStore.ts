@@ -17,6 +17,8 @@ interface EventStoreState {
   currentTask: TaskBundle | null;
   /** M2.2 SSE 연결 상태. M2.1 기본값 false */
   isConnected: boolean;
+  /** 도제별 마지막 이벤트 수신 시각 (ms). stale cleanup 판정용 */
+  dojeLastSeen: Map<string, number>;
 }
 
 // ── 액션 타입 ────────────────────────────────────────────────────────────────
@@ -37,6 +39,8 @@ interface EventStoreActions {
 
 const MAX_EVENTS = 200;
 const DROP_COUNT = 50;
+/** 도제 비활성 판정 임계값: 5분 */
+const STALE_DOJE_MS = 5 * 60 * 1000;
 
 // ── store ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +52,7 @@ export const useEventStore = create<EventStoreState & EventStoreActions>(
     activeDojes: new Set<string>(),
     currentTask: null,
     isConnected: false,
+    dojeLastSeen: new Map<string, number>(),
 
     // ── addEvent ──────────────────────────────────────────────────────────────
     addEvent(event: AgentEvent) {
@@ -62,9 +67,10 @@ export const useEventStore = create<EventStoreState & EventStoreActions>(
       // 2) currentTask 업데이트용 변수
       let nextTask = state.currentTask;
 
-      // 3) activeManagers / activeDojes 업데이트용 변수
+      // 3) activeManagers / activeDojes / dojeLastSeen 업데이트용 변수
       let nextManagers = state.activeManagers;
       let nextDojes = state.activeDojes;
+      let nextDojeLastSeen = state.dojeLastSeen;
 
       // 4) type별 처리
       switch (event.type) {
@@ -100,6 +106,9 @@ export const useEventStore = create<EventStoreState & EventStoreActions>(
               if (meta.parent) {
                 nextManagers = new Set([...nextManagers, meta.parent]);
               }
+              // 도제 lastSeen 갱신
+              nextDojeLastSeen = new Map(nextDojeLastSeen);
+              nextDojeLastSeen.set(event.agentName, Date.now());
             }
           }
           // currentTask에도 이벤트 추가
@@ -139,6 +148,9 @@ export const useEventStore = create<EventStoreState & EventStoreActions>(
           const meta = CHARACTERS[event.agentName];
           if (meta && !meta.manager) {
             nextDojes = new Set([...nextDojes, event.agentName]);
+            // 도제 lastSeen 갱신
+            nextDojeLastSeen = new Map(nextDojeLastSeen);
+            nextDojeLastSeen.set(event.agentName, Date.now());
           }
           if (nextTask) {
             nextTask = {
@@ -161,11 +173,23 @@ export const useEventStore = create<EventStoreState & EventStoreActions>(
         }
       }
 
+      // ── stale 도제 lazy cleanup ───────────────────────────────────────────
+      // addEvent 호출 시마다 STALE_DOJE_MS 초과 도제를 activeDojes에서 제거
+      const now = Date.now();
+      nextDojeLastSeen.forEach((lastSeen, name) => {
+        if (now - lastSeen > STALE_DOJE_MS) {
+          nextDojes = new Set([...nextDojes].filter((n) => n !== name));
+          nextDojeLastSeen = new Map(nextDojeLastSeen);
+          nextDojeLastSeen.delete(name);
+        }
+      });
+
       set({
         events: nextEvents,
         activeManagers: nextManagers,
         activeDojes: nextDojes,
         currentTask: nextTask,
+        dojeLastSeen: nextDojeLastSeen,
       });
     },
 
@@ -177,6 +201,7 @@ export const useEventStore = create<EventStoreState & EventStoreActions>(
         activeDojes: new Set<string>(),
         currentTask: null,
         isConnected: false,
+        dojeLastSeen: new Map<string, number>(),
       });
     },
 

@@ -1,7 +1,7 @@
 // ── eventStore 단위 시험 ───────────────────────────────────────────────────────
 // task_start → agent_start (매니저) → agent_start (도제) → agent_end → agent_message 흐름 검증
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useEventStore, selectLatestMessages, selectActiveDojesByManager } from "./eventStore";
 
 // Zustand store 는 모듈 싱글턴이므로 각 테스트 전 초기화
@@ -160,5 +160,50 @@ describe("selectActiveDojesByManager selector", () => {
     const dojes = selectActiveDojesByManager(state, "planner-dojeon");
     expect(dojes).toContain("planning-hojo");
     expect(dojes).not.toContain("backend-gigwan");
+  });
+});
+
+describe("eventStore — stale 도제 lazy cleanup (BACKLOG-J)", () => {
+  it("5분 경과 도제: activeDojes, dojeLastSeen 모두 제거됨", () => {
+    vi.useFakeTimers();
+
+    const { addEvent } = useEventStore.getState();
+
+    addEvent(makeEvent("task_start", "king", { message: "임금 명령" }));
+    // planning-hojo agent_start → dojeLastSeen 기록
+    addEvent(makeEvent("agent_start", "planning-hojo"));
+
+    // 5분 + 1초 경과
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
+
+    // 다음 addEvent 호출 시 lazy cleanup 실행
+    addEvent(makeEvent("agent_message", "planner-dojeon", { message: "ping" }));
+
+    const { activeDojes, dojeLastSeen } = useEventStore.getState();
+    expect(activeDojes.size).toBe(0);
+    expect(dojeLastSeen.size).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  it("5분 미만 도제: cleanup 제외, activeDojes에 잔류", () => {
+    vi.useFakeTimers();
+
+    const { addEvent } = useEventStore.getState();
+
+    addEvent(makeEvent("task_start", "king", { message: "임금 명령" }));
+    // planning-hojo agent_start → dojeLastSeen 기록
+    addEvent(makeEvent("agent_start", "planning-hojo"));
+
+    // 4분 59초 경과 (임계값 미만)
+    vi.advanceTimersByTime(4 * 60 * 1000 + 59 * 1000);
+
+    // cleanup trigger
+    addEvent(makeEvent("agent_message", "planner-dojeon", { message: "ping" }));
+
+    const { activeDojes } = useEventStore.getState();
+    expect(activeDojes.has("planning-hojo")).toBe(true);
+
+    vi.useRealTimers();
   });
 });
