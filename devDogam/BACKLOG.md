@@ -22,6 +22,7 @@
 | **L** | 모바일 ChatBubble max-width 미정의 | β++ 검수 (2026-05-10), 이순신 검수, Phase 1 마무리 시 재확인 (2026-05-11) | 모바일 UX | 현재 ManagerCharacter 머리 위 ChatBubble의 `maxWidth: 240px` 고정. 640px 이하 작은 화면에서 옆 캐릭터 공간을 침범하거나 화면을 넘을 가능성. β++에서는 충분치 않으나 데스크톱 우선이라 보류. | (1) ChatBubble에 `maxWidth: "min(200px, 50vw)"` 미디어쿼리 또는 inline 적용, (2) 좁은 뷰포트에서 글자 크기 축소, (3) 인스타 reels 9:16 캡처 환경 점검 | **P2** (β++ 후속) |
 | **O** | 한옥 기둥·단청 천장·품계석 시각 디테일 | Phase 1 마무리 (2026-05-11) | 시각 미흡 | β++ v2.2에서 단청 천장·품계석 제거됨. 후속 인스타 콘텐츠 평가 시 시각 강화 검토. | (1) 단청 무늬 추가 (Tailwind 배경 또는 SVG 패턴), (2) 품계석 형태 검토, (3) 기둥 다포·갓 모양 강조 | **P2** (β++ 후속) |
 | **Q** | narrow viewport (9:16) 위치 반응형 조정 | Phase 1 마무리 (2026-05-11) | 모바일 UX | 인스타 reels 세로 9:16 환경에서 매니저·옥좌·카펫 비율·위치 정합 미점검. 현재 desktop 64×64px 기준 고정으로 9:16 캡처 시 비율 왜곡 가능. | (1) clamp() 함수로 뷰포트 너비별 캐릭터 크기 가변화, (2) 미디어쿼리로 좌표 분기 (desktop/tablet/mobile 3단계), (3) viewport 변환 변수화 (scale factor) | **P2** (β++ 후속) |
+| **R** | KingInput 진짜 입력 통합 (Phase 2 핵심) — Claude Code 세션 inject 메커니즘 | Phase 1 마무리 (2026-05-11) | 기능 미흡 | KingInput.tsx mock으로 fake task_start 이벤트만 emit. 진짜 작업 실행은 사용자가 별도 메인 Claude Code 세션에서 트리거 — 두 입력 분리. 영상 캡처 시 두루마리 반응 가능하나 *진짜 에이전트 활동*은 별도. | (1) tmux send-keys로 별도 세션에 prompt 주입, (2) SSH·local socket으로 Claude Code CLI 호출, (3) 외부 API endpoint 띄워 prompt → 메인 세션 위임. 사용 통증 입증 후 옵션 결정. | **P1** (Phase 2 핵심) |
 
 ---
 
@@ -42,3 +43,4 @@
 | 2026-05-10 | 사관 (docs-sagwan) | β++ 시동 검수 — I·J·K 3개 항목 추가 (selectLatestMessages 결함·SSE Set 누수·TaskScroll step 의미) |
 | 2026-05-10 | 메인 (이순신 검수 권고) | β++ 통합 검수 — L 1개 항목 추가 (모바일 ChatBubble max-width) |
 | 2026-05-11 | 사관 (docs-sagwan) | Phase 1 마무리 — 신규 O·Q 2개 항목 추가 (시각 디테일·9:16 viewport), 기존 D·E·G·L 강화 표시 |
+| 2026-05-11 | 사관 (docs-sagwan) | Phase 1 마무리 — R 1개 항목 추가 (KingInput 진짜 입력 통합, Claude Code 세션 inject 메커니즘) |
