@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-pretendard), "Pretendard", system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-noto-serif-kr), "Noto Serif KR", "Nanum Myeongjo", serif;
+
+  /* 한지 팔레트 */
+  --color-hanji: #F5EDD6;
+  --color-hanji-dark: #E8D9B5;
+  --color-hanji-shadow: #C9B99A;
+  --color-ink: #2A1F14;
+  --color-ink-light: #5C4A32;
+  --color-vermilion: #C0392B;
+  --color-royal-blue: #2C5F8D;
+  --color-jade: #2E8B57;
+}
+
+:root {
+  --bg-hanji: #F5EDD6;
+  --bg-hanji-dark: #E8D9B5;
+  --bg-hanji-shadow: #C9B99A;
+  --color-ink: #2A1F14;
+  --color-ink-light: #5C4A32;
+  --color-vermilion: #C0392B;
+  --color-royal-blue: #2C5F8D;
+  --color-jade: #2E8B57;
+
+  /* 캐릭터 색상 */
+  --color-dojeon: #2C5F8D;
+  --color-yeongsil: #D97706;
+  --color-sunsin: #DC2626;
+  --color-yagyong: #16A34A;
+}
+
+@layer base {
+  * {
+    @apply border-[var(--bg-hanji-shadow)] outline-[var(--color-royal-blue)]/50;
+  }
+  body {
+    background-color: var(--bg-hanji);
+    color: var(--color-ink);
+  }
+  html {
+    font-family: var(--font-sans);
+  }
+}
+
+/* ── 어전 도열 반응형 (640px 이하) ── */
+@media (max-width: 640px) {
+  /* 매니저 간격이 좁아지므로 어전 섹션에 여백 보완 */
+  section[aria-label^="어전 도열"] {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
