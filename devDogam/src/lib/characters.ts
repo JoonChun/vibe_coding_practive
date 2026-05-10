@@ -9,6 +9,14 @@ export interface CharacterMeta {
 }
 
 export const CHARACTERS: Record<string, CharacterMeta> = {
+  "king": {
+    name: "king",
+    displayName: "임금",
+    emoji: "🤴",
+    color: "yellow",
+    hex: "#C9A227",
+    manager: false,
+  },
   "planner-dojeon": {
     name: "planner-dojeon",
     displayName: "정도전",
@@ -159,7 +167,7 @@ export const MANAGERS: CharacterMeta[] = [
 ];
 
 export const DOJES: CharacterMeta[] = Object.values(CHARACTERS).filter(
-  (c) => !c.manager
+  (c) => !c.manager && c.name !== "king"
 );
 
 export function getDojesByManager(managerName: string): CharacterMeta[] {

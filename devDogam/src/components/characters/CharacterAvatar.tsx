@@ -5,13 +5,14 @@ import { CHARACTERS, getCharacterIndex } from "@/lib/characters";
 
 interface Props {
   agentName: string;
-  size?: "manager" | "doje";
+  size?: "manager" | "doje" | "king";
   className?: string;
 }
 
 const SIZE_MAP = {
   manager: 64,
   doje: 40,
+  king: 80,
 } as const;
 
 export default function CharacterAvatar({

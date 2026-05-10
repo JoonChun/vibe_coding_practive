@@ -44,3 +44,12 @@
     font-family: var(--font-sans);
   }
 }
+
+/* ── 어전 도열 반응형 (640px 이하) ── */
+@media (max-width: 640px) {
+  /* 매니저 간격이 좁아지므로 어전 섹션에 여백 보완 */
+  section[aria-label^="어전 도열"] {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}

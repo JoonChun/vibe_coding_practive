@@ -19,6 +19,7 @@
 | **I** | `selectLatestMessages` selector 본거지 결함 | β++ 시동 (2026-05-10), 기관도제 검수 | 코드 품질 (잠재 무한 루프 재발) | `state.events.filter(...).slice(-n)`이 매 호출 새 배열 반환 → Zustand 참조 동일성 검사가 항상 "변경됨"으로 판단해 무한 리렌더. page.tsx에서 useMemo 우회로 봉합했으나 다른 곳에서 selector 직접 사용 시 동일 결함 재발 가능. | (1) `selectLatestMessages` deprecated 처리 또는 삭제, (2) `reselect` `createSelector` 기반 메모이즈 selector로 교체, (3) eventStore 다른 selector도 동일 패턴 점검 | **P1** (Phase 2 또는 store 리팩토링 시) |
 | **J** | SSE 연결 단절 시 `activeManagers`/`activeDojes` Set 누수 | β++ 시동 (2026-05-10), 기관도제 검수 | 정확성 (유령 active 상태) | `agent_dispatch` 처리에서 추가된 에이전트는 `agent_end` 수신 후 제거. 그러나 SSE 연결 도중 단절·훅 프로세스 비정상 종료 시 `agent_end` 누락 → 영원히 active. `setConnected(false)` 콜백이 Set 초기화 안 함. 두루마리 합성 제목·캐릭터 점등이 거짓 상태 표시 가능. | (1) `setConnected(false)` 시 `activeManagers`/`activeDojes` clear, (2) 또는 별도 `resetActive()` 액션을 SSE `onerror`/cleanup에서 호출, (3) Phase 2 task_start 도입과 동시에 처리 | **P1** (Phase 2) |
 | **K** | TaskScroll step 타입·의미 명확화 | β++ 시동 (2026-05-10), 이순신 검수 | UX 모호 | 현재 `taskStep = { current, total }`이 *무엇을 세는지* 모호. currentTask 있을 땐 events 길이, 없을 땐 activeCount로 폴백 — 의미가 일관되지 않음. 사용자에게 진행도가 "1/1" "3/3"처럼 자기참조형으로 표시. | M2.x에서 step을 *이벤트 시퀀스 단계*로 재정의 (예: 정도전 분해 → 도제 구현 → 군관 테스트 → 이순신 검수 = 4단계). currentTask schema에 step 메타 추가. | **P2** (M2.x 통합 시) |
+| **L** | 모바일 ChatBubble max-width 미정의 | β++ 검수 (2026-05-10), 이순신 검수 | 모바일 UX | 현재 ManagerCharacter 머리 위 ChatBubble의 `maxWidth: 240px` 고정. 640px 이하 작은 화면에서 옆 캐릭터 공간을 침범하거나 화면을 넘을 가능성. β++에서는 충분치 않으나 데스크톱 우선이라 보류. | (1) ChatBubble에 `maxWidth: "min(200px, 50vw)"` 미디어쿼리 또는 inline 적용, (2) 좁은 뷰포트에서 글자 크기 축소, (3) 인스타 reels 9:16 캡처 환경 점검 | **P2** (β++ 후속) |
 
 ---
 
@@ -37,3 +38,4 @@
 | 2026-05-10 | 사관 (docs-sagwan) | 신규 작성. Week 2 검수 3개 항목 기록 |
 | 2026-05-10 | 사관 (docs-sagwan) | β++ 시동 — D~H 5개 항목 추가 (transcript 파싱·UserPromptSubmit 훅·도제 픽셀·choreography·배경 디테일) |
 | 2026-05-10 | 사관 (docs-sagwan) | β++ 시동 검수 — I·J·K 3개 항목 추가 (selectLatestMessages 결함·SSE Set 누수·TaskScroll step 의미) |
+| 2026-05-10 | 메인 (이순신 검수 권고) | β++ 통합 검수 — L 1개 항목 추가 (모바일 ChatBubble max-width) |

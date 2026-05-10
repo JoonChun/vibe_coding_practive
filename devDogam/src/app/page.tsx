@@ -3,11 +3,13 @@
 import { useEffect, useMemo } from "react";
 import TaskScroll from "@/components/scroll/TaskScroll";
 import ManagerCharacter from "@/components/characters/ManagerCharacter";
-import ChatBubble from "@/components/chat/ChatBubble";
+import KingCharacter from "@/components/characters/KingCharacter";
+import IlwolObongdo from "@/components/background/IlwolObongdo";
 import KingInput from "@/components/input/KingInput";
 import { useEventStore } from "@/stores/eventStore";
 import { CHARACTERS } from "@/lib/characters";
 import { createEventStream } from "@/lib/eventStream";
+import { deriveManagerBubbles } from "@/lib/managerBubbles";
 
 /** 단청 오방색 — 화공 variant A 균등 5등분 */
 const DANCHEONG_COLORS = [
@@ -18,40 +20,17 @@ const DANCHEONG_COLORS = [
   { name: "흑", hex: "#2D2926" },
 ] as const;
 
-/** 매니저 4인 고정 목록 */
-const MANAGER_NAMES = [
-  "planner-dojeon",
-  "implementer-yeongsil",
-  "reviewer-sunsin",
-  "ideator-yagyong",
+/** 말풍선 폴백 — 이벤트 없을 때 말풍선 숨김 (idle 시 조용한 어전) */
+
+/** 매니저 4인 어전 도열 좌표 — 임금 분부 V5: 가장자리·하단 분산 */
+const MANAGER_LAYOUT = [
+  { name: "planner-dojeon",       side: "left"  as const, style: { left: "12%", top: "55%" } },
+  { name: "ideator-yagyong",      side: "left"  as const, style: { left: "8%",  top: "78%" } },
+  { name: "implementer-yeongsil", side: "right" as const, style: { left: "88%", top: "78%" } },
+  { name: "reviewer-sunsin",      side: "right" as const, style: { left: "92%", top: "55%" } },
 ] as const;
 
-/**
- * 말풍선에 표시할 이벤트 종류.
- * Claude Code 훅이 agent_message를 직접 emit하지 않으므로
- * 라이프사이클 이벤트도 포함시켜 *흐름 가시화*.
- * (진짜 발화 텍스트는 Phase 2의 transcript 파싱으로 대체 예정)
- */
-const BUBBLE_EVENT_TYPES = new Set([
-  "agent_start",
-  "agent_end",
-  "agent_dispatch",
-  "agent_message",
-]);
-
-/** 라이프사이클 이벤트의 합성 메시지 */
-function synthesizeBubbleMessage(type: string): string {
-  switch (type) {
-    case "agent_start":
-      return "작업을 시작합니다.";
-    case "agent_end":
-      return "작업을 마쳤습니다.";
-    case "agent_dispatch":
-      return "명을 받습니다.";
-    default:
-      return "";
-  }
-}
+// BUBBLE_EVENT_TYPES, synthesizeBubbleMessage → @/lib/managerBubbles 로 분리됨
 
 export default function Page() {
   // ── M2.2 SSE 연결 (eventStream 클라이언트 래퍼) ───────────────────────────
@@ -73,20 +52,29 @@ export default function Page() {
   // 또한 훅이 agent_message를 emit하지 않으므로 라이프사이클 이벤트도
   // 합성 메시지로 말풍선화 (Phase 2 transcript 파싱 전까지 임시).
   const events = useEventStore((s) => s.events);
-  const bubbles = useMemo(
-    () =>
-      events
-        .filter((e) => BUBBLE_EVENT_TYPES.has(e.type))
-        .slice(-5)
-        .map((e) => ({
-          id: e.id,
-          agentName: e.agentName,
-          message: e.message?.trim()
-            ? e.message
-            : synthesizeBubbleMessage(e.type),
-        })),
-    [events]
-  );
+
+  /** 매니저별 가장 최근 말풍선 메시지 1개 */
+  const managerBubbles = useMemo(() => deriveManagerBubbles(events), [events]);
+
+  /**
+   * 매니저별 절 모션 trigger.
+   * 단순화: events 배열 최후미에서 agent_message·agent_end 이벤트를 가진
+   * 매니저를 최대 1명 찾아 bowing=true 로 표시.
+   * events 변화마다 재계산되므로 새 이벤트 수신 시마다 절 1회 발동.
+   * (Date.now() impure 회피 — 순수 함수 useMemo)
+   */
+  const managerBowing = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e.type !== "agent_message" && e.type !== "agent_end") continue;
+      if (!CHARACTERS[e.agentName]?.manager) continue;
+      // 가장 최근 매니저 보고 이벤트 1개만 절 발동
+      map[e.agentName] = true;
+      break;
+    }
+    return map;
+  }, [events]);
 
   // 훅이 task_start를 emit하지 않으므로 currentTask?.title 은 항상 null.
   // → activeManagers/activeDojes 상태로 합성 제목 도출.
@@ -162,50 +150,53 @@ export default function Page() {
         step={taskStep}
       />
 
-      {/* ── 매니저 무대 ── */}
+      {/* ── 어전 도열 ── */}
       <section
-        className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-8 items-center justify-items-center px-4 py-6"
-        aria-label="매니저 회의실"
+        className="flex-1 relative overflow-hidden"
+        aria-label="어전 도열 — 임금과 매니저 4인"
       >
-        {MANAGER_NAMES.map((managerName) => (
-          <ManagerCharacter
-            key={managerName}
-            agentName={managerName}
-            isActive={activeManagers.has(managerName)}
-            visibleDojes={Array.from(activeDojes).filter(
-              (name) => CHARACTERS[name]?.parent === managerName
-            )}
-          />
-        ))}
-      </section>
+        {/* 일월오봉도 배경 (z:0) */}
+        <IlwolObongdo />
 
-      {/* ── 말풍선 로그 ── */}
-      <section
-        className="h-48 overflow-y-auto flex flex-col gap-3 px-4 py-3 border-t"
-        style={{
-          borderColor: "var(--bg-hanji-shadow)",
-          backgroundColor: "var(--bg-hanji-dark)",
-        }}
-        aria-label="대화 로그"
-        role="log"
-        aria-live="polite"
-      >
-        {bubbles.length > 0 ? (
-          bubbles.map((b) => (
-            <ChatBubble
-              key={b.id}
-              agentName={b.agentName}
-              message={b.message}
-            />
-          ))
-        ) : (
-          <p
-            className="text-sm text-center mt-8"
-            style={{ color: "#9CA3AF", fontFamily: "var(--font-serif)" }}
+        {/* 임금 (z:20) — LAYOUT-V4 §4: top 40%, 단상 위 정합, translate(-50%,-100%) */}
+        <div
+          className="absolute"
+          style={{ left: "50%", top: "40%", transform: "translate(-50%, -100%)", zIndex: 20 }}
+        >
+          <KingCharacter
+            message={managerBubbles["king"]}
+            isActive={isActive}
+          />
+        </div>
+
+        {/* 매니저 4인 (z:10) */}
+        {MANAGER_LAYOUT.map((m) => (
+          <div
+            key={m.name}
+            className="absolute"
+            style={{ ...m.style, transform: "translate(-50%, -100%)", zIndex: 10 }}
           >
-            임금의 명을 기다립니다…
-          </p>
-        )}
+            <ManagerCharacter
+              agentName={m.name}
+              isActive={activeManagers.has(m.name)}
+              visibleDojes={Array.from(activeDojes).filter(
+                (d) => CHARACTERS[d]?.parent === m.name
+              )}
+              side={m.side}
+              message={managerBubbles[m.name]}
+              bowing={managerBowing[m.name] ?? false}
+            />
+          </div>
+        ))}
+
+        {/* 숨김 aria-live — 스크린리더 말풍선 전달 */}
+        <div className="sr-only" aria-live="polite">
+          {Object.entries(managerBubbles).map(([name, msg]) => (
+            <div key={name}>
+              {CHARACTERS[name]?.displayName ?? name}: {msg}
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ── 임금 입력창 ── */}

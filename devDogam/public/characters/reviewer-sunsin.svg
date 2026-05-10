@@ -1,4 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <circle cx="32" cy="32" r="30" fill="#1A2B47" />
-  <text x="32" y="42" text-anchor="middle" font-size="28">⚓</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges" width="64" height="64">
+  <!-- 투구 (원뿔형) -->
+  <!-- 투구 꼭대기 -->
+  <rect x="14" y="2" width="4"  height="1" fill="#1A2B47"/>
+  <!-- 술 (적색) -->
+  <rect x="15" y="2" width="2"  height="1" fill="#C0392B"/>
+  <!-- 투구 상단 -->
+  <rect x="12" y="3" width="8"  height="2" fill="#1A2B47"/>
+  <!-- 투구 중단 -->
+  <rect x="10" y="5" width="12" height="2" fill="#1A2B47"/>
+  <!-- 투구 하단 차양 -->
+  <rect x="9"  y="7" width="14" height="2" fill="#0D1626"/>
+
+  <!-- 얼굴 -->
+  <rect x="10" y="9"  width="12" height="8" fill="#F0CFA0"/>
+  <!-- 얼굴 좌 음영 -->
+  <rect x="10" y="9"  width="1"  height="8" fill="#C9A37A"/>
+  <!-- 얼굴 우 음영 -->
+  <rect x="21" y="9"  width="1"  height="8" fill="#C9A37A"/>
+  <!-- 눈 (좌) -->
+  <rect x="12" y="12" width="2"  height="2" fill="#1A1410"/>
+  <!-- 눈 (우) -->
+  <rect x="18" y="12" width="2"  height="2" fill="#1A1410"/>
+  <!-- 입 (굳게 다문) -->
+  <rect x="14" y="15" width="4"  height="1" fill="#1A1410"/>
+
+  <!-- 목 -->
+  <rect x="13" y="17" width="6"  height="2" fill="#F0CFA0"/>
+  <!-- 갑옷 깃 -->
+  <rect x="11" y="18" width="2"  height="1" fill="#0D1626"/>
+  <rect x="19" y="18" width="2"  height="1" fill="#0D1626"/>
+
+  <!-- 갑옷 몸통 (진남) — 어깨 폭 넓게 -->
+  <rect x="7"  y="19" width="18" height="10" fill="#1A2B47"/>
+  <!-- 좌 어깨 음영 -->
+  <rect x="7"  y="19" width="2"  height="10" fill="#0D1626"/>
+  <!-- 우 어깨 음영 -->
+  <rect x="23" y="19" width="2"  height="10" fill="#0D1626"/>
+  <!-- 중앙 여밈선 -->
+  <rect x="15" y="19" width="2"  height="10" fill="#0D1626"/>
+  <!-- 소매 (좌) — 넓음 -->
+  <rect x="4"  y="20" width="3"  height="6"  fill="#1A2B47"/>
+  <!-- 소매 (우) -->
+  <rect x="25" y="20" width="3"  height="6"  fill="#1A2B47"/>
+
+  <!-- 갑옷 비늘 격자 (가슴 중앙) -->
+  <rect x="13" y="21" width="2"  height="2"  fill="#0D1626"/>
+  <rect x="17" y="21" width="2"  height="2"  fill="#0D1626"/>
+  <rect x="13" y="24" width="2"  height="2"  fill="#0D1626"/>
+  <rect x="17" y="24" width="2"  height="2"  fill="#0D1626"/>
+
+  <!-- 발 / 신발 -->
+  <rect x="9"  y="29" width="5"  height="3"  fill="#1A1410"/>
+  <rect x="18" y="29" width="5"  height="3"  fill="#1A1410"/>
 </svg>
