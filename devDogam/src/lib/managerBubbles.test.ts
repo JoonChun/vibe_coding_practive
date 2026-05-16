@@ -79,6 +79,15 @@ describe("deriveManagerBubbles", () => {
     const result = deriveManagerBubbles(events);
     expect(result["ideator-yagyong"]).toBe("새 기능 제안합니다.");
   });
+
+  it("agent_start 뒤 agent_message가 오면 agent_message 우선", () => {
+    const events = [
+      makeEvent("agent_start", "planner-dojeon"),
+      makeEvent("agent_message", "planner-dojeon", "계획 수립 중"),
+    ];
+    const result = deriveManagerBubbles(events);
+    expect(result["planner-dojeon"]).toBe("계획 수립 중");
+  });
 });
 
 describe("synthesizeBubbleMessage", () => {

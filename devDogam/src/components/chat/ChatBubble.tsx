@@ -59,9 +59,8 @@ export default function ChatBubble({ agentName, message, side = "left" }: Props)
         style={{
           color: "var(--color-ink)",
           display: "block",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          whiteSpace: "normal",
+          wordBreak: "keep-all",
           maxWidth: "140px",
           textAlign: "center",
         }}
