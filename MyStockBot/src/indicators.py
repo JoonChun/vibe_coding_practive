@@ -9,7 +9,10 @@ import ta.momentum
 import ta.trend
 import ta.volatility
 
-from config import RSI_PERIOD, MACD_FAST, MACD_SLOW, MACD_SIGNAL, BB_PERIOD, BB_STD
+from config import (
+    RSI_PERIOD, MACD_FAST, MACD_SLOW, MACD_SIGNAL,
+    BB_PERIOD, BB_STD, RSI_OVERSOLD, RSI_OVERBOUGHT,
+)
 
 
 def _to_float(val) -> float | None:
@@ -20,30 +23,60 @@ def _to_float(val) -> float | None:
         return None
 
 
-def calculate_indicators(df: pd.DataFrame) -> dict:
+_MIN_BARS_MACD = MACD_SLOW + MACD_SIGNAL
+
+
+def macd_cross_signal(df: pd.DataFrame) -> str:
+    if len(df) < _MIN_BARS_MACD:
+        return "데이터부족"
     close = df["close"].astype(float)
-
-    rsi = ta.momentum.RSIIndicator(close=close, window=RSI_PERIOD).rsi()
-
     macd_obj = ta.trend.MACD(
         close=close,
         window_fast=MACD_FAST,
         window_slow=MACD_SLOW,
         window_sign=MACD_SIGNAL,
     )
+    macd_line = macd_obj.macd()
+    signal_line = macd_obj.macd_signal()
+    prev_m, curr_m = macd_line.iloc[-2], macd_line.iloc[-1]
+    prev_s, curr_s = signal_line.iloc[-2], signal_line.iloc[-1]
+    if any(math.isnan(v) for v in [prev_m, curr_m, prev_s, curr_s]):
+        return "데이터부족"
+    if prev_m <= prev_s and curr_m > curr_s:
+        return "골든크로스(진입)"
+    if prev_m >= prev_s and curr_m < curr_s:
+        return "데드크로스(매도)"
+    if curr_m > curr_s:
+        return "진입구간"
+    return "매도구간"
 
+
+def rsi_zone_signal(df: pd.DataFrame) -> str:
+    if len(df) <= RSI_PERIOD:
+        return "데이터부족"
+    close = df["close"].astype(float)
+    rsi_series = ta.momentum.RSIIndicator(close=close, window=RSI_PERIOD).rsi()
+    if len(rsi_series) == 0 or rsi_series.isna().all():
+        return "데이터부족"
+    latest = rsi_series.iloc[-1]
+    if math.isnan(latest):
+        return "데이터부족"
+    if latest <= RSI_OVERSOLD:
+        return "과매도(진입)"
+    if latest >= RSI_OVERBOUGHT:
+        return "과매수(매도)"
+    return "중립"
+
+
+def bollinger(df: pd.DataFrame) -> dict:
+    close = df["close"].astype(float)
     bb_obj = ta.volatility.BollingerBands(
         close=close,
         window=BB_PERIOD,
         window_dev=BB_STD,
     )
-
     return {
-        "rsi":         _to_float(rsi.iloc[-1]),
-        "macd":        _to_float(macd_obj.macd().iloc[-1]),
-        "macd_signal": _to_float(macd_obj.macd_signal().iloc[-1]),
-        "macd_hist":   _to_float(macd_obj.macd_diff().iloc[-1]),
-        "bb_upper":    _to_float(bb_obj.bollinger_hband().iloc[-1]),
-        "bb_mid":      _to_float(bb_obj.bollinger_mavg().iloc[-1]),
-        "bb_lower":    _to_float(bb_obj.bollinger_lband().iloc[-1]),
+        "bb_upper": _to_float(bb_obj.bollinger_hband().iloc[-1]),
+        "bb_mid":   _to_float(bb_obj.bollinger_mavg().iloc[-1]),
+        "bb_lower": _to_float(bb_obj.bollinger_lband().iloc[-1]),
     }

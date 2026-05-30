@@ -62,4 +62,5 @@ def write_stock_data(spreadsheet_id: str, rows: list[list]) -> None:
         return
     client = _get_client()
     sheet = client.open_by_key(spreadsheet_id).worksheet(SHEET_STOCKDATA)
-    sheet.append_rows(rows, value_input_option="USER_ENTERED")
+    str_rows = [[("" if v is None else str(v)) for v in row] for row in rows]
+    sheet.append_rows(str_rows, value_input_option="RAW", table_range="A1")

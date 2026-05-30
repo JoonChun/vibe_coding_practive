@@ -8,7 +8,7 @@ STOCK_CODE_LENGTH = 6
 STOCKDATA_HEADER = [
     "날짜", "종목코드", "종목명",
     "시가", "종가", "저가", "고가", "거래량",
-    "RSI", "MACD", "MACD_Signal", "MACD_Hist",
+    "MACD(1일봉)", "RSI(1일봉)", "MACD(60분봉)", "RSI(60분봉)",
     "BB_Upper", "BB_Mid", "BB_Lower",
     "PER", "PBR", "ROE", "매출액", "순이익"
 ]
@@ -28,6 +28,8 @@ KIS_ACCOUNT_NO_ENV = "KIS_ACCOUNT_NO"
 # 기술지표 파라미터
 OHLCV_LOOKBACK_DAYS = 60    # RSI/MACD/BB 계산용 과거 일봉 수 (KIS API 최대 100건 제한)
 KIS_RATE_LIMIT_DELAY = 0.5  # 초, KIS API 호출 간격
+RSI_OVERSOLD = 30
+RSI_OVERBOUGHT = 70
 RSI_PERIOD = 14
 MACD_FAST = 12
 MACD_SLOW = 26
