@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
                 pastLastId = true;
               }
             } catch {
-              // malformed line — 무시
+              console.warn("[events/route] malformed JSON skipped (resume):", line.slice(0, 120));
             }
           }
           const stat = await fs.stat(STREAM_PATH);
@@ -47,10 +47,24 @@ export async function GET(request: NextRequest) {
           // 파일 없음 — 무시, lastByteOffset = 0 유지
         }
       } else {
-        // last-event-id 없으면 현재 파일 끝 위치부터 신규 이벤트만 감시
+        // last-event-id 없으면: 마지막 N줄 replay 후 그 위치부터 신규 감시
+        const REPLAY_N = 100;
         try {
-          const stat = await fs.stat(STREAM_PATH);
-          lastByteOffset = stat.size;
+          const content = await fs.readFile(STREAM_PATH, "utf-8");
+          const lines = content.split("\n").filter(Boolean);
+          const tail = lines.slice(-REPLAY_N);
+          for (const line of tail) {
+            try {
+              const event = JSON.parse(line) as { id?: string };
+              controller.enqueue(
+                encoder.encode(`id: ${event.id ?? ""}\ndata: ${line}\n\n`)
+              );
+            } catch {
+              console.warn("[events/route] malformed JSON skipped (replay):", line.slice(0, 120));
+            }
+          }
+          // 실제 readFile 반환 크기 기준 — stat→readFile 사이 race 시 stale offset 방지
+          lastByteOffset = Buffer.byteLength(content, "utf-8");
         } catch {
           // 파일 아직 없음 — OK, 0에서 시작
         }
@@ -85,7 +99,7 @@ export async function GET(request: NextRequest) {
                 encoder.encode(`id: ${event.id ?? ""}\ndata: ${line}\n\n`)
               );
             } catch {
-              // malformed line — skip
+              console.warn("[events/route] malformed JSON skipped (live):", line.slice(0, 120));
             }
           }
         } catch {

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TaskScroll from "@/components/scroll/TaskScroll";
 import ManagerCharacter from "@/components/characters/ManagerCharacter";
+import DojeFloorRow from "@/components/characters/DojeFloorRow";
 import KingCharacter from "@/components/characters/KingCharacter";
 import IlwolObongdo from "@/components/background/IlwolObongdo";
 import KingInput from "@/components/input/KingInput";
@@ -11,7 +12,8 @@ import { CHARACTERS } from "@/lib/characters";
 import { createEventStream } from "@/lib/eventStream";
 import { deriveManagerBubbles } from "@/lib/managerBubbles";
 
-/** 단청 오방색 — 화공 variant A 균등 5등분 */
+/** 단청 오방색 — 화공 variant A 균등 5등분. 옵션 A 전환 후 DOM 사용 없음 — 이력 보존 */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const DANCHEONG_COLORS = [
   { name: "청", hex: "#2C5F8D" },
   { name: "적", hex: "#D94F2B" },
@@ -22,12 +24,12 @@ const DANCHEONG_COLORS = [
 
 /** 말풍선 폴백 — 이벤트 없을 때 말풍선 숨김 (idle 시 조용한 어전) */
 
-/** 매니저 4인 어전 도열 좌표 — v2.2: 마룻바닥 안착 (발 끝 기준 translate(-50%,-100%)) */
+/** 매니저 4인 어전 도열 좌표 — v3: 카펫 양옆 도열 (발 끝 기준 translate(-50%,-100%)) */
 const MANAGER_LAYOUT = [
-  { name: "planner-dojeon",       side: "left"  as const, style: { left: "35%", top: "70%" } },
-  { name: "ideator-yagyong",      side: "left"  as const, style: { left: "15%", top: "88%" } },
-  { name: "implementer-yeongsil", side: "right" as const, style: { left: "85%", top: "88%" } },
-  { name: "reviewer-sunsin",      side: "right" as const, style: { left: "65%", top: "70%" } },
+  { name: "planner-dojeon", side: "left" as const, style: { left: "38%", top: "65%" } },
+  { name: "ideator-yagyong", side: "left" as const, style: { left: "18%", top: "75%" } },
+  { name: "implementer-yeongsil", side: "right" as const, style: { left: "82%", top: "75%" } },
+  { name: "reviewer-sunsin", side: "right" as const, style: { left: "62%", top: "65%" } },
 ] as const;
 
 // BUBBLE_EVENT_TYPES, synthesizeBubbleMessage → @/lib/managerBubbles 로 분리됨
@@ -53,32 +55,47 @@ export default function Page() {
   // 합성 메시지로 말풍선화 (Phase 2 transcript 파싱 전까지 임시).
   const events = useEventStore((s) => s.events);
 
-  /** 매니저별 가장 최근 말풍선 메시지 1개 */
-  const managerBubbles = useMemo(() => deriveManagerBubbles(events), [events]);
+  // agent_end 말풍선 10초 후 자동 사라짐(TTL) 트리거용 1초 ticker.
+  // 서버 SSR 시 0 → fade 비활성 (hydration mismatch 방지).
+  // 클라이언트 mount 후 setInterval로 Date.now() 갱신 → managerBubbles 재계산.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  /** 매니저별 가장 최근 말풍선 메시지 1개 (agent_end는 10초 후 자동 숨김) */
+  const managerBubbles = useMemo(
+    () => deriveManagerBubbles(events, now),
+    [events, now]
+  );
 
   /**
-   * 매니저별 절 모션 trigger.
-   * 단순화: events 배열 최후미에서 agent_message·agent_end 이벤트를 가진
-   * 매니저를 최대 1명 찾아 bowing=true 로 표시.
-   * events 변화마다 재계산되므로 새 이벤트 수신 시마다 절 1회 발동.
-   * (Date.now() impure 회피 — 순수 함수 useMemo)
+   * 매니저별 절 모션 trigger key.
+   *
+   * §7: 여러 매니저가 연속 보고 시 각자 절 — 1명 제한 폐기.
+   * 최근 5개 이벤트 window 안의 agent_message·agent_end 를 모두 수집.
+   * 각 매니저마다 가장 최근 trigger 이벤트의 id(또는 timestamp)를 bowEventKey 로 부여.
+   * bowEventKey 값이 바뀔 때마다 절 1회 발동 (단청도제 M3.2-3에서 useEffect 연결 예정).
+   *
+   * 반환형: Record<string, string | undefined>  (managerName → bowEventKey)
+   * (Date.now() impure 회피 — events 배열의 기존 id/ts 필드 사용)
    */
-  const managerBowing = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i];
+  const managerBowTriggers = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+    const window = events.slice(-5);
+    for (const e of window) {
       if (e.type !== "agent_message" && e.type !== "agent_end") continue;
       if (!CHARACTERS[e.agentName]?.manager) continue;
-      // 가장 최근 매니저 보고 이벤트 1개만 절 발동
-      map[e.agentName] = true;
-      break;
+      // 나중 이벤트가 앞 이벤트를 덮어씀 → 자연스럽게 가장 최근 trigger 보존
+      map[e.agentName] = e.id;
     }
     return map;
   }, [events]);
 
-  // 훅이 task_start를 emit하지 않으므로 currentTask?.title 은 항상 null.
-  // → activeManagers/activeDojes 상태로 합성 제목 도출.
-  // (진짜 user prompt 텍스트는 Phase 2의 UserPromptSubmit 훅으로 대체 예정)
+  // task_start/task_end는 UserPromptSubmit/Stop 훅이 emit (Phase 2 E).
+  // 훅이 빈 prompt나 미발동 상태일 때 대비해 합성 fallback 유지.
   const isActive = activeManagers.size > 0 || activeDojes.size > 0;
   const taskTitle =
     currentTask?.title ??
@@ -98,17 +115,10 @@ export default function Page() {
       className="flex flex-col h-screen overflow-hidden"
       style={{ backgroundColor: "var(--bg-hanji)" }}
     >
-      {/* ── 단청 오방색 상단 바 ── */}
-      <header className="relative h-12 flex shrink-0" role="banner">
-        {/* 오방색 5등분 */}
-        {DANCHEONG_COLORS.map((c) => (
-          <div
-            key={c.name}
-            className="flex-1"
-            style={{ backgroundColor: c.hex }}
-            aria-hidden="true"
-          />
-        ))}
+      {/* ── 상단 바 — 옵션 A: 단색 #4A2C2A (어전 천장 단청은 SVG 내부에만 표현) ── */}
+      <header className="relative h-12 flex shrink-0" role="banner" style={{ backgroundColor: "#4A2C2A" }}>
+        {/* 오방색 5등분 div 제거 — SVG 내부 천장 띠와 중복 방지 */}
+        {/* DANCHEONG_COLORS 상수는 이력 보존을 위해 유지 */}
 
         {/* 한자 타이틀 — absolute 오버레이 */}
         <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
@@ -169,6 +179,28 @@ export default function Page() {
           />
         </div>
 
+        {/* 품계석 — 매니저 발 아래 고정. z=2 (마루 위, 매니저 아래) */}
+        {MANAGER_LAYOUT.map((m) => (
+          <div
+            key={`${m.name}-pumgyeseok`}
+            className="absolute"
+            style={{
+              ...m.style,                                  // 매니저와 동일 left/top
+              transform: "translate(-50%, 0)",             // 매니저는 -100% (발바닥) → 품계석은 0 (그 아래)
+              width: "28px",
+              height: "8px",
+              backgroundColor: "#8B7355",
+              border: "1px solid #1A1410",
+              zIndex: 2,
+              pointerEvents: "none",
+            }}
+            aria-hidden="true"
+          />
+        ))}
+
+        {/* 도제 12인 마룻바닥 일렬 (z:5) */}
+        <DojeFloorRow activeDojes={activeDojes} dojeBubbles={managerBubbles} />
+
         {/* 매니저 4인 (z:10) */}
         {MANAGER_LAYOUT.map((m) => (
           <div
@@ -179,12 +211,9 @@ export default function Page() {
             <ManagerCharacter
               agentName={m.name}
               isActive={activeManagers.has(m.name)}
-              visibleDojes={Array.from(activeDojes).filter(
-                (d) => CHARACTERS[d]?.parent === m.name
-              )}
               side={m.side}
               message={managerBubbles[m.name]}
-              bowing={managerBowing[m.name] ?? false}
+              bowTrigger={managerBowTriggers[m.name]}
             />
           </div>
         ))}

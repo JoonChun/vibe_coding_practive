@@ -16,28 +16,40 @@ export default function IlwolObongdo() {
         height="100%"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* ── 레이어2: 좌 기둥 몸체 (x=0~50, y=0~600) ── */}
-        <rect x="0" y="0" width="50" height="600" fill="#A52A2A" />
-        {/* 좌 기둥 단청 띠 4개 */}
-        <rect x="0" y="8"  width="50" height="8"  fill="#2C5F8D" />
-        <rect x="0" y="16" width="50" height="6"  fill="#C9A84C" />
-        <rect x="0" y="22" width="50" height="5"  fill="#2D2926" />
-        <rect x="0" y="27" width="50" height="6"  fill="#2C5F8D" />
-        {/* 좌 기둥 받침 — v5: y=430~452 */}
-        <rect x="0" y="430" width="50" height="22" fill="#5C3A21" />
+        {/* ── [NEW 1~6] 천장 단청 띠 — y=0~48 ── */}
+        {/* [NEW 1] 천장 베이스 흑: y=0~6 */}
+        <rect x="0" y="0"  width="1000" height="6"  fill="#1A2B47" />
+        {/* [NEW 2] 청 띠: y=6~16 */}
+        <rect x="0" y="6"  width="1000" height="10" fill="#2C5F8D" />
+        {/* [NEW 3] 적 띠: y=16~26 */}
+        <rect x="0" y="16" width="1000" height="10" fill="#D94F2B" />
+        {/* [NEW 4] 황 띠: y=26~34 */}
+        <rect x="0" y="26" width="1000" height="8"  fill="#C9A84C" />
+        {/* [NEW 5] 녹 띠: y=34~42 */}
+        <rect x="0" y="34" width="1000" height="8"  fill="#7BA05B" />
+        {/* [NEW 6] 흑 마감 띠: y=42~48 */}
+        <rect x="0" y="42" width="1000" height="6"  fill="#1A2B47" />
 
-        {/* ── 레이어2: 우 기둥 몸체 (x=950~1000, y=0~600) ── */}
-        <rect x="950" y="0"   width="50" height="600" fill="#A52A2A" />
-        {/* 우 기둥 단청 띠 4개 */}
-        <rect x="950" y="8"   width="50" height="8"  fill="#2C5F8D" />
-        <rect x="950" y="16"  width="50" height="6"  fill="#C9A84C" />
-        <rect x="950" y="22"  width="50" height="5"  fill="#2D2926" />
-        <rect x="950" y="27"  width="50" height="6"  fill="#2C5F8D" />
-        {/* 우 기둥 받침 — v5: y=430~452 */}
-        <rect x="950" y="430" width="50" height="22" fill="#5C3A21" />
+        {/* ── [MODIFY 7] 좌 기둥 몸체 (x=0~62, y=0~600) ── */}
+        <rect x="0" y="0" width="62" height="600" fill="#A52A2A" />
+        {/* 좌 기둥 단청 띠 4개 제거 — 천장 띠(y=0~48)가 커버, 중복·이순신 반려 */}
+        {/* [MODIFY 13] 좌 기둥 받침 이중단 */}
+        {/* 좌 위 단: y=425~435 */}
+        <rect x="0" y="425" width="62" height="10" fill="#3D2615" />
+        {/* 좌 아래 단: y=435~452 (구 y=430 h=22 → y=435 h=17) */}
+        <rect x="0" y="435" width="62" height="17" fill="#5C3A21" />
 
-        {/* ── Step 1: 후벽 단색 #4A2C2A (x=50~950, y=0~450) — 하늘 그라디언트 제거 ── */}
-        <rect x="50" y="0" width="900" height="450" fill="#4A2C2A" />
+        {/* ── [MODIFY 8] 우 기둥 몸체 (x=938~1000, y=0~600) ── */}
+        <rect x="938" y="0"   width="62" height="600" fill="#A52A2A" />
+        {/* 우 기둥 단청 띠 4개 제거 — 천장 띠(y=0~48)가 커버, 중복·이순신 반려 */}
+        {/* [MODIFY 14] 우 기둥 받침 이중단 */}
+        {/* 우 위 단: y=425~435 */}
+        <rect x="938" y="425" width="62" height="10" fill="#3D2615" />
+        {/* 우 아래 단: y=435~452 */}
+        <rect x="938" y="435" width="62" height="17" fill="#5C3A21" />
+
+        {/* ── [MODIFY 15] 후벽: x=62 y=48 w=876 h=402 (기둥 62px, 천장 48px 반영) ── */}
+        <rect x="62" y="48" width="876" height="402" fill="#4A2C2A" />
 
         {/* ── Step 2: 일월오봉도 사각 병풍 (x=400~600, y=140~260) ── */}
         {/* 병풍 외곽 프레임 */}
