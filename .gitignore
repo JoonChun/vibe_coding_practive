@@ -15,6 +15,8 @@
 !pharmaTA/**
 !devDogam/
 !devDogam/**
+!MyStockBot/
+!MyStockBot/**
 !.gitignore
 !README.md
 
