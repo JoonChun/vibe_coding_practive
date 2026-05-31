@@ -19,6 +19,8 @@
 !MyStockBot/**
 !.gitignore
 !README.md
+!.github/
+!.github/**
 
 # Sensitive files and unnecessary folders
 **/.env.js
