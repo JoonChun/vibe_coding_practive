@@ -22,6 +22,7 @@ jobs:
 
       - run: python src/main.py
         env:
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
