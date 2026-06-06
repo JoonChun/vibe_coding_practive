@@ -116,9 +116,11 @@ def _build_html(success_list: list[dict], failed_list: list[dict], date_str: str
 def send_report(success_list: list[dict], failed_list: list[dict], date_str: str) -> None:
     sender = os.environ.get(SENDER_EMAIL_ENV_KEY, "")
     password = os.environ.get(GMAIL_APP_PASSWORD_ENV_KEY, "")
-    recipient = os.environ.get(NOTIFY_EMAIL_ENV_KEY, "")
+    recipient_raw = os.environ.get(NOTIFY_EMAIL_ENV_KEY, "")
 
-    if not sender or not password or not recipient:
+    recipients = [addr.strip() for addr in recipient_raw.split(",") if addr.strip()]
+
+    if not sender or not password or not recipients:
         print("[notifier] 이메일 환경변수 누락 — 알림 발송 건너뜀")
         return
 
@@ -128,12 +130,12 @@ def send_report(success_list: list[dict], failed_list: list[dict], date_str: str
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = sender
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html, "html"))
 
     try:
         with smtplib.SMTP_SSL(GMAIL_SMTP_HOST, GMAIL_SMTP_PORT) as smtp:
             smtp.login(sender, password)
-            smtp.sendmail(sender, recipient, msg.as_string())
+            smtp.sendmail(sender, recipients, msg.as_string())
     except Exception as e:
         print(f"[notifier] 이메일 발송 실패: {e}")

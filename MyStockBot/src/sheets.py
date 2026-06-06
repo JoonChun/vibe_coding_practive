@@ -47,9 +47,9 @@ def load_stock_list(spreadsheet_id: str) -> list[dict]:
         if not raw_code:
             continue
 
-        code = raw_code.zfill(STOCK_CODE_LENGTH)
+        code = raw_code.zfill(STOCK_CODE_LENGTH).upper()
 
-        if len(code) != STOCK_CODE_LENGTH or not code.isdigit():
+        if len(code) != STOCK_CODE_LENGTH or not code.isalnum():
             continue
 
         result.append({"code": code, "name": raw_name})

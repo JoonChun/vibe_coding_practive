@@ -80,3 +80,70 @@ def bollinger(df: pd.DataFrame) -> dict:
         "bb_mid":   _to_float(bb_obj.bollinger_mavg().iloc[-1]),
         "bb_lower": _to_float(bb_obj.bollinger_lband().iloc[-1]),
     }
+
+
+_NO_DATA = (None, "데이터부족")
+
+
+def _macd_score(sig) -> int:
+    return {
+        "골든크로스(진입)": 2,
+        "진입구간": 1,
+        "매도구간": -1,
+        "데드크로스(매도)": -2,
+    }.get(sig, 0)
+
+
+def _rsi_score(sig) -> int:
+    return {
+        "과매도(진입)": 1,
+        "과매수(매도)": -1,
+    }.get(sig, 0)
+
+
+def _fundamental_score(per, pbr, roe) -> int:
+    score = 0
+    if per is not None:
+        if per <= 0:
+            score -= 1
+        elif per < 10:
+            score += 1
+        elif per >= 30:
+            score -= 1
+    if pbr is not None and pbr > 0:
+        if pbr < 1:
+            score += 1
+        elif pbr >= 3:
+            score -= 1
+    if roe is not None:
+        if roe >= 15:
+            score += 1
+        elif roe < 0:
+            score -= 1
+    return score
+
+
+def _level5(score: int, strong: int) -> str:
+    if score >= strong:
+        return "강력매수"
+    if score >= 1:
+        return "매수"
+    if score <= -strong:
+        return "강력매도"
+    if score <= -1:
+        return "매도"
+    return "관망"
+
+
+def short_term_view(macd_60m, rsi_60m) -> str:
+    if macd_60m in _NO_DATA and rsi_60m in _NO_DATA:
+        return "데이터부족"
+    return _level5(_macd_score(macd_60m) + _rsi_score(rsi_60m), strong=2)
+
+
+def long_term_view(macd_1d, rsi_1d, per, pbr, roe) -> str:
+    fund = _fundamental_score(per, pbr, roe)
+    if macd_1d in _NO_DATA and rsi_1d in _NO_DATA and fund == 0:
+        return "데이터부족"
+    tech = _macd_score(macd_1d) + _rsi_score(rsi_1d)
+    return _level5(tech + fund, strong=3)

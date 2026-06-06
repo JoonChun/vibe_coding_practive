@@ -63,6 +63,7 @@ def main():
                     s["code"], s["name"],
                     s.get("open"), s.get("close"), s.get("low"), s.get("high"), s.get("volume"),
                     s.get("macd_1d"), s.get("rsi_1d"), s.get("macd_60m"), s.get("rsi_60m"),
+                    s.get("short_view"), s.get("long_view"),
                     s.get("bb_upper"), s.get("bb_mid"), s.get("bb_lower"),
                     s.get("per"), s.get("pbr"), s.get("roe"),
                     s.get("revenue"), s.get("net_income"),
