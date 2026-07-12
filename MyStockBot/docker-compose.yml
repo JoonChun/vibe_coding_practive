@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  mystockbot:
+    build: .
+    container_name: mystockbot-api
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      TZ: Asia/Seoul
+      MYSTOCKBOT_DB_PATH: /app/data/mystockbot.db
+    volumes:
+      # SQLite database persistence
+      - ./data:/app/data
+    restart: unless-stopped
+    # Health check (slim 이미지에 curl이 없어 python 표준 라이브러리 사용)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/watchlist', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
