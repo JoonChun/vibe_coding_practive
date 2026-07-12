@@ -51,6 +51,7 @@ _EMPTY_RESULT = {
     "bb_upper": None, "bb_mid": None, "bb_lower": None,
     "per": None, "pbr": None, "roe": None,
     "revenue": None, "net_income": None,
+    "source": None, "source_60m": None,
 }
 
 
@@ -232,7 +233,9 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
     }
 
     return {"code": code, "name": name, **price_data, **indicator_data,
-            **view_data, **ratio_data, **income_data, "error": None}
+            **view_data, **ratio_data, **income_data,
+            "source": "kis", "source_60m": ("yfinance" if df60 is not None else None),
+            "error": None}
 
 
 # ────────────────────────────────────────────
@@ -358,7 +361,9 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
 
         print(f"[YF] 수집 성공 ({code})")
         return {"code": code, "name": name, **price_data, **indicator_data,
-                **view_data, **ratio_data, **income_data, "error": None}
+                **view_data, **ratio_data, **income_data,
+                "source": "yfinance", "source_60m": ("yfinance" if df60 is not None else None),
+                "error": None}
 
     except Exception as e:
         print(f"[YF] 수집 실패 ({code}): {e}")
@@ -384,7 +389,11 @@ def fetch_stock_price(code: str, name: str, token: str) -> dict:
 
 
 def fetch_all(stock_list: list[dict]) -> tuple[list[dict], list[dict]]:
-    token = kis_auth.get_token()
+    try:
+        token = kis_auth.get_token()
+    except Exception as e:
+        print(f"[crawler] KIS 토큰 발급 실패 — 전 종목 Yahoo 폴백으로 진행: {e}")
+        token = None
 
     success_list = []
     failed_list = []

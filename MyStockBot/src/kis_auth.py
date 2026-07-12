@@ -1,7 +1,7 @@
-import json
 import os
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -10,18 +10,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import requests
 from config import KIS_TOKEN_URL, KIS_APP_KEY_ENV, KIS_APP_SECRET_ENV, TIMEZONE
 
-_CACHE_FILE = Path("/tmp/kis_token_cache.json")
+_TOKEN_CACHE = {"access_token": None, "expires_at": None}
 
 
 def _load_cache() -> str | None:
-    if not _CACHE_FILE.exists():
-        return None
     try:
-        data = json.loads(_CACHE_FILE.read_text())
-        expires_at = datetime.fromisoformat(data["expires_at"])
+        expires_at = _TOKEN_CACHE.get("expires_at")
+        access_token = _TOKEN_CACHE.get("access_token")
+        if expires_at is None or access_token is None:
+            return None
         now = datetime.now(ZoneInfo(TIMEZONE))
         if now < expires_at:
-            return data["access_token"]
+            return access_token
     except Exception:
         pass
     return None
@@ -29,14 +29,29 @@ def _load_cache() -> str | None:
 
 def _save_cache(token: str, expires_in: int) -> None:
     try:
-        from datetime import timedelta
         expires_at = datetime.now(ZoneInfo(TIMEZONE)) + timedelta(seconds=expires_in - 300)
-        _CACHE_FILE.write_text(json.dumps({
-            "access_token": token,
-            "expires_at": expires_at.isoformat(),
-        }))
+        _TOKEN_CACHE["access_token"] = token
+        _TOKEN_CACHE["expires_at"] = expires_at
     except Exception:
         pass
+
+
+def _request_token(payload: dict) -> dict:
+    max_attempts = 3
+    backoff_seconds = [1, 2, 4]
+    last_error: Exception | None = None
+
+    for attempt in range(max_attempts):
+        try:
+            resp = requests.post(KIS_TOKEN_URL, json=payload, timeout=10)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as e:
+            last_error = e
+            if attempt < max_attempts - 1:
+                time.sleep(backoff_seconds[attempt])
+
+    raise RuntimeError(f"토큰 발급 요청 실패: {last_error}") from last_error
 
 
 def get_token() -> str:
@@ -56,13 +71,7 @@ def get_token() -> str:
         "appsecret": app_secret,
     }
 
-    try:
-        resp = requests.post(KIS_TOKEN_URL, json=payload, timeout=10)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        raise RuntimeError(f"토큰 발급 요청 실패: {e}") from e
-
-    data = resp.json()
+    data = _request_token(payload)
     token = data.get("access_token")
     if not token:
         raise RuntimeError(f"access_token 없음. 응답: {data}")

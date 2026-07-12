@@ -63,4 +63,27 @@ def write_stock_data(spreadsheet_id: str, rows: list[list]) -> None:
     client = _get_client()
     sheet = client.open_by_key(spreadsheet_id).worksheet(SHEET_STOCKDATA)
     str_rows = [[("" if v is None else str(v)) for v in row] for row in rows]
-    sheet.append_rows(str_rows, value_input_option="RAW", table_range="A1")
+
+    existing_values = sheet.get_all_values()
+    existing_keys = set()
+    if existing_values:
+        for row in existing_values[1:]:
+            if len(row) >= 2:
+                existing_keys.add((row[0], row[1]))
+
+    new_rows = []
+    skipped = 0
+    for row in str_rows:
+        key = (row[0], row[1])
+        if key in existing_keys:
+            skipped += 1
+            continue
+        new_rows.append(row)
+
+    if skipped:
+        print(f"[sheets] 중복 (날짜,종목코드) {skipped}건 건너뜀")
+
+    if not new_rows:
+        return
+
+    sheet.append_rows(new_rows, value_input_option="RAW", table_range="A1")
