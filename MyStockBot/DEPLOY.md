@@ -97,10 +97,36 @@ docker compose restart mystockbot-api
 
 ## 4. 보안 주의 ⚠️
 
-### 현재 상태
-API에 인증 메커니즘 없음. Cloudflare Tunnel로 공개하면 **누구나 watchlist 조작 가능**.
+### API 토큰 인증 (MYSTOCKBOT_API_TOKEN)
+Cloudflare Tunnel 등으로 외부 공개 시 **반드시 토큰을 설정**할 것. 설정하지 않으면
+누구나 watchlist 조작·조회가 가능한 무인증 상태로 동작한다 (서버 시작 로그에
+"⚠ API 토큰 미설정 — 인증 비활성" 경고가 출력됨).
 
-### 권장 방안 (우선순위)
+**1) 토큰 생성**
+```bash
+openssl rand -hex 32
+```
+
+**2) MyStockBot/.env 에 설정**
+```
+MYSTOCKBOT_API_TOKEN=<위에서 생성한 값>
+```
+설정 후 `docker compose restart mystockbot-api` (또는 `up -d --build`)로 재시작.
+서버 로그에 "API 토큰 인증 활성"이 출력되면 정상 적용된 것.
+
+**3) 동작 방식**
+- 토큰이 설정되면 모든 `/api/*` 요청에 `Authorization: Bearer <토큰>` 헤더가 필요하다.
+- 예외: `GET /api/health` (헬스체크용, 항상 무인증), CORS preflight(OPTIONS).
+- 헤더 누락/불일치 시 `401 {"detail": "인증이 필요합니다"}` 반환.
+
+**4) 프론트엔드에서 토큰 입력 — 빌드에 토큰을 넣지 말 것**
+토큰을 Vite 빌드 환경변수(`VITE_*`)로 넣으면 브라우저에 배포되는 공개 번들에
+그대로 노출된다 (프론트 정적 파일은 누구나 열람 가능). 대신:
+- 브라우저로 접속 후 최초 1회 토큰 입력 UI에서 입력
+- `localStorage` 키 `mystockbot_api_token` 에 저장, 이후 모든 요청에 자동 첨부
+- 401 응답 수신 시 토큰 입력 UI를 다시 노출
+
+### 추가 방안 (선택, 병행 권장)
 1. **Tailscale (사설망)**: 무료. 본인과 신뢰 사용자만 접근
    - `https://mystockbot.tailnet-abc.ts.net`으로 접근
    - Cloudflare 대신 Tailscale MagicDNS 사용
@@ -108,11 +134,8 @@ API에 인증 메커니즘 없음. Cloudflare Tunnel로 공개하면 **누구나
 2. **Cloudflare Access (무료 계층)**: Cloudflare 계정으로 인증
    - Tunnel 설정 시 "Access" 정책 추가
 
-3. **토큰 인증 (추후)**: FastAPI에 Bearer token 추가
-   - 프론트/백엔드 모두 토큰 관리 필요
-
-### 임시 조치
-현재 개발 단계면 localhost(Tailscale) 또는 IP 화이트리스트 권장.
+토큰 인증만으로도 공개 노출 시 최소한의 보호는 되지만, Tailscale/Cloudflare Access와
+병행하면 이중 방어가 된다.
 
 ---
 

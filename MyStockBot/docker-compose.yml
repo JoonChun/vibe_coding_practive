@@ -15,8 +15,9 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     # Health check (slim 이미지에 curl이 없어 python 표준 라이브러리 사용)
+    # /api/health 는 인증 예외 경로 — API 토큰이 설정돼도 헬스체크는 계속 통과한다.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/watchlist', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

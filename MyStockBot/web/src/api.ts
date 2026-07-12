@@ -9,6 +9,35 @@ import type {
 // 배포(Vercel 등): VITE_API_BASE에 백엔드 공개 URL을 설정.
 const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
+const TOKEN_STORAGE_KEY = "mystockbot_api_token";
+
+/** 저장된 API 토큰 조회. localStorage 접근 불가(프라이빗 모드 등) 시 null. */
+export function getApiToken(): string | null {
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** API 토큰 저장. */
+export function setApiToken(token: string): void {
+  try {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // localStorage 접근 불가 시 무시
+  }
+}
+
+/** API 토큰 삭제. */
+export function clearApiToken(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // localStorage 접근 불가 시 무시
+  }
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -38,10 +67,18 @@ async function extractErrorMessage(res: Response): Promise<string> {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  const token = getApiToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   try {
     res = await fetch(`${BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers,
     });
   } catch {
     throw new ApiError(0, "서버에 연결할 수 없습니다");

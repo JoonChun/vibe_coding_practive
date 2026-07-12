@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, deleteWatchlistItem, getWatchlist } from "./api";
 import { AddStockForm } from "./components/AddStockForm";
+import { TokenBanner } from "./components/TokenBanner";
 import { WatchlistTable, type WatchlistRow } from "./components/WatchlistTable";
 import { useSnapshot } from "./hooks/useSnapshot";
 import type { SnapshotItem, WatchlistItem } from "./types";
@@ -19,6 +20,7 @@ function formatDateTime(iso: string): string {
 export default function App() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
+  const [watchlistErrorStatus, setWatchlistErrorStatus] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const snapshot = useSnapshot();
@@ -28,10 +30,12 @@ export default function App() {
       const res = await getWatchlist();
       setWatchlist(res.items);
       setWatchlistError(null);
+      setWatchlistErrorStatus(null);
     } catch (err) {
       setWatchlistError(
         err instanceof ApiError ? err.message : "관심종목을 불러오지 못했습니다."
       );
+      setWatchlistErrorStatus(err instanceof ApiError ? err.status : null);
     }
   }, []);
 
@@ -82,13 +86,23 @@ export default function App() {
     }
   }
 
+  const unauthorized = watchlistErrorStatus === 401 || snapshot.errorStatus === 401;
   const connectionFailed = Boolean(snapshot.error) && Boolean(watchlistError);
   const hasAnyData = watchlist.length > 0 || snapshot.data !== null;
-  const showConnectionBanner = connectionFailed || (Boolean(snapshot.error) && !hasAnyData);
+  // 401(토큰 필요)일 때는 "서버에 연결할 수 없습니다" 배너로 오해하지 않도록 억제
+  const showConnectionBanner =
+    !unauthorized && (connectionFailed || (Boolean(snapshot.error) && !hasAnyData));
 
   return (
     <div className="app">
-      {showConnectionBanner ? (
+      {unauthorized ? (
+        <TokenBanner
+          onSaved={() => {
+            void fetchWatchlist();
+            snapshot.refresh();
+          }}
+        />
+      ) : showConnectionBanner ? (
         <div className="banner banner--error" role="alert">
           서버에 연결할 수 없습니다
         </div>

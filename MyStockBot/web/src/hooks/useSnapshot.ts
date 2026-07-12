@@ -8,6 +8,8 @@ export interface UseSnapshotResult {
   data: SnapshotResponse | null;
   loading: boolean;
   error: string | null;
+  /** 마지막 오류가 ApiError였을 경우의 HTTP 상태 코드 (예: 401) */
+  errorStatus: number | null;
   /** 폴링 실패 후에도 마지막으로 성공한 데이터를 유지 중일 때 true */
   stale: boolean;
   lastUpdatedAt: Date | null;
@@ -18,6 +20,7 @@ export function useSnapshot(): UseSnapshotResult {
   const [data, setData] = useState<SnapshotResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
@@ -34,12 +37,14 @@ export function useSnapshot(): UseSnapshotResult {
       dataRef.current = res;
       setData(res);
       setError(null);
+      setErrorStatus(null);
       setStale(false);
       setLastUpdatedAt(new Date());
     } catch (e) {
       const message =
         e instanceof ApiError ? e.message : "알 수 없는 오류가 발생했습니다";
       setError(message);
+      setErrorStatus(e instanceof ApiError ? e.status : null);
       // 실패 시 기존 데이터는 유지하고 stale 플래그만 세움
       setStale(dataRef.current !== null);
     } finally {
@@ -60,5 +65,5 @@ export function useSnapshot(): UseSnapshotResult {
     void fetchSnapshot();
   }, [fetchSnapshot]);
 
-  return { data, loading, error, stale, lastUpdatedAt, refresh };
+  return { data, loading, error, errorStatus, stale, lastUpdatedAt, refresh };
 }

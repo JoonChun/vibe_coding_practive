@@ -72,6 +72,58 @@ a:focus-visible {
   border: 1px solid var(--color-danger-border);
 }
 
+.banner--warning {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  text-align: left;
+}
+
+/* API 토큰 입력 배너 */
+.token-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 400;
+}
+
+.token-banner__message {
+  font-weight: 600;
+}
+
+.token-banner__field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.token-banner__field input {
+  min-width: 12rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.token-banner__submit {
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.token-banner__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* 헤더 */
 .app-header {
   display: flex;
@@ -284,6 +336,20 @@ a:focus-visible {
   }
 
   .add-stock-form__submit {
+    width: 100%;
+  }
+
+  .token-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .token-banner__field input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .token-banner__submit {
     width: 100%;
   }
 
