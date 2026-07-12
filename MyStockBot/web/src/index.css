@@ -1,0 +1,321 @@
+:root {
+  color-scheme: light;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #1e293b;
+  --color-text-muted: #64748b;
+  --color-primary: #2563eb;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+  --radius: 10px;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.06);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+    "Apple SD Gothic Neo", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* 상단 배너 (연결 실패) */
+.banner {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  text-align: center;
+}
+
+.banner--error {
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger-border);
+}
+
+/* 헤더 */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-header h1 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.app-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.app-header__status--stale {
+  color: var(--color-danger);
+}
+
+/* 패널(카드) */
+.panel {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.panel__error {
+  margin: 0.75rem 0 0;
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
+
+/* 관심종목 추가 폼 */
+.add-stock-form__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.add-stock-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.add-stock-form__field input {
+  min-width: 10rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.add-stock-form__submit {
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--color-primary);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-stock-form__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-stock-form__error {
+  margin: 0.75rem 0 0;
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
+
+/* 관심종목 테이블 */
+.watchlist-empty {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.watchlist-table-wrapper {
+  overflow-x: auto;
+}
+
+.watchlist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.watchlist-table th,
+.watchlist-table td {
+  padding: 0.65rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.watchlist-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.watchlist-table__delete {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 6px;
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.watchlist-table__delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 신호등 칩 */
+.signal-chip {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.signal-chip--outline {
+  border-style: solid;
+  border-width: 1px;
+  background-color: transparent;
+}
+
+/* 데이터 출처 배지 */
+.source-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.source-badge--kis {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.source-badge--yfinance {
+  background-color: #fef9c3;
+  color: #854d0e;
+}
+
+.source-badge--unknown {
+  background-color: #f1f5f9;
+  color: #6b7280;
+}
+
+/* 푸터 고지문 */
+.app-footer {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  padding-top: 0.5rem;
+}
+
+/* 반응형 */
+@media (max-width: 640px) {
+  .app {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .add-stock-form__fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .add-stock-form__field input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .add-stock-form__submit {
+    width: 100%;
+  }
+
+  .watchlist-table th,
+  .watchlist-table td {
+    white-space: normal;
+  }
+
+  .watchlist-table thead {
+    display: none;
+  }
+
+  .watchlist-table tbody tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.65rem 0.6rem;
+  }
+
+  .watchlist-table tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: right;
+    border: none;
+  }
+
+  .watchlist-table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+}

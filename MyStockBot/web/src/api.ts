@@ -1,0 +1,83 @@
+import type {
+  SnapshotResponse,
+  WatchlistItem,
+  WatchlistItemInput,
+  WatchlistListResponse,
+} from "./types";
+
+// 개발: 빈 값(상대경로) → vite dev 프록시(/api → localhost:8000)가 처리.
+// 배포(Vercel 등): VITE_API_BASE에 백엔드 공개 URL을 설정.
+const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function extractErrorMessage(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      "detail" in body &&
+      typeof (body as { detail?: unknown }).detail === "string"
+    ) {
+      return (body as { detail: string }).detail;
+    }
+  } catch {
+    // 응답 본문이 JSON이 아니거나 비어있는 경우 무시
+  }
+  return `요청이 실패했습니다 (${res.status})`;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    });
+  } catch {
+    throw new ApiError(0, "서버에 연결할 수 없습니다");
+  }
+
+  if (!res.ok) {
+    const message = await extractErrorMessage(res);
+    throw new ApiError(res.status, message);
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  return (await res.json()) as T;
+}
+
+export function getWatchlist(): Promise<WatchlistListResponse> {
+  return request<WatchlistListResponse>("/api/watchlist");
+}
+
+export function addWatchlistItem(
+  item: WatchlistItemInput
+): Promise<WatchlistItem> {
+  return request<WatchlistItem>("/api/watchlist", {
+    method: "POST",
+    body: JSON.stringify(item),
+  });
+}
+
+export function deleteWatchlistItem(code: string): Promise<void> {
+  return request<void>(`/api/watchlist/${encodeURIComponent(code)}`, {
+    method: "DELETE",
+  });
+}
+
+export function getSnapshot(): Promise<SnapshotResponse> {
+  return request<SnapshotResponse>("/api/snapshot");
+}
