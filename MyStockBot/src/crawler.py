@@ -76,7 +76,7 @@ def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
     start = today - timedelta(days=lookback)
 
     headers = _get_headers(token)
-    headers["tr_id"] = "FHKST01010100"
+    headers["tr_id"] = "FHKST03010100"
     params = {
         "FID_COND_MRKT_DIV_CODE": "J",
         "FID_INPUT_ISCD": code,

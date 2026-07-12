@@ -1,3 +1,5 @@
+import os
+
 TIMEZONE = "Asia/Seoul"
 
 SHEET_DASHBOARD = "Dashboard"
@@ -17,7 +19,9 @@ STOCKDATA_HEADER = [
 # KIS API
 KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
 KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
-KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price"
+# 기간별 시세(일봉, 최대 100건): inquire-daily-itemchartprice / FHKST03010100
+# (기존 inquire-daily-price(FHKST01010100)는 날짜범위 미지원·output2 미반환이라 항상 빈 응답이었음)
+KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
 KIS_FINANCIAL_RATIO_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
 KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-statement"
 
@@ -43,3 +47,15 @@ SPREADSHEET_ID_ENV_KEY = "SPREADSHEET_ID"
 GMAIL_APP_PASSWORD_ENV_KEY = "GMAIL_APP_PASSWORD"
 NOTIFY_EMAIL_ENV_KEY = "NOTIFY_EMAIL"
 SENDER_EMAIL_ENV_KEY = "SENDER_EMAIL"
+
+# 서버(Phase 1) 관련 설정
+DB_PATH = os.environ.get(
+    "MYSTOCKBOT_DB_PATH",
+    os.path.join(os.path.dirname(__file__), "data", "mystockbot.db"),
+)
+SNAPSHOT_CACHE_TTL_SECONDS = int(os.environ.get("SNAPSHOT_CACHE_TTL_SECONDS", "20"))
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if o.strip()
+]

@@ -12,7 +12,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from config import SPREADSHEET_ID_ENV_KEY, TIMEZONE
-import crawler
+import pipeline
 import sheets
 import notifier
 
@@ -50,7 +50,7 @@ def main():
             sys.exit(1)
 
         try:
-            success_list, failed_list = crawler.fetch_all(stock_list)
+            success_list, failed_list = pipeline.collect_snapshots(stock_list)
         except Exception as e:
             print(f"[main] 크롤링 실패: {e}")
             notifier.send_report([], [{"code": "N/A", "name": "N/A", "close": None, "error": str(e)}], date_str)
