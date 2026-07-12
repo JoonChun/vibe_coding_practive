@@ -22,3 +22,6 @@ yarn-error.log*
 
 # OS
 .DS_Store
+
+# TypeScript incremental build info
+*.tsbuildinfo

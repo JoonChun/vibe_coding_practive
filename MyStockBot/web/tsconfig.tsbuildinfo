@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/AddStockForm.tsx","./src/components/SignalChip.tsx","./src/components/SourceBadge.tsx","./src/components/WatchlistTable.tsx","./src/hooks/useSnapshot.ts"],"version":"5.9.3"}
