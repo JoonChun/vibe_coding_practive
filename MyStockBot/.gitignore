@@ -25,3 +25,8 @@ build/
 
 # macOS
 .DS_Store
+
+# SQLite (Phase 1 백엔드 DB)
+data/*.db
+data/*.db-wal
+data/*.db-shm

@@ -1,3 +1,5 @@
+import os
+
 TIMEZONE = "Asia/Seoul"
 
 SHEET_DASHBOARD = "Dashboard"
@@ -45,3 +47,15 @@ SPREADSHEET_ID_ENV_KEY = "SPREADSHEET_ID"
 GMAIL_APP_PASSWORD_ENV_KEY = "GMAIL_APP_PASSWORD"
 NOTIFY_EMAIL_ENV_KEY = "NOTIFY_EMAIL"
 SENDER_EMAIL_ENV_KEY = "SENDER_EMAIL"
+
+# 서버(Phase 1) 관련 설정
+DB_PATH = os.environ.get(
+    "MYSTOCKBOT_DB_PATH",
+    os.path.join(os.path.dirname(__file__), "data", "mystockbot.db"),
+)
+SNAPSHOT_CACHE_TTL_SECONDS = int(os.environ.get("SNAPSHOT_CACHE_TTL_SECONDS", "20"))
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if o.strip()
+]

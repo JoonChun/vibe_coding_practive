@@ -57,6 +57,14 @@ def load_stock_list(spreadsheet_id: str) -> list[dict]:
     return result
 
 
+def load_stock_data_rows(spreadsheet_id: str) -> list[list]:
+    """StockData 워크시트의 데이터 행(헤더 제외)을 읽기 전용으로 반환."""
+    client = _get_client()
+    sheet = client.open_by_key(spreadsheet_id).worksheet(SHEET_STOCKDATA)
+    rows = sheet.get_all_values()
+    return rows[1:] if rows else []
+
+
 def write_stock_data(spreadsheet_id: str, rows: list[list]) -> None:
     if not rows:
         return
