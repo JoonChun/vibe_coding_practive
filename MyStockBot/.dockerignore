@@ -1,0 +1,48 @@
+# Virtual environment
+.venv
+venv
+env
+
+# Database and data files
+data/
+
+# Environment file (secrets managed separately)
+.env
+.env.local
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+
+# Web frontend (handled by Vercel)
+web/
+
+# IDE and editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# JSON key files (credentials)
+*.json
+
+# Documentation
+README.md
+prd.md
+DEPLOY.md
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Node (if any frontend build artifacts)
+node_modules
+dist
+build
