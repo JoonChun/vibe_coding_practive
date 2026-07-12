@@ -17,7 +17,9 @@ STOCKDATA_HEADER = [
 # KIS API
 KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
 KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
-KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price"
+# 기간별 시세(일봉, 최대 100건): inquire-daily-itemchartprice / FHKST03010100
+# (기존 inquire-daily-price(FHKST01010100)는 날짜범위 미지원·output2 미반환이라 항상 빈 응답이었음)
+KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
 KIS_FINANCIAL_RATIO_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
 KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-statement"
 
