@@ -10,6 +10,22 @@ _CACHE = {"items": None, "cached_at": None}
 _LOCK = asyncio.Lock()
 
 
+_FACTOR_KEYS = [
+    "macd_1d", "rsi_1d", "rsi_value_1d",
+    "macd_60m", "rsi_60m", "rsi_value_60m",
+    "bb_upper", "bb_mid", "bb_lower",
+    "per", "pbr", "roe",
+    "short_score", "long_score",
+]
+
+
+def _to_factors(item: dict) -> dict | None:
+    """수집 실패(error 존재) 시 None, 아니면 상세 판정용 팩터 dict."""
+    if item.get("error") is not None:
+        return None
+    return {key: item.get(key) for key in _FACTOR_KEYS}
+
+
 def _to_snapshot_item(item: dict) -> dict:
     return {
         "code": item.get("code"),
@@ -19,6 +35,9 @@ def _to_snapshot_item(item: dict) -> dict:
         "long_view": item.get("long_view"),
         "source": item.get("source"),
         "error": item.get("error"),
+        "change": item.get("change"),
+        "change_pct": item.get("change_pct"),
+        "factors": _to_factors(item),
     }
 
 

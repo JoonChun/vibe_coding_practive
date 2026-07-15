@@ -68,6 +68,20 @@ def rsi_zone_signal(df: pd.DataFrame) -> str:
     return "중립"
 
 
+def rsi_latest_value(df: pd.DataFrame) -> float | None:
+    """최신 RSI 수치(소수 1자리 반올림). 데이터부족 시 None."""
+    if len(df) <= RSI_PERIOD:
+        return None
+    close = df["close"].astype(float)
+    rsi_series = ta.momentum.RSIIndicator(close=close, window=RSI_PERIOD).rsi()
+    if len(rsi_series) == 0 or rsi_series.isna().all():
+        return None
+    latest = rsi_series.iloc[-1]
+    if math.isnan(latest):
+        return None
+    return round(float(latest), 1)
+
+
 def bollinger(df: pd.DataFrame) -> dict:
     close = df["close"].astype(float)
     bb_obj = ta.volatility.BollingerBands(
@@ -147,3 +161,19 @@ def long_term_view(macd_1d, rsi_1d, per, pbr, roe) -> str:
         return "데이터부족"
     tech = _macd_score(macd_1d) + _rsi_score(rsi_1d)
     return _level5(tech + fund, strong=3)
+
+
+def short_term_score(macd_60m, rsi_60m) -> int | None:
+    """단기(60분봉) 스코어 합. 임계값은 ±2 (short_term_view 와 동일 기준)."""
+    if macd_60m in _NO_DATA and rsi_60m in _NO_DATA:
+        return None
+    return _macd_score(macd_60m) + _rsi_score(rsi_60m)
+
+
+def long_term_score(macd_1d, rsi_1d, per, pbr, roe) -> int | None:
+    """장기(일봉+재무) 스코어 합. 임계값은 ±3 (long_term_view 와 동일 기준)."""
+    fund = _fundamental_score(per, pbr, roe)
+    if macd_1d in _NO_DATA and rsi_1d in _NO_DATA and fund == 0:
+        return None
+    tech = _macd_score(macd_1d) + _rsi_score(rsi_1d)
+    return tech + fund

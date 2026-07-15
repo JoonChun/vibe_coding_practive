@@ -60,3 +60,13 @@ CORS_ALLOWED_ORIGINS = [
     for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
     if o.strip()
 ]
+
+# 종목마스터(전 종목 검색용) 관련 설정
+# 다운로드 URL은 KIS 공식 예제(open-trading-api/stocks_info/kis_*_code_mst.py)와 동일.
+# 인증 불필요(공개 정적 파일), 대신 해당 서버가 자체서명/구식 인증서라 SSL 검증을 끈다
+# (공식 예제도 ssl._create_unverified_context 로 동일하게 우회함).
+KIS_MASTER_URLS = {
+    "KOSPI": "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip",
+    "KOSDAQ": "https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip",
+}
+STOCK_MASTER_STALE_DAYS = 7

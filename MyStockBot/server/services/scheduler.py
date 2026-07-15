@@ -5,6 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import db
 import pipeline
+import stock_master
 from config import TIMEZONE
 
 _scheduler = BackgroundScheduler(timezone=TIMEZONE)
@@ -15,6 +16,13 @@ def _daily_load() -> None:
     # (옵션 A는 GitHub Actions cron에만 적용되며, 이 스케줄러는 서버 내부이므로 SQLite를 읽는 것이 정상)
     date_str = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
     print(f"[scheduler] 일일 수집 시작 ({date_str})")
+
+    # 종목마스터 갱신은 일일 수집과 독립 — 실패해도 아래 시세 수집은 계속 진행한다.
+    try:
+        stock_master.refresh_stock_master()
+    except Exception as e:
+        print(f"[scheduler] 종목마스터 갱신 실패: {e}")
+
     try:
         stock_list = db.load_watchlist()
         if not stock_list:

@@ -44,13 +44,29 @@ def _to_int(val) -> int | None:
         return None
 
 
+def _price_change(df: pd.DataFrame) -> dict:
+    """일봉 df 마지막 2개 종가로 전일 대비 등락폭·등락률 계산. 데이터부족 시 None."""
+    if df is None or len(df) < 2:
+        return {"change": None, "change_pct": None}
+    prev_close = _to_float(df.iloc[-2]["close"])
+    curr_close = _to_float(df.iloc[-1]["close"])
+    if prev_close is None or curr_close is None or prev_close == 0:
+        return {"change": None, "change_pct": None}
+    change = round(curr_close - prev_close, 2)
+    change_pct = round((curr_close - prev_close) / prev_close * 100, 2)
+    return {"change": change, "change_pct": change_pct}
+
+
 _EMPTY_RESULT = {
     "open": None, "close": None, "low": None, "high": None, "volume": None,
+    "change": None, "change_pct": None,
     "macd_1d": None, "rsi_1d": None, "macd_60m": None, "rsi_60m": None,
+    "rsi_value_1d": None, "rsi_value_60m": None,
     "short_view": None, "long_view": None,
     "bb_upper": None, "bb_mid": None, "bb_lower": None,
     "per": None, "pbr": None, "roe": None,
     "revenue": None, "net_income": None,
+    "short_score": None, "long_score": None,
     "source": None, "source_60m": None,
 }
 
@@ -189,10 +205,12 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         "high": int(latest["high"]),
         "volume": int(latest["volume"]),
     }
+    change_data = _price_change(df)
 
     try:
         macd_1d = indicators.macd_cross_signal(df)
         rsi_1d = indicators.rsi_zone_signal(df)
+        rsi_value_1d = indicators.rsi_latest_value(df)
         bb = indicators.bollinger(df)
         bb_upper = bb.get("bb_upper")
         bb_mid = bb.get("bb_mid")
@@ -200,6 +218,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
     except Exception as e:
         print(f"[KIS] 1일봉 지표 계산 실패 ({code}): {e}")
         macd_1d = rsi_1d = None
+        rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
 
     df60 = _yf_intraday_60m(code)
@@ -207,15 +226,19 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         try:
             macd_60m = indicators.macd_cross_signal(df60)
             rsi_60m = indicators.rsi_zone_signal(df60)
+            rsi_value_60m = indicators.rsi_latest_value(df60)
         except Exception as e:
             print(f"[KIS] 60분봉 지표 계산 실패 ({code}): {e}")
             macd_60m = rsi_60m = None
+            rsi_value_60m = None
     else:
         macd_60m = rsi_60m = None
+        rsi_value_60m = None
 
     indicator_data = {
         "macd_1d": macd_1d, "rsi_1d": rsi_1d,
         "macd_60m": macd_60m, "rsi_60m": rsi_60m,
+        "rsi_value_1d": rsi_value_1d, "rsi_value_60m": rsi_value_60m,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
     }
 
@@ -230,9 +253,13 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         "long_view": indicators.long_term_view(
             macd_1d, rsi_1d, ratio_data["per"], ratio_data["pbr"], ratio_data["roe"]
         ),
+        "short_score": indicators.short_term_score(macd_60m, rsi_60m),
+        "long_score": indicators.long_term_score(
+            macd_1d, rsi_1d, ratio_data["per"], ratio_data["pbr"], ratio_data["roe"]
+        ),
     }
 
-    return {"code": code, "name": name, **price_data, **indicator_data,
+    return {"code": code, "name": name, **price_data, **change_data, **indicator_data,
             **view_data, **ratio_data, **income_data,
             "source": "kis", "source_60m": ("yfinance" if df60 is not None else None),
             "error": None}
@@ -310,10 +337,12 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             "high": int(latest["high"]),
             "volume": int(latest["volume"]),
         }
+        change_data = _price_change(df)
 
         try:
             macd_1d = indicators.macd_cross_signal(df)
             rsi_1d = indicators.rsi_zone_signal(df)
+            rsi_value_1d = indicators.rsi_latest_value(df)
             bb = indicators.bollinger(df)
             bb_upper = bb.get("bb_upper")
             bb_mid = bb.get("bb_mid")
@@ -321,6 +350,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
         except Exception as e:
             print(f"[YF] 1일봉 지표 계산 실패 ({code}): {e}")
             macd_1d = rsi_1d = None
+            rsi_value_1d = None
             bb_upper = bb_mid = bb_lower = None
 
         df60 = _yf_intraday_60m(code)
@@ -328,15 +358,19 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             try:
                 macd_60m = indicators.macd_cross_signal(df60)
                 rsi_60m = indicators.rsi_zone_signal(df60)
+                rsi_value_60m = indicators.rsi_latest_value(df60)
             except Exception as e:
                 print(f"[YF] 60분봉 지표 계산 실패 ({code}): {e}")
                 macd_60m = rsi_60m = None
+                rsi_value_60m = None
         else:
             macd_60m = rsi_60m = None
+            rsi_value_60m = None
 
         indicator_data = {
             "macd_1d": macd_1d, "rsi_1d": rsi_1d,
             "macd_60m": macd_60m, "rsi_60m": rsi_60m,
+            "rsi_value_1d": rsi_value_1d, "rsi_value_60m": rsi_value_60m,
             "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
         }
 
@@ -357,10 +391,14 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             "long_view": indicators.long_term_view(
                 macd_1d, rsi_1d, ratio_data["per"], ratio_data["pbr"], ratio_data["roe"]
             ),
+            "short_score": indicators.short_term_score(macd_60m, rsi_60m),
+            "long_score": indicators.long_term_score(
+                macd_1d, rsi_1d, ratio_data["per"], ratio_data["pbr"], ratio_data["roe"]
+            ),
         }
 
         print(f"[YF] 수집 성공 ({code})")
-        return {"code": code, "name": name, **price_data, **indicator_data,
+        return {"code": code, "name": name, **price_data, **change_data, **indicator_data,
                 **view_data, **ratio_data, **income_data,
                 "source": "yfinance", "source_60m": ("yfinance" if df60 is not None else None),
                 "error": None}

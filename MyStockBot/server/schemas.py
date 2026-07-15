@@ -12,10 +12,28 @@ class WatchlistItemOut(BaseModel):
     name: str
     is_active: bool
     created_at: str
+    market: str | None = None
 
 
 class WatchlistListResponse(BaseModel):
     items: list[WatchlistItemOut]
+
+
+class FactorDetail(BaseModel):
+    macd_1d: str | None = None
+    rsi_1d: str | None = None
+    rsi_value_1d: float | None = None
+    macd_60m: str | None = None
+    rsi_60m: str | None = None
+    rsi_value_60m: float | None = None
+    bb_upper: float | None = None
+    bb_mid: float | None = None
+    bb_lower: float | None = None
+    per: float | None = None
+    pbr: float | None = None
+    roe: float | None = None
+    short_score: int | None = None
+    long_score: int | None = None
 
 
 class SnapshotItem(BaseModel):
@@ -26,10 +44,36 @@ class SnapshotItem(BaseModel):
     long_view: str | None = None
     source: str | None = None
     error: str | None = None
-    factors: dict | None = None
+    change: float | None = None
+    change_pct: float | None = None
+    factors: FactorDetail | None = None
 
 
 class SnapshotResponse(BaseModel):
     generated_at: str
     cache_hit: bool
     items: list[SnapshotItem]
+
+
+class BarItem(BaseModel):
+    date: str
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    volume: int | None = None
+
+
+class BarsResponse(BaseModel):
+    code: str
+    items: list[BarItem]
+
+
+class SearchItem(BaseModel):
+    code: str
+    name: str
+    market: str
+
+
+class SearchResponse(BaseModel):
+    items: list[SearchItem]

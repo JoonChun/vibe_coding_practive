@@ -1,5 +1,7 @@
 import type {
   SnapshotResponse,
+  StockBarsResponse,
+  StockSearchResponse,
   WatchlistItem,
   WatchlistItemInput,
   WatchlistListResponse,
@@ -117,4 +119,23 @@ export function deleteWatchlistItem(code: string): Promise<void> {
 
 export function getSnapshot(): Promise<SnapshotResponse> {
   return request<SnapshotResponse>("/api/snapshot");
+}
+
+/** 종목 일봉 히스토리 조회 (스파크라인·상세 차트용). limit 기본 30·최대 120. */
+export function getStockBars(
+  code: string,
+  limit = 30
+): Promise<StockBarsResponse> {
+  return request<StockBarsResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/bars?limit=${limit}`
+  );
+}
+
+/** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */
+export function searchStocks(
+  q: string,
+  limit = 10
+): Promise<StockSearchResponse> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return request<StockSearchResponse>(`/api/stocks/search?${params.toString()}`);
 }

@@ -1,6 +1,7 @@
 # MyStockBot 디렉터리에서 실행: uvicorn server.main:app
 # (하위 sys.path 설정이 이 실행 위치를 전제로 함 — 다른 경로에서 실행 시 import 실패)
 import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,15 +19,34 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import CORS_ALLOWED_ORIGINS
 import db
+import stock_master
 
 from .auth import auth_middleware, is_auth_enabled
-from .routers import watchlist, snapshot
+from .routers import watchlist, snapshot, stocks
 from .services import scheduler
+
+
+def _refresh_stock_master_in_background() -> None:
+    """stock_master 가 비었거나 오래됐으면 백그라운드 스레드에서 갱신.
+
+    부팅을 블로킹하지 않는다 — 실패해도 예외를 삼키고 로그만 남긴다(서버는 뜬다).
+    """
+    try:
+        if not stock_master.needs_refresh():
+            print("[startup] stock_master 최신 상태 — 갱신 건너뜀")
+            return
+        print("[startup] stock_master 갱신 필요 — 백그라운드 갱신 시작")
+        stock_master.refresh_stock_master()
+    except Exception as e:
+        print(f"[startup] stock_master 백그라운드 갱신 실패(다음 기회에 재시도): {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    threading.Thread(
+        target=_refresh_stock_master_in_background, daemon=True, name="stock-master-refresh"
+    ).start()
     scheduler.start()
     if is_auth_enabled():
         print("API 토큰 인증 활성")
@@ -59,3 +79,4 @@ def health():
 
 app.include_router(watchlist.router)
 app.include_router(snapshot.router)
+app.include_router(stocks.router)
