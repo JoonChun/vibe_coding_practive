@@ -1,7 +1,6 @@
 import type {
   CandlesResponse,
   SnapshotResponse,
-  StockBarsResponse,
   StockSearchResponse,
   Timeframe,
   WatchlistItem,
@@ -121,19 +120,6 @@ export function deleteWatchlistItem(code: string): Promise<void> {
 
 export function getSnapshot(): Promise<SnapshotResponse> {
   return request<SnapshotResponse>("/api/snapshot");
-}
-
-/**
- * 종목 일봉 히스토리 조회. limit 기본 30·최대 120.
- * 스파크라인·상세 캔들 차트는 getCandles로 이전됨 — 이 함수는 그 외 /bars 소비처를 위해 유지.
- */
-export function getStockBars(
-  code: string,
-  limit = 30
-): Promise<StockBarsResponse> {
-  return request<StockBarsResponse>(
-    `/api/stocks/${encodeURIComponent(code)}/bars?limit=${limit}`
-  );
 }
 
 /** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */

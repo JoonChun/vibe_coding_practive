@@ -1,14 +1,16 @@
-import asyncio
+"""스냅샷 제공부 — 수집(collector.py)과 분리된 순수 read 전용 계층.
+
+실제 fetch/지표계산은 collector.py 백그라운드 루프가 전담한다. 여기서는 그 결과
+(collector.get_state())를 기존 GET /api/snapshot 응답 계약
+{"generated_at","cache_hit","items":[...]} 으로 변환해 돌려줄 뿐이다.
+부팅 직후(첫 수집 사이클 완료 전)엔 상태가 없으므로 items=[]·cache_hit=false.
+"""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import db
-import pipeline
-from config import SNAPSHOT_CACHE_TTL_SECONDS, TIMEZONE
+from config import TIMEZONE
 
-_CACHE = {"items": None, "cached_at": None}
-_LOCK = asyncio.Lock()
-
+from . import collector
 
 _FACTOR_KEYS = [
     "macd_1d", "rsi_1d", "rsi_value_1d",
@@ -41,39 +43,16 @@ def _to_snapshot_item(item: dict) -> dict:
     }
 
 
-def _recompute() -> dict:
-    stock_list = db.load_watchlist()
-    success, failed = pipeline.collect_snapshots(stock_list)
-    items = [_to_snapshot_item(item) for item in success + failed]
+async def get_snapshot() -> dict:
+    """collector 상태를 읽기만 한다 — 여기서 수집을 트리거하지 않는다."""
+    state = collector.get_state()
+    if state is None:
+        now = datetime.now(ZoneInfo(TIMEZONE))
+        return {"generated_at": now.isoformat(), "cache_hit": False, "items": []}
 
-    now = datetime.now(ZoneInfo(TIMEZONE))
-    _CACHE["items"] = items
-    _CACHE["cached_at"] = now
-
+    items = [_to_snapshot_item(item) for item in state.get("items", [])]
     return {
-        "generated_at": now.isoformat(),
-        "cache_hit": False,
+        "generated_at": state.get("generated_at"),
+        "cache_hit": True,
         "items": items,
     }
-
-
-def _cached_response(cached_at: datetime) -> dict:
-    return {
-        "generated_at": cached_at.isoformat(),
-        "cache_hit": True,
-        "items": _CACHE["items"],
-    }
-
-
-async def get_snapshot() -> dict:
-    now = datetime.now(ZoneInfo(TIMEZONE))
-    cached_at = _CACHE.get("cached_at")
-    if cached_at is not None and (now - cached_at).total_seconds() < SNAPSHOT_CACHE_TTL_SECONDS:
-        return _cached_response(cached_at)
-
-    async with _LOCK:
-        now = datetime.now(ZoneInfo(TIMEZONE))
-        cached_at = _CACHE.get("cached_at")
-        if cached_at is not None and (now - cached_at).total_seconds() < SNAPSHOT_CACHE_TTL_SECONDS:
-            return _cached_response(cached_at)
-        return await asyncio.to_thread(_recompute)

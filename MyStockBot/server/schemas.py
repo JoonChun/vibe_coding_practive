@@ -55,20 +55,6 @@ class SnapshotResponse(BaseModel):
     items: list[SnapshotItem]
 
 
-class BarItem(BaseModel):
-    date: str
-    open: float | None = None
-    high: float | None = None
-    low: float | None = None
-    close: float | None = None
-    volume: int | None = None
-
-
-class BarsResponse(BaseModel):
-    code: str
-    items: list[BarItem]
-
-
 class SearchItem(BaseModel):
     code: str
     name: str

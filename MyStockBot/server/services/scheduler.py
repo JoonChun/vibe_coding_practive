@@ -1,49 +1,37 @@
+"""일일 배치 잡 — 종목마스터(KOSPI/KOSDAQ) 갱신 전용.
+
+스냅샷 수집·bar_history 저장은 더 이상 이 스케줄러가 하지 않는다
+(collector.py 의 상시 수집 루프가 대체 — server/services/collector.py 참고).
+"""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-import db
-import pipeline
 import stock_master
 from config import TIMEZONE
 
 _scheduler = BackgroundScheduler(timezone=TIMEZONE)
 
 
-def _daily_load() -> None:
-    # always-on 서버가 SQLite의 주인 — 관심종목은 웹앱이 관리하는 SQLite watchlist에서 로드.
-    # (옵션 A는 GitHub Actions cron에만 적용되며, 이 스케줄러는 서버 내부이므로 SQLite를 읽는 것이 정상)
+def _daily_master_refresh() -> None:
     date_str = datetime.now(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
-    print(f"[scheduler] 일일 수집 시작 ({date_str})")
-
-    # 종목마스터 갱신은 일일 수집과 독립 — 실패해도 아래 시세 수집은 계속 진행한다.
+    print(f"[scheduler] 종목마스터 일일 갱신 시작 ({date_str})")
     try:
         stock_master.refresh_stock_master()
     except Exception as e:
         print(f"[scheduler] 종목마스터 갱신 실패: {e}")
 
-    try:
-        stock_list = db.load_watchlist()
-        if not stock_list:
-            print("[scheduler] watchlist 비어 있음 — 수집 건너뜀")
-            return
-        success, failed = pipeline.collect_snapshots(stock_list)
-        saved = db.save_daily_bars(date_str, success)
-        print(f"[scheduler] 일일 수집 완료: 성공 {len(success)}건 실패 {len(failed)}건 저장 {saved}건")
-    except Exception as e:
-        print(f"[scheduler] 일일 수집 실패 ({date_str}): {e}")
-
 
 def start() -> None:
     _scheduler.add_job(
-        _daily_load,
+        _daily_master_refresh,
         trigger="cron",
         day_of_week="mon-fri",
         hour=16,
         minute=0,
         timezone=TIMEZONE,
-        id="daily_load",
+        id="daily_master_refresh",
         replace_existing=True,
     )
     _scheduler.start()

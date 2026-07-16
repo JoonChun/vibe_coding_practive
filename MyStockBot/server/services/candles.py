@@ -4,16 +4,19 @@ GET /api/stocks/{code}/candles 라우트의 비즈니스 로직.
 - 소스 라우팅: 일봉+(1d/1w/1M/1y)는 KIS 기간별시세 우선, 실패 시 yfinance 폴백(1y는 폴백 없음).
   분봉(1m/5m/15m/30m/60m)은 yfinance 직접 조회. 120m/240m은 60분봉을 서버에서 리샘플.
 - epoch 변환: 일봉+ 는 KST 자정 기준, 분봉은 원본 tz-aware 타임스탬프의 실제 시각 기준.
-- (code, tf) 단위 TTL 인메모리 캐시(분봉 60초·일봉+ 600초).
+- 영속 저장소(db.candles) read-through: 신선(분봉 60초·일봉+ 600초) 이내면 저장소에서
+  바로 서빙, stale/없음이면 fetch → upsert_candles → 저장소에서 재조회해 서빙(기존
+  이력과 병합된 채로 나간다 — collector.py가 채워둔 데이터와도 자연히 합쳐짐).
+  fetch 실패 시 저장소에 남은 값(낡아도)을 서빙, 그마저 없으면 빈 items(기존 계약).
 """
 import threading
-import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 import crawler
+import db
 import kis_auth
 from config import TIMEZONE
 
@@ -49,20 +52,33 @@ _DAILY_PLUS_TFS = {"1d", "1w", "1M", "1y"}
 
 VALID_TFS = _MINUTE_TFS | _DAILY_PLUS_TFS
 
-_MINUTE_CACHE_TTL_SECONDS = 60
-_DAILY_CACHE_TTL_SECONDS = 600
+_MINUTE_FRESH_SECONDS = 60
+_DAILY_FRESH_SECONDS = 600
 
 _DEFAULT_COUNT = 150
 _MAX_COUNT = 300
 
-# (code, tf) → {"items": [...], "source": str|None, "cached_at": float(monotonic)}
-# 스냅샷 캐시(snapshot_cache.py)와 동일하게 단일 락으로 단순화한다 — 개인용 소규모 트래픽 전제.
-_cache: dict[tuple[str, str], dict] = {}
-_lock = threading.Lock()
+# (code, tf) → 이번 서버 세션에서 마지막으로 저장소에 upsert한 fetch의 source("kis"|"yfinance").
+# 별도 candles_meta 테이블 없이 과설계를 피하기 위한 인메모리 기록 — 서버 재시작 후
+# 저장소가 신선해서 fetch 없이 바로 서빙하는 경우엔 이 기록이 비어 있으므로 "store"로 대체한다.
+_last_source: dict[tuple[str, str], str] = {}
+_source_lock = threading.Lock()
 
 
-def _cache_ttl(tf: str) -> int:
-    return _MINUTE_CACHE_TTL_SECONDS if tf in _MINUTE_TFS else _DAILY_CACHE_TTL_SECONDS
+def _fresh_threshold(tf: str) -> int:
+    return _MINUTE_FRESH_SECONDS if tf in _MINUTE_TFS else _DAILY_FRESH_SECONDS
+
+
+def _remembered_source(code: str, tf: str) -> str:
+    with _source_lock:
+        return _last_source.get((code, tf), "store")
+
+
+def _remember_source(code: str, tf: str, source: str | None) -> None:
+    if source is None:
+        return
+    with _source_lock:
+        _last_source[(code, tf)] = source
 
 
 def _safe_float(val) -> float | None:
@@ -225,29 +241,37 @@ def _build_response(code: str, tf: str, source: str | None, items: list[dict], c
 
 
 def get_candles(code: str, tf: str, count: int = _DEFAULT_COUNT) -> dict:
-    """(code, tf) 캔들 조회. TTL 이내 캐시가 있으면 그대로, 없으면 새로 수집해 캐시에 채운다.
+    """(code, tf) 캔들 조회. 영속 저장소(db.candles) read-through.
 
-    데이터 없음/수집 실패는 예외를 던지지 않고 items=[]·source=None 인 정상 응답으로 처리한다
-    (라우터에서 500 대신 200으로 내려주기 위함).
+    저장소가 신선(분봉 60초·일봉+ 600초 이내)하면 fetch 없이 바로 서빙한다.
+    stale/없으면 기존 소스 라우팅으로 새로 수집해 저장소에 upsert 후, 저장소에서
+    다시 읽어 서빙(누적 이력과 자연히 병합됨). fetch 마저 실패하면 저장소에 남은
+    낡은 데이터라도 서빙하고, 그마저 없으면 items=[]·source=None 인 정상 응답으로
+    처리한다(라우터에서 500 대신 200으로 내려주기 위함 — 기존 계약 그대로).
     """
     safe_count = max(1, min(int(count), _MAX_COUNT))
-    cache_key = (code, tf)
-    ttl = _cache_ttl(tf)
 
-    cached = _cache.get(cache_key)
-    if cached is not None and (time.monotonic() - cached["cached_at"]) < ttl:
-        return _build_response(code, tf, cached["source"], cached["items"], safe_count)
+    age = db.get_candles_age_seconds(code, tf)
+    if age is not None and age < _fresh_threshold(tf):
+        stored = db.get_candles_store(code, tf, safe_count)
+        return _build_response(code, tf, _remembered_source(code, tf), stored, safe_count)
 
-    with _lock:
-        cached = _cache.get(cache_key)
-        if cached is not None and (time.monotonic() - cached["cached_at"]) < ttl:
-            return _build_response(code, tf, cached["source"], cached["items"], safe_count)
+    try:
+        items, source = _fetch(code, tf)
+    except Exception as e:
+        print(f"[candles] 수집 실패 ({code}, {tf}): {e}")
+        items, source = [], None
 
-        try:
-            items, source = _fetch(code, tf)
-        except Exception as e:
-            print(f"[candles] 수집 실패 ({code}, {tf}): {e}")
-            items, source = [], None
+    if items:
+        db.upsert_candles(code, tf, items)
+        _remember_source(code, tf, source)
+        stored = db.get_candles_store(code, tf, safe_count)
+        return _build_response(code, tf, source, stored, safe_count)
 
-        _cache[cache_key] = {"items": items, "source": source, "cached_at": time.monotonic()}
-        return _build_response(code, tf, source, items, safe_count)
+    # fetch 실패/빈 데이터 — 저장소에 낡은 값이라도 있으면 그거라도 서빙.
+    stored = db.get_candles_store(code, tf, safe_count)
+    if stored:
+        print(f"[candles] 최신 수집 실패 — 저장소의 낡은 데이터로 서빙 ({code}, {tf})")
+        return _build_response(code, tf, _remembered_source(code, tf), stored, safe_count)
+
+    return _build_response(code, tf, None, [], safe_count)

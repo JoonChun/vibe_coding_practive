@@ -1,11 +1,15 @@
 import os
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import DB_PATH
+
+# db 에 저장되는 fetched_at 등 UTC naive 타임스탬프 포맷 — SQLite datetime('now')와 동일 형식.
+_UTC_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # bar_history 에 저장되는 스냅샷 컬럼 (date, code 제외 — 별도 인자로 받음)
 _BAR_ITEM_COLUMNS = [
@@ -96,6 +100,22 @@ def init_db() -> None:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_stock_master_name ON stock_master(name)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS candles (
+                code TEXT NOT NULL,
+                tf TEXT NOT NULL,
+                t INTEGER NOT NULL,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                volume INTEGER,
+                fetched_at TEXT NOT NULL,
+                PRIMARY KEY (code, tf, t)
+            )
+            """
         )
         conn.commit()
     finally:
@@ -318,5 +338,75 @@ def save_daily_bars(date_str: str, items: list[dict]) -> int:
             inserted += cursor.rowcount
         conn.commit()
         return inserted
+    finally:
+        conn.close()
+
+
+def upsert_candles(code: str, tf: str, items: list[dict]) -> int:
+    """캔들 영속 저장소에 upsert. items 는 [{t, open, high, low, close, volume}, ...].
+
+    단일 트랜잭션(executemany + commit 1회). (code, tf, t) PK 충돌 시 덮어쓴다
+    (KIS/yfinance 재수집 시 동일 캔들이 갱신될 수 있으므로 REPLACE가 맞다).
+    빈 items 는 no-op(0 반환) — 실패한 fetch 결과로 기존 데이터를 지우지 않기 위함.
+    """
+    if not items:
+        return 0
+
+    fetched_at = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
+    conn = get_connection()
+    try:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO candles (code, tf, t, open, high, low, close, volume, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    code, tf, item.get("t"),
+                    item.get("open"), item.get("high"), item.get("low"),
+                    item.get("close"), item.get("volume"),
+                    fetched_at,
+                )
+                for item in items
+            ],
+        )
+        conn.commit()
+        return len(items)
+    finally:
+        conn.close()
+
+
+def get_candles_store(code: str, tf: str, limit: int) -> list[dict]:
+    """(code, tf) 저장소에서 t 오름차순 마지막 limit개 반환. 데이터 없으면 빈 리스트."""
+    safe_limit = max(1, int(limit))
+
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT t, open, high, low, close, volume FROM candles "
+            "WHERE code = ? AND tf = ? ORDER BY t DESC LIMIT ?",
+            (code, tf, safe_limit),
+        ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+    finally:
+        conn.close()
+
+
+def get_candles_age_seconds(code: str, tf: str) -> float | None:
+    """(code, tf) 저장소의 max(fetched_at) 로부터 현재(UTC)까지 경과 초. 데이터 없으면 None."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT MAX(fetched_at) AS fetched_at FROM candles WHERE code = ? AND tf = ?",
+            (code, tf),
+        ).fetchone()
+        fetched_at = row["fetched_at"] if row else None
+        if not fetched_at:
+            return None
+        try:
+            fetched_dt = datetime.strptime(fetched_at, _UTC_TS_FORMAT).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+        return (datetime.now(timezone.utc) - fetched_dt).total_seconds()
     finally:
         conn.close()

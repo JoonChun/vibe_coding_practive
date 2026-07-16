@@ -81,19 +81,6 @@ export interface SnapshotResponse {
   items: SnapshotItem[];
 }
 
-export interface BarItem {
-  date: string; // YYYY-MM-DD
-  open: number | null;
-  high: number | null;
-  low: number | null;
-  close: number | null;
-  volume: number | null;
-}
-
-export interface StockBarsResponse {
-  code: string;
-  items: BarItem[];
-}
 
 /** GET /api/stocks/{code}/candles 지원 주기 — 분봉 7종 + 일/주/월/년봉 */
 export type Timeframe =

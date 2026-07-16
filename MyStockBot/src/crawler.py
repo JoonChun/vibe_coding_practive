@@ -201,6 +201,20 @@ def _kis_income_statement(code: str, token: str) -> dict:
     }
 
 
+def fetch_kis_financials(code: str, token: str) -> dict:
+    """재무비율(PER/PBR/ROE) + 손익계산서(매출액/순이익) 통합 공개 래퍼.
+
+    기존 private _kis_financial_ratio/_kis_income_statement 를 묶어 collector.py 등
+    server 쪽에서 재사용할 수 있도록 노출한다. 두 호출 사이 KIS_RATE_LIMIT_DELAY sleep 포함
+    (기존 _fetch_from_kis 와 동일한 호출 간격 관례). 개별 실패는 삼켜서 None 필드로 채운다
+    (호출부에서 예외 처리를 강제하지 않기 위함 — 각 하위 함수가 이미 실패 시 None dict 반환).
+    """
+    ratio_data = _kis_financial_ratio(code, token)
+    time.sleep(KIS_RATE_LIMIT_DELAY)
+    income_data = _kis_income_statement(code, token)
+    return {**ratio_data, **income_data}
+
+
 def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
     """KIS API로 전체 데이터 수집. 실패 시 None 반환."""
     df = _kis_daily_ohlcv(code, token)

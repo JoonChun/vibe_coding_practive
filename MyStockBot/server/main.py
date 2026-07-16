@@ -23,7 +23,7 @@ import stock_master
 
 from .auth import auth_middleware, is_auth_enabled
 from .routers import watchlist, snapshot, stocks
-from .services import scheduler
+from .services import collector, scheduler
 
 
 def _refresh_stock_master_in_background() -> None:
@@ -48,11 +48,13 @@ async def lifespan(app: FastAPI):
         target=_refresh_stock_master_in_background, daemon=True, name="stock-master-refresh"
     ).start()
     scheduler.start()
+    collector.start()
     if is_auth_enabled():
         print("API 토큰 인증 활성")
     else:
         print("⚠ API 토큰 미설정 — 인증 비활성")
     yield
+    collector.stop()
     scheduler.shutdown()
 
 
