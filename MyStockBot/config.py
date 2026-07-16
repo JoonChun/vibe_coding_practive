@@ -19,6 +19,10 @@ STOCKDATA_HEADER = [
 # KIS API
 KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
 KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
+# 실시간 체결 WS 인증용 approval_key 발급(REST) — src/kis_auth.py 의 get_approval_key() 가 사용.
+KIS_APPROVAL_URL = f"{KIS_BASE_URL}/oauth2/Approval"
+# 실시간 시세 WS 접속 주소(실전 도메인) — server/services/kis_ws.py 가 사용.
+KIS_WS_URL = "ws://ops.koreainvestment.com:21000"
 # 기간별 시세(일봉, 최대 100건): inquire-daily-itemchartprice / FHKST03010100
 # (기존 inquire-daily-price(FHKST01010100)는 날짜범위 미지원·output2 미반환이라 항상 빈 응답이었음)
 KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"

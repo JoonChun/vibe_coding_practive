@@ -1,5 +1,7 @@
 import { useState, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
+import type { TickData } from "../hooks/useTickStream";
+import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import type { SignalView, SnapshotSource } from "../types";
 import { SignalChip } from "./SignalChip";
 import { SourceBadge } from "./SourceBadge";
@@ -19,6 +21,8 @@ export interface StockCardData {
 interface StockCardProps {
   row: StockCardData;
   onDelete: (code: string) => Promise<void>;
+  /** 실시간 틱 — 있으면 가격·등락률을 이 값으로 표시하고 수신 순간 300ms 플래시 */
+  tick?: TickData | null;
 }
 
 const MARKET_BADGE_CLASS: Record<string, string> = {
@@ -26,11 +30,24 @@ const MARKET_BADGE_CLASS: Record<string, string> = {
   KOSDAQ: "market-badge market-badge--kosdaq",
 };
 
-export function StockCard({ row, onDelete }: StockCardProps) {
+export function StockCard({ row, onDelete, tick }: StockCardProps) {
   const [pending, setPending] = useState(false);
-  const { code, name, close, changePct, shortView, longView, source, market } = row;
+  const { code, name, shortView, longView, source, market } = row;
   const marketLabel = market ?? "KRX";
   const marketBadgeClass = MARKET_BADGE_CLASS[marketLabel] ?? "market-badge";
+
+  // 틱이 있으면 스냅샷 대신 실시간 값을 표시(무틱 시 기존 스냅샷 값 그대로)
+  const close = tick ? tick.price : row.close;
+  const changePct = tick ? tick.changePct : row.changePct;
+
+  const flashDirection: TickFlashDirection = !tick
+    ? null
+    : tick.change > 0
+      ? "up"
+      : tick.change < 0
+        ? "down"
+        : null;
+  const flashClass = useTickFlash(flashDirection, tick?.receivedAt);
 
   const isUp = changePct !== null && changePct > 0;
   const isDown = changePct !== null && changePct < 0;
@@ -65,7 +82,10 @@ export function StockCard({ row, onDelete }: StockCardProps) {
   }
 
   return (
-    <li className="stock-card" id={`stock-card-${code}`}>
+    <li
+      className={`stock-card${flashClass ? ` ${flashClass}` : ""}`}
+      id={`stock-card-${code}`}
+    >
       <button
         type="button"
         className="stock-card__delete"

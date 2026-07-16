@@ -4,9 +4,12 @@ import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
+import { RealtimeBadge } from "../components/RealtimeBadge";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
+import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
+import { useTickStream } from "../hooks/useTickStream";
 import { buildFactorRows, sumFactorScores } from "../utils/factorScoring";
 
 type AnalysisTab = "short" | "long";
@@ -34,6 +37,8 @@ export default function StockDetailPage() {
 
   const snapshot = useSnapshot();
   const relativeUpdatedAt = useRelativeTime(snapshot.lastUpdatedAt);
+  const tickStream = useTickStream();
+  const tick = tickStream.ticks[code] ?? null;
 
   const item = useMemo(
     () => snapshot.data?.items.find((i) => i.code === code) ?? null,
@@ -50,12 +55,22 @@ export default function StockDetailPage() {
   );
   const score = factorRows ? sumFactorScores(factorRows) : null;
 
-  const close = item?.close ?? null;
-  const change = item?.change ?? null;
-  const changePct = item?.change_pct ?? null;
+  // 틱이 있으면 스냅샷 대신 실시간 값을 표시(무틱 시 기존 스냅샷 값 그대로)
+  const close = tick ? tick.price : (item?.close ?? null);
+  const change = tick ? tick.change : (item?.change ?? null);
+  const changePct = tick ? tick.changePct : (item?.change_pct ?? null);
   const isUp = change !== null && change > 0;
   const isDown = change !== null && change < 0;
   const changeDirection = isUp ? "up" : isDown ? "down" : "flat";
+
+  const flashDirection: TickFlashDirection = !tick
+    ? null
+    : tick.change > 0
+      ? "up"
+      : tick.change < 0
+        ? "down"
+        : null;
+  const flashClass = useTickFlash(flashDirection, tick?.receivedAt);
   const changeText =
     change === null || changePct === null
       ? "—"
@@ -97,10 +112,7 @@ export default function StockDetailPage() {
           <h1 className="detail-header__name">{name}</h1>
           <span className="detail-header__meta">{code} KRX</span>
         </div>
-        <span className="realtime-badge" role="status">
-          <span className="realtime-badge__dot" aria-hidden="true" />
-          <span>Real-time</span>
-        </span>
+        <RealtimeBadge live={tickStream.connected && tickStream.kisConnected} />
       </header>
 
       <main className="dash-main detail-main">
@@ -112,7 +124,9 @@ export default function StockDetailPage() {
 
         <section className="price-section">
           <div className="price-section__main">
-            <div className="price-section__row">
+            <div
+              className={`price-section__row${flashClass ? ` ${flashClass}` : ""}`}
+            >
               <span className="price-section__value">
                 {close !== null ? `${close.toLocaleString("ko-KR")}원` : "—"}
               </span>

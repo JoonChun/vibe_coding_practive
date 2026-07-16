@@ -224,6 +224,18 @@ select:focus-visible {
   animation: pulse-dot 2s infinite;
 }
 
+/* 실시간 연결 끊김/지연 — WS 미연결이거나 서버↔KIS 연결이 끊긴 상태 */
+.realtime-badge--offline {
+  background-color: var(--surface-container-high);
+  border-color: var(--outline-variant);
+  color: var(--on-surface-variant);
+}
+
+.realtime-badge--offline .realtime-badge__dot {
+  background-color: var(--outline);
+  animation: none;
+}
+
 @keyframes pulse-dot {
   0% {
     transform: scale(0.95);
@@ -587,6 +599,33 @@ select:focus-visible {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* 실시간 틱 수신 플래시(300ms) — 상승 옅은 빨강/하락 옅은 파랑. StockCard·상세 가격 영역 공통 */
+@keyframes tick-flash-up {
+  0% {
+    background-color: #fee2e2;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes tick-flash-down {
+  0% {
+    background-color: #dbeafe;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.tick-flash-up {
+  animation: tick-flash-up 300ms ease-out;
+}
+
+.tick-flash-down {
+  animation: tick-flash-down 300ms ease-out;
+}
+
 .stock-card:hover {
   border-color: #cbd5e1;
   box-shadow: 0 4px 12px rgba(30, 41, 59, 0.05);
@@ -782,6 +821,11 @@ select:focus-visible {
     animation: none;
     opacity: 0.6;
   }
+
+  .tick-flash-up,
+  .tick-flash-down {
+    animation: none;
+  }
 }
 
 /* 반응형 */
@@ -959,6 +1003,10 @@ select:focus-visible {
   align-items: baseline;
   gap: 0.75rem;
   flex-wrap: wrap;
+  /* 실시간 틱 플래시 시 배경이 텍스트에 딱 붙지 않도록 여백 확보 — 음의 마진으로 레이아웃엔 영향 없음 */
+  border-radius: var(--radius-md);
+  padding: 0.2rem 0.4rem;
+  margin: -0.2rem -0.4rem;
 }
 
 .price-section__value {

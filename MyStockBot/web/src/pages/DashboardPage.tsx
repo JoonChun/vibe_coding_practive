@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, deleteWatchlistItem, getWatchlist } from "../api";
 import { AddStockForm } from "../components/AddStockForm";
 import { DistributionStrip } from "../components/DistributionStrip";
+import { RealtimeBadge } from "../components/RealtimeBadge";
 import { StockCard, type StockCardData } from "../components/StockCard";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
+import { useTickStream } from "../hooks/useTickStream";
 import type { DecisionView, SnapshotItem, WatchlistItem } from "../types";
 
 type SortKey = "decision" | "change" | "name";
@@ -36,6 +38,7 @@ export default function DashboardPage() {
 
   const snapshot = useSnapshot();
   const relativeUpdatedAt = useRelativeTime(snapshot.lastUpdatedAt);
+  const tickStream = useTickStream();
 
   const fetchWatchlist = useCallback(async () => {
     try {
@@ -166,10 +169,7 @@ export default function DashboardPage() {
 
       <header className="dash-header">
         <span className="dash-header__title">MyStockBot</span>
-        <span className="realtime-badge" role="status">
-          <span className="realtime-badge__dot" aria-hidden="true" />
-          <span>Real-time</span>
-        </span>
+        <RealtimeBadge live={tickStream.connected && tickStream.kisConnected} />
       </header>
 
       <main className="dash-main">
@@ -236,7 +236,12 @@ export default function DashboardPage() {
         ) : (
           <ul className="stock-card-grid">
             {visibleRows.map((row) => (
-              <StockCard key={row.code} row={row} onDelete={handleDelete} />
+              <StockCard
+                key={row.code}
+                row={row}
+                onDelete={handleDelete}
+                tick={tickStream.ticks[row.code] ?? null}
+              />
             ))}
           </ul>
         )}
