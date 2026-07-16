@@ -48,7 +48,7 @@ export function Sparkline({ code, trendUp, trendDown }: SparklineProps) {
         points={points}
         fill="none"
         stroke={stroke}
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

@@ -777,6 +777,11 @@ select:focus-visible {
   .bollinger-visual__marker {
     transition: none;
   }
+
+  .candle-chart__spinner {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 /* 반응형 */
@@ -1385,55 +1390,143 @@ select:focus-visible {
   color: var(--color-danger);
 }
 
-/* 가격 차트 카드 */
-.price-chart {
+/* 캔들 차트 카드 (lightweight-charts) */
+.candle-chart {
   height: 100%;
-  min-height: 16rem;
   background-color: var(--surface-container-lowest);
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
-  overflow: hidden;
-  position: relative;
+  padding: var(--gutter);
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
 }
 
-.price-chart--empty {
+.candle-chart__toolbar {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--gutter);
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.price-chart--empty p {
-  margin: 0;
+.candle-chart__legend {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.candle-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--on-surface-variant);
-  font-size: 0.9rem;
 }
 
-.price-chart__svg {
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  min-height: 12rem;
+.candle-chart__legend-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: none;
 }
 
-.price-chart__legend {
+/* 타임프레임 선택 바 — 분봉 셀렉트 + 일/주/월/년 토글 버튼 */
+.tf-bar {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.75rem var(--gutter);
-  border-top: 1px solid var(--outline-variant);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--primary);
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+  -webkit-overflow-scrolling: touch;
 }
 
-.price-chart__dot {
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
+.tf-bar__select {
+  flex: none;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-lowest);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tf-bar__btn {
+  flex: none;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tf-bar__btn:hover {
+  background-color: var(--surface-container);
+}
+
+.tf-bar__btn--active {
   background-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.tf-bar__btn--active:hover {
+  background-color: var(--primary);
+}
+
+/* 캔들 캔버스 영역 — lightweight-charts가 이 안에 canvas를 주입 */
+.candle-chart__canvas-wrap {
+  position: relative;
+  flex: 1;
+  height: 380px;
+  min-height: 380px;
+}
+
+.candle-chart__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.candle-chart__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: rgba(251, 248, 250, 0.7);
+  pointer-events: none;
+}
+
+.candle-chart__overlay--empty p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.candle-chart__spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--outline-variant);
+  border-top-color: var(--primary-container);
+  border-radius: 50%;
+  animation: candle-chart-spin 0.7s linear infinite;
+}
+
+@keyframes candle-chart-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 상세 페이지 모바일 반응형 */
@@ -1473,5 +1566,18 @@ select:focus-visible {
 
   .gauge-card__svg-wrap {
     max-width: 12rem;
+  }
+
+  .candle-chart {
+    padding: 1rem;
+  }
+
+  .candle-chart__canvas-wrap {
+    height: 280px;
+    min-height: 280px;
+  }
+
+  .tf-bar__btn {
+    padding: 0.35rem 0.7rem;
   }
 }

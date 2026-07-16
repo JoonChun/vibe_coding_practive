@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BollingerTrack } from "../components/BollingerTrack";
+import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
-import { PriceChart } from "../components/PriceChart";
 import { TokenBanner } from "../components/TokenBanner";
-import { useBars } from "../hooks/useBars";
 import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { buildFactorRows, sumFactorScores } from "../utils/factorScoring";
@@ -25,7 +24,7 @@ const TAB_THRESHOLD: Record<AnalysisTab, number> = {
 /**
  * 종목 상세 판정 페이지 — /stocks/:code
  * 스냅샷은 대시보드와 동일한 useSnapshot 폴링(20초)을 재사용해 코드로 필터링하고,
- * 일봉 히스토리는 별도로 /api/stocks/{code}/bars 를 조회한다.
+ * 캔들 차트는 CandleChart가 자체적으로 /api/stocks/{code}/candles 를 타임프레임별로 조회한다.
  */
 export default function StockDetailPage() {
   const { code: codeParam } = useParams<{ code: string }>();
@@ -35,7 +34,6 @@ export default function StockDetailPage() {
 
   const snapshot = useSnapshot();
   const relativeUpdatedAt = useRelativeTime(snapshot.lastUpdatedAt);
-  const bars = useBars(code, 60);
 
   const item = useMemo(
     () => snapshot.data?.items.find((i) => i.code === code) ?? null,
@@ -182,7 +180,7 @@ export default function StockDetailPage() {
             />
           </div>
           <div className="detail-grid__chart">
-            <PriceChart items={bars.items} loading={bars.loading} />
+            <CandleChart code={code} />
           </div>
         </div>
       </main>

@@ -1,7 +1,9 @@
 import type {
+  CandlesResponse,
   SnapshotResponse,
   StockBarsResponse,
   StockSearchResponse,
+  Timeframe,
   WatchlistItem,
   WatchlistItemInput,
   WatchlistListResponse,
@@ -121,7 +123,10 @@ export function getSnapshot(): Promise<SnapshotResponse> {
   return request<SnapshotResponse>("/api/snapshot");
 }
 
-/** 종목 일봉 히스토리 조회 (스파크라인·상세 차트용). limit 기본 30·최대 120. */
+/**
+ * 종목 일봉 히스토리 조회. limit 기본 30·최대 120.
+ * 스파크라인·상세 캔들 차트는 getCandles로 이전됨 — 이 함수는 그 외 /bars 소비처를 위해 유지.
+ */
 export function getStockBars(
   code: string,
   limit = 30
@@ -138,4 +143,16 @@ export function searchStocks(
 ): Promise<StockSearchResponse> {
   const params = new URLSearchParams({ q, limit: String(limit) });
   return request<StockSearchResponse>(`/api/stocks/search?${params.toString()}`);
+}
+
+/** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150·최대 300(마지막 N개). */
+export function getCandles(
+  code: string,
+  tf: Timeframe = "1d",
+  count = 150
+): Promise<CandlesResponse> {
+  const params = new URLSearchParams({ tf, count: String(count) });
+  return request<CandlesResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
+  );
 }

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { getStockBars } from "../api";
+import { getCandles } from "../api";
 
 /**
- * 종목의 최근 종가 배열을 조회해 스파크라인 렌더링에 사용한다.
+ * 종목의 최근 일봉 종가 배열을 조회해 스파크라인 렌더링에 사용한다.
  * 실패하거나 2개 미만이면 null을 반환해 호출부에서 스파크라인을 숨기도록 한다.
  */
 export function useSparkline(code: string, limit = 20): number[] | null {
@@ -12,12 +12,12 @@ export function useSparkline(code: string, limit = 20): number[] | null {
     let cancelled = false;
     setCloses(null);
 
-    getStockBars(code, limit)
+    getCandles(code, "1d", limit)
       .then((res) => {
         if (cancelled) return;
         const values = res.items
           .map((item) => item.close)
-          .filter((close): close is number => close !== null && typeof close === "number");
+          .filter((close): close is number => typeof close === "number" && Number.isFinite(close));
         setCloses(values.length >= 2 ? values : null);
       })
       .catch(() => {

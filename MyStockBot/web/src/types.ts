@@ -94,3 +94,35 @@ export interface StockBarsResponse {
   code: string;
   items: BarItem[];
 }
+
+/** GET /api/stocks/{code}/candles 지원 주기 — 분봉 7종 + 일/주/월/년봉 */
+export type Timeframe =
+  | "1m"
+  | "5m"
+  | "15m"
+  | "30m"
+  | "60m"
+  | "120m"
+  | "240m"
+  | "1d"
+  | "1w"
+  | "1M"
+  | "1y";
+
+/** 캔들 1개 — t는 Unix epoch 초(UTC). 일봉 이상은 KST 자정 기준 epoch.
+ * open/high/low/close/volume은 백엔드가 결측 시 null을 반환할 수 있다(schemas.py CandleItem 참조). */
+export interface CandleItem {
+  t: number;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+}
+
+export interface CandlesResponse {
+  code: string;
+  tf: Timeframe;
+  source: SnapshotSource | null;
+  items: CandleItem[];
+}

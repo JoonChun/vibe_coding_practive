@@ -84,12 +84,17 @@ def _get_headers(token: str) -> dict:
     }
 
 
-def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
+def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> pd.DataFrame | None:
+    """KIS 기간별시세(FHKST03010100) 조회 일반화.
+
+    period: FID_PERIOD_DIV_CODE ("D"=일봉, "W"=주봉, "M"=월봉, "Y"=년봉).
+    lookback_days: 조회 시작일을 오늘로부터 며칠 전으로 잡을지(각 tf 별 권장 range는 호출부에서 결정).
+    반환 컬럼: date(YYYYMMDD 문자열)/open/high/low/close/volume. 실패·빈 데이터 시 None.
+    """
     from zoneinfo import ZoneInfo
     tz = ZoneInfo(TIMEZONE)
     today = datetime.now(tz)
-    lookback = int(OHLCV_LOOKBACK_DAYS * 1.6)
-    start = today - timedelta(days=lookback)
+    start = today - timedelta(days=lookback_days)
 
     headers = _get_headers(token)
     headers["tr_id"] = "FHKST03010100"
@@ -98,7 +103,7 @@ def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
         "FID_INPUT_ISCD": code,
         "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
         "FID_INPUT_DATE_2": today.strftime("%Y%m%d"),
-        "FID_PERIOD_DIV_CODE": "D",
+        "FID_PERIOD_DIV_CODE": period,
         "FID_ORG_ADJ_PRC": "0",
     }
     try:
@@ -106,12 +111,12 @@ def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] OHLCV 요청 실패 ({code}): {e}")
+        print(f"[KIS] OHLCV 요청 실패 ({code}, period={period}): {e}")
         return None
 
     output2 = data.get("output2")
     if not output2:
-        print(f"[KIS] OHLCV output2 없음 ({code}): rt_cd={data.get('rt_cd')} msg={data.get('msg1')}")
+        print(f"[KIS] OHLCV output2 없음 ({code}, period={period}): rt_cd={data.get('rt_cd')} msg={data.get('msg1')}")
         return None
 
     rows = []
@@ -133,6 +138,12 @@ def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
 
     df = pd.DataFrame(rows)
     return df.sort_values("date").reset_index(drop=True)
+
+
+def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
+    """기존 호출부(스냅샷 수집) 전용 — 일봉 지표 계산에 필요한 lookback으로 fetch_kis_ohlcv 호출."""
+    lookback = int(OHLCV_LOOKBACK_DAYS * 1.6)
+    return fetch_kis_ohlcv(code, token, period="D", lookback_days=lookback)
 
 
 def _kis_financial_ratio(code: str, token: str) -> dict:
@@ -279,29 +290,47 @@ def _yf_ticker(code: str) -> yf.Ticker | None:
     return None
 
 
-def _yf_intraday_60m(code: str) -> pd.DataFrame | None:
+def fetch_yf_ohlcv(code: str, interval: str, period: str) -> pd.DataFrame | None:
+    """Yahoo Finance OHLCV 조회 일반화 (interval/period는 yf Ticker.history() 인자 그대로 전달).
+
+    반환 컬럼: date(문자열: 일봉류는 YYYYMMDD, 분봉류는 YYYYMMDD HHMM)/open/high/low/close/volume.
+    인덱스는 원본 tz-aware DatetimeIndex를 그대로 유지한다 — 분봉 tf의 정확한 epoch 계산은
+    (문자열 재파싱이 아니라) 이 tz-aware 타임스탬프의 .timestamp() 를 직접 쓰는 편이 안전하다
+    (문자열로 한 번 포맷하면 어느 tz 기준 wall-clock인지 재구성 시 오차 위험이 있음).
+    실패·빈 데이터 시 None.
+    """
     try:
         ticker = _yf_ticker(code)
         if ticker is None:
             return None
-        hist = ticker.history(period="6mo", interval="60m")
+        hist = ticker.history(period=period, interval=interval)
         if hist is None or hist.empty:
             return None
         hist = hist.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
         if hist.empty:
             return None
+        date_fmt = "%Y%m%d" if interval in ("1d", "1wk", "1mo") else "%Y%m%d%H%M"
         df = pd.DataFrame({
-            "date": hist.index.strftime("%Y%m%d%H%M"),
+            "date": hist.index.strftime(date_fmt),
             "open": hist["Open"].astype(float),
             "high": hist["High"].astype(float),
             "low": hist["Low"].astype(float),
             "close": hist["Close"].astype(float),
             "volume": hist["Volume"].astype(int),
-        }).reset_index(drop=True)
+        })
+        df.index = hist.index
         return df
     except Exception as e:
-        print(f"[YF] 60분봉 수집 실패 ({code}): {e}")
+        print(f"[YF] OHLCV 수집 실패 ({code}, interval={interval}, period={period}): {e}")
         return None
+
+
+def _yf_intraday_60m(code: str) -> pd.DataFrame | None:
+    """기존 호출부(스냅샷 수집 60분봉 지표) 전용 — reset_index 로 기존 RangeIndex 동작 유지."""
+    df = fetch_yf_ohlcv(code, interval="60m", period="6mo")
+    if df is None:
+        return None
+    return df.reset_index(drop=True)
 
 
 def _fetch_from_yfinance(code: str, name: str) -> dict | None:
