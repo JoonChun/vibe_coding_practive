@@ -1,5 +1,8 @@
 import type {
+  CandlesResponse,
   SnapshotResponse,
+  StockSearchResponse,
+  Timeframe,
   WatchlistItem,
   WatchlistItemInput,
   WatchlistListResponse,
@@ -8,6 +11,35 @@ import type {
 // 개발: 빈 값(상대경로) → vite dev 프록시(/api → localhost:8000)가 처리.
 // 배포(Vercel 등): VITE_API_BASE에 백엔드 공개 URL을 설정.
 const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
+const TOKEN_STORAGE_KEY = "mystockbot_api_token";
+
+/** 저장된 API 토큰 조회. localStorage 접근 불가(프라이빗 모드 등) 시 null. */
+export function getApiToken(): string | null {
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** API 토큰 저장. */
+export function setApiToken(token: string): void {
+  try {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // localStorage 접근 불가 시 무시
+  }
+}
+
+/** API 토큰 삭제. */
+export function clearApiToken(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // localStorage 접근 불가 시 무시
+  }
+}
 
 export class ApiError extends Error {
   status: number;
@@ -38,10 +70,18 @@ async function extractErrorMessage(res: Response): Promise<string> {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  const token = getApiToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   try {
     res = await fetch(`${BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers,
     });
   } catch {
     throw new ApiError(0, "서버에 연결할 수 없습니다");
@@ -80,4 +120,25 @@ export function deleteWatchlistItem(code: string): Promise<void> {
 
 export function getSnapshot(): Promise<SnapshotResponse> {
   return request<SnapshotResponse>("/api/snapshot");
+}
+
+/** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */
+export function searchStocks(
+  q: string,
+  limit = 10
+): Promise<StockSearchResponse> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return request<StockSearchResponse>(`/api/stocks/search?${params.toString()}`);
+}
+
+/** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150·최대 300(마지막 N개). */
+export function getCandles(
+  code: string,
+  tf: Timeframe = "1d",
+  count = 150
+): Promise<CandlesResponse> {
+  const params = new URLSearchParams({ tf, count: String(count) });
+  return request<CandlesResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
+  );
 }

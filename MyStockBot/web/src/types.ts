@@ -8,7 +8,13 @@ export type SignalView =
   | "강력매도"
   | "데이터부족";
 
+/** 판정 분포 스트립 등에서 사용 — "데이터부족"을 제외한 5단계 판정 */
+export type DecisionView = Exclude<SignalView, "데이터부족">;
+
 export type SnapshotSource = "kis" | "yfinance";
+
+/** stock_master.market — 코스피/코스닥 구분 */
+export type MarketType = "KOSPI" | "KOSDAQ";
 
 export interface WatchlistItem {
   id: number;
@@ -16,6 +22,7 @@ export interface WatchlistItem {
   name: string;
   is_active: boolean;
   created_at: string;
+  market?: string | null;
 }
 
 export interface WatchlistListResponse {
@@ -27,19 +34,82 @@ export interface WatchlistItemInput {
   name: string;
 }
 
+/** GET /api/stocks/search 결과 항목 — 자동완성 드롭다운용 */
+export interface SearchItem {
+  code: string;
+  name: string;
+  market: MarketType;
+}
+
+export interface StockSearchResponse {
+  items: SearchItem[];
+}
+
+export interface SnapshotFactors {
+  macd_1d: string | null;
+  rsi_1d: string | null;
+  rsi_value_1d: number | null;
+  macd_60m: string | null;
+  rsi_60m: string | null;
+  rsi_value_60m: number | null;
+  bb_upper: number | null;
+  bb_mid: number | null;
+  bb_lower: number | null;
+  per: number | null;
+  pbr: number | null;
+  roe: number | null;
+  short_score: number | null; // 단기 스코어 합 (임계 ±2)
+  long_score: number | null; // 장기 스코어 합 (임계 ±3)
+}
+
 export interface SnapshotItem {
   code: string;
   name: string;
   close: number | null;
+  change: number | null; // 전일 대비 등락폭 (close - prev_close)
+  change_pct: number | null; // 등락률 % (round 2)
   short_view: SignalView | null;
   long_view: SignalView | null;
   source: SnapshotSource | null;
   error: string | null;
-  factors: Record<string, unknown> | null;
+  factors: SnapshotFactors | null;
 }
 
 export interface SnapshotResponse {
   generated_at: string;
   cache_hit: boolean;
   items: SnapshotItem[];
+}
+
+
+/** GET /api/stocks/{code}/candles 지원 주기 — 분봉 7종 + 일/주/월/년봉 */
+export type Timeframe =
+  | "1m"
+  | "5m"
+  | "15m"
+  | "30m"
+  | "60m"
+  | "120m"
+  | "240m"
+  | "1d"
+  | "1w"
+  | "1M"
+  | "1y";
+
+/** 캔들 1개 — t는 Unix epoch 초(UTC). 일봉 이상은 KST 자정 기준 epoch.
+ * open/high/low/close/volume은 백엔드가 결측 시 null을 반환할 수 있다(schemas.py CandleItem 참조). */
+export interface CandleItem {
+  t: number;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+}
+
+export interface CandlesResponse {
+  code: string;
+  tf: Timeframe;
+  source: SnapshotSource | null;
+  items: CandleItem[];
 }

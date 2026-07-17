@@ -19,6 +19,10 @@ STOCKDATA_HEADER = [
 # KIS API
 KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
 KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
+# 실시간 체결 WS 인증용 approval_key 발급(REST) — src/kis_auth.py 의 get_approval_key() 가 사용.
+KIS_APPROVAL_URL = f"{KIS_BASE_URL}/oauth2/Approval"
+# 실시간 시세 WS 접속 주소(실전 도메인) — server/services/kis_ws.py 가 사용.
+KIS_WS_URL = "ws://ops.koreainvestment.com:21000"
 # 기간별 시세(일봉, 최대 100건): inquire-daily-itemchartprice / FHKST03010100
 # (기존 inquire-daily-price(FHKST01010100)는 날짜범위 미지원·output2 미반환이라 항상 빈 응답이었음)
 KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
@@ -47,6 +51,7 @@ SPREADSHEET_ID_ENV_KEY = "SPREADSHEET_ID"
 GMAIL_APP_PASSWORD_ENV_KEY = "GMAIL_APP_PASSWORD"
 NOTIFY_EMAIL_ENV_KEY = "NOTIFY_EMAIL"
 SENDER_EMAIL_ENV_KEY = "SENDER_EMAIL"
+API_TOKEN_ENV_KEY = "MYSTOCKBOT_API_TOKEN"
 
 # 서버(Phase 1) 관련 설정
 DB_PATH = os.environ.get(
@@ -59,3 +64,17 @@ CORS_ALLOWED_ORIGINS = [
     for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
     if o.strip()
 ]
+
+# 수집 루프(server/services/collector.py) 사이클 간격(초)
+COLLECTOR_INTERVAL_MARKET = 30   # 장중(평일 09:00~15:40 Asia/Seoul)
+COLLECTOR_INTERVAL_IDLE = 600    # 그 외 시간대
+
+# 종목마스터(전 종목 검색용) 관련 설정
+# 다운로드 URL은 KIS 공식 예제(open-trading-api/stocks_info/kis_*_code_mst.py)와 동일.
+# 인증 불필요(공개 정적 파일), 대신 해당 서버가 자체서명/구식 인증서라 SSL 검증을 끈다
+# (공식 예제도 ssl._create_unverified_context 로 동일하게 우회함).
+KIS_MASTER_URLS = {
+    "KOSPI": "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip",
+    "KOSDAQ": "https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip",
+}
+STOCK_MASTER_STALE_DAYS = 7

@@ -34,7 +34,64 @@ docker compose down
 
 ---
 
-## 2. Cloudflare Tunnel (무료 HTTPS 고정 URL)
+## 2. 모바일에서 보기 (개인용)
+
+공개 배포 없이 내 폰에서 확인/설치만 하고 싶을 때.
+
+### ① 같은 와이파이
+PC와 폰이 같은 공유기에 물려 있으면, PC의 LAN IP로 바로 접속 가능.
+
+```bash
+cd web
+npm run dev -- --host
+```
+
+Windows에서 `ipconfig`로 PC의 IPv4 주소 확인 (예: `192.168.0.15`) 후,
+폰 브라우저에서 `http://192.168.0.15:5173` 접속.
+
+정직하게 밝히면: 이 방식은 **HTTP**라서 "보안 컨텍스트"가 아니므로 서비스워커(오프라인 캐시)는
+동작하지 않는다. 그래도 홈 화면에 바로가기 아이콘을 추가해 앱처럼 켤 수는 있음(오프라인 지원 없이).
+
+### ② Tailscale (권장 — HTTPS로 PWA 완전 설치)
+[Tailscale](https://tailscale.com)은 무료 사설망(mesh VPN). `tailscale serve`를 쓰면
+유효한 HTTPS 인증서가 자동 발급되어(`https://<pc-이름>.<tailnet>.ts.net`) 서비스워커·
+standalone 설치까지 완전하게 동작한다.
+
+**설치**
+- PC: https://tailscale.com/download → 설치 후 로그인
+- 폰: App Store/Play Store에서 Tailscale 앱 설치 → 같은 계정으로 로그인
+
+**PC에서 서비스 노출** (예시 명령)
+```bash
+# 백엔드(FastAPI, 8000번 포트)를 HTTPS로 노출
+tailscale serve --bg --https=8443 http://localhost:8000
+
+# 프론트를 빌드해서 정적으로 노출 (vite preview 사용)
+cd web
+npm run build
+npm run preview -- --host --port 4173
+tailscale serve --bg --https=443 http://localhost:4173
+```
+
+프론트가 다른 오리진(443)에서 백엔드(8443)를 호출하려면 `web/.env.local`에
+`VITE_API_BASE=https://<pc-이름>.<tailnet>.ts.net:8443`을 지정한 뒤 다시 빌드.
+(같은 오리진으로 합치고 싶다면 `tailscale serve`의 path 라우팅으로 `/api`만 백엔드로
+넘기는 구성도 가능 — Tailscale 문서 참고.)
+
+이후 폰에서 `https://<pc-이름>.<tailnet>.ts.net` 접속.
+
+### ③ 설치법
+- **Android (Chrome)**: 우측 상단 메뉴 → "앱 설치" 또는 "홈 화면에 추가"
+- **iOS (Safari)**: 공유 버튼 → "홈 화면에 추가"
+
+설치하면 standalone 모드(주소창 없이 전체화면)로 실행되고, 서비스워커가 정적 자산을
+프리캐시해 재실행이 빨라진다. (API 응답은 캐시하지 않으므로 시세는 항상 최신 요청.)
+
+> 공개 배포(Vercel/Cloudflare Tunnel)까지 갈 필요 없이, 개인용은 Tailscale로 충분하다.
+
+---
+
+## 3. Cloudflare Tunnel (무료 HTTPS 고정 URL)
 
 ### 사전 준비
 - Cloudflare 계정 (무료)
@@ -68,7 +125,7 @@ cloudflared service install
 
 ---
 
-## 3. Vercel 프론트엔드 연결
+## 4. Vercel 프론트엔드 연결
 
 ### 프론트 배포
 ```bash
@@ -95,12 +152,38 @@ docker compose restart mystockbot-api
 
 ---
 
-## 4. 보안 주의 ⚠️
+## 5. 보안 주의 ⚠️
 
-### 현재 상태
-API에 인증 메커니즘 없음. Cloudflare Tunnel로 공개하면 **누구나 watchlist 조작 가능**.
+### API 토큰 인증 (MYSTOCKBOT_API_TOKEN)
+Cloudflare Tunnel 등으로 외부 공개 시 **반드시 토큰을 설정**할 것. 설정하지 않으면
+누구나 watchlist 조작·조회가 가능한 무인증 상태로 동작한다 (서버 시작 로그에
+"⚠ API 토큰 미설정 — 인증 비활성" 경고가 출력됨).
 
-### 권장 방안 (우선순위)
+**1) 토큰 생성**
+```bash
+openssl rand -hex 32
+```
+
+**2) MyStockBot/.env 에 설정**
+```
+MYSTOCKBOT_API_TOKEN=<위에서 생성한 값>
+```
+설정 후 `docker compose restart mystockbot-api` (또는 `up -d --build`)로 재시작.
+서버 로그에 "API 토큰 인증 활성"이 출력되면 정상 적용된 것.
+
+**3) 동작 방식**
+- 토큰이 설정되면 모든 `/api/*` 요청에 `Authorization: Bearer <토큰>` 헤더가 필요하다.
+- 예외: `GET /api/health` (헬스체크용, 항상 무인증), CORS preflight(OPTIONS).
+- 헤더 누락/불일치 시 `401 {"detail": "인증이 필요합니다"}` 반환.
+
+**4) 프론트엔드에서 토큰 입력 — 빌드에 토큰을 넣지 말 것**
+토큰을 Vite 빌드 환경변수(`VITE_*`)로 넣으면 브라우저에 배포되는 공개 번들에
+그대로 노출된다 (프론트 정적 파일은 누구나 열람 가능). 대신:
+- 브라우저로 접속 후 최초 1회 토큰 입력 UI에서 입력
+- `localStorage` 키 `mystockbot_api_token` 에 저장, 이후 모든 요청에 자동 첨부
+- 401 응답 수신 시 토큰 입력 UI를 다시 노출
+
+### 추가 방안 (선택, 병행 권장)
 1. **Tailscale (사설망)**: 무료. 본인과 신뢰 사용자만 접근
    - `https://mystockbot.tailnet-abc.ts.net`으로 접근
    - Cloudflare 대신 Tailscale MagicDNS 사용
@@ -108,15 +191,12 @@ API에 인증 메커니즘 없음. Cloudflare Tunnel로 공개하면 **누구나
 2. **Cloudflare Access (무료 계층)**: Cloudflare 계정으로 인증
    - Tunnel 설정 시 "Access" 정책 추가
 
-3. **토큰 인증 (추후)**: FastAPI에 Bearer token 추가
-   - 프론트/백엔드 모두 토큰 관리 필요
-
-### 임시 조치
-현재 개발 단계면 localhost(Tailscale) 또는 IP 화이트리스트 권장.
+토큰 인증만으로도 공개 노출 시 최소한의 보호는 되지만, Tailscale/Cloudflare Access와
+병행하면 이중 방어가 된다.
 
 ---
 
-## 5. VPS/서버 이사 (향후)
+## 6. VPS/서버 이사 (향후)
 
 Oracle Cloud Always Free(서울), AWS EC2 등으로 이사 시:
 ```bash
@@ -130,7 +210,7 @@ docker compose up -d --build
 
 ---
 
-## 6. Vercel에 백엔드를 배포할 수 없는 이유
+## 7. Vercel에 백엔드를 배포할 수 없는 이유
 
 - **서버리스 제약**: Vercel은 함수형 서버리스(AWS Lambda 유사). 요청 당 cold start, 최대 실행 시간 제한
 - **상시 프로세스 불가**: APScheduler 평일 16:00 자동실행 불가
