@@ -17,6 +17,7 @@ from config import (
     KIS_DAILY_PRICE_URL,
     KIS_FINANCIAL_RATIO_URL,
     KIS_INCOME_STMT_URL,
+    KIS_MINUTE_PRICE_URL,
     KIS_RATE_LIMIT_DELAY,
     OHLCV_LOOKBACK_DAYS,
     TIMEZONE,
@@ -138,6 +139,249 @@ def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> p
 
     df = pd.DataFrame(rows)
     return df.sort_values("date").reset_index(drop=True)
+
+
+# 페이지네이션 시 다음 호출의 [start, end] 구간을 얼마나 잡을지(일수) — period별 근사치.
+# 각 tf의 실제 발생 빈도(거래일/거래주/거래월)를 감안해 한 호출이 대략 100건 근처로
+# 나오도록 여유를 둔 상수(공휴일 등으로 거래일수가 적은 만큼 살짝 넉넉하게 잡음).
+_PAGE_WINDOW_DAYS = {"D": 140, "W": 700, "M": 3000}
+
+
+def fetch_kis_ohlcv_paged(
+    code: str,
+    token: str,
+    period: str,
+    target_count: int,
+    max_pages: int = 15,
+) -> pd.DataFrame | None:
+    """KIS 기간별시세(FHKST03010100·inquire-daily-itemchartprice)를 날짜 구간을 과거로
+    옮겨가며 반복 호출해 최대 target_count건까지 누적한다.
+
+    이 TR/URL은 fetch_kis_ohlcv(단일 호출, 무변경)와 완전히 동일하다 — KIS 공식 스펙상
+    호출당 최대 100건 제한이 있어, 장기 이력(연봉 다건 등)을 한 번에 못 받는 문제를
+    페이지네이션으로 해결한다. (참고: 이 함수를 만들며 "당일분봉 TR이 FHKST03010200"
+    이라는 사실도 별도로 공식 확인했다 — 즉 FHKST03010200은 분봉 전용 TR이며, 일봉
+    페이지네이션에는 기존 fetch_kis_ohlcv와 동일하게 FHKST03010100을 그대로 재사용하는
+    것이 맞다. 자세한 분봉 TR 출처는 fetch_kis_minutes() 상단 주석 참조.)
+
+    페이지네이션 규칙:
+      - 첫 호출: end=오늘, start=end-윈도우(period별 _PAGE_WINDOW_DAYS).
+      - 다음 호출: end=(직전 응답의 가장 이른 날짜 - 1일), start=end-윈도우.
+      - 응답이 비거나(더 과거 데이터 없음) 새로 얻은 가장 이른 날짜가 이전 페이지보다
+        더 과거로 진행하지 못하면(같은 구간 반복 등 이상 상황) 중단한다.
+      - target_count건 이상 모이면 즉시 중단, max_pages 도달 시에도 중단(폭주 방지 상한
+        — 반드시 준수).
+      - 페이지 호출 사이 KIS_RATE_LIMIT_DELAY sleep(다음 페이지를 실제로 호출할 때만).
+
+    반환: fetch_kis_ohlcv와 동일 스키마(date 'YYYYMMDD'/open/high/low/close/volume),
+    날짜 오름차순, 중복 날짜 제거. target_count 초과분은 최신 target_count건만 남긴다
+    (오름차순 유지). 실패·빈 데이터 시 None.
+    """
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(TIMEZONE)
+    end = datetime.now(tz)
+    window_days = _PAGE_WINDOW_DAYS.get(period, _PAGE_WINDOW_DAYS["D"])
+
+    all_rows: dict[str, dict] = {}
+    earliest_seen: str | None = None
+
+    for page in range(max_pages):
+        start = end - timedelta(days=window_days)
+
+        headers = _get_headers(token)
+        headers["tr_id"] = "FHKST03010100"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": period,
+            "FID_ORG_ADJ_PRC": "0",
+        }
+        try:
+            resp = requests.get(KIS_DAILY_PRICE_URL, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"[KIS] OHLCV 페이지네이션 요청 실패 ({code}, period={period}, page={page}): {e}")
+            break
+
+        output2 = data.get("output2")
+        if not output2:
+            break
+
+        page_dates = []
+        for item in output2:
+            try:
+                date_str = item["stck_bsop_date"]
+                page_dates.append(date_str)
+                if date_str not in all_rows:
+                    all_rows[date_str] = {
+                        "date": date_str,
+                        "open": int(item["stck_oprc"]),
+                        "high": int(item["stck_hgpr"]),
+                        "low": int(item["stck_lwpr"]),
+                        "close": int(item["stck_clpr"]),
+                        "volume": int(item["acml_vol"]),
+                    }
+            except (KeyError, ValueError):
+                continue
+
+        if not page_dates:
+            break
+
+        new_earliest = min(page_dates)
+        if earliest_seen is not None and new_earliest >= earliest_seen:
+            break  # 더 과거로 진행 못함 — 무한루프 방지
+        earliest_seen = new_earliest
+
+        if len(all_rows) >= target_count:
+            break
+
+        try:
+            end = datetime.strptime(new_earliest, "%Y%m%d").replace(tzinfo=tz) - timedelta(days=1)
+        except ValueError:
+            break
+
+        time.sleep(KIS_RATE_LIMIT_DELAY)
+
+    if not all_rows:
+        return None
+
+    df = pd.DataFrame(list(all_rows.values())).sort_values("date").reset_index(drop=True)
+    if len(df) > target_count:
+        df = df.iloc[-target_count:].reset_index(drop=True)
+    return df
+
+
+def fetch_kis_minutes(code: str, token: str, max_pages: int = 15) -> pd.DataFrame | None:
+    """KIS 주식당일분봉조회(당일 1분봉)를 시간 역방향으로 최대 max_pages 페이지(페이지당
+    최대 30건) 모아 반환한다.
+
+    max_pages 기본 15: 페이지당 30분 × 15 = 450분 > 정규장 390분(09:00~15:30)이라
+    하루 전체 분봉을 한 사이클에 커버한다(의원 검수 지적 반영 — 8페이지=240분은 후반
+    시간대가 잘렸음).
+
+    ────────────────────────────────────────────────────────────────────────
+    출처(WebFetch로 공식 확인, 추측 아님):
+      URL·TR ID·요청 파라미터·페이지당 최대 건수·FID_INPUT_HOUR_1 의미 — 아래 공식 예제
+      원문 그대로 이식(2026-07 조회):
+      https://raw.githubusercontent.com/koreainvestment/open-trading-api/main/
+      examples_llm/domestic_stock/inquire_time_itemchartprice/inquire_time_itemchartprice.py
+        - API_URL = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+        - tr_id = "FHKST03010200" (실전/모의 동일)
+        - params: FID_COND_MRKT_DIV_CODE("J"=KRX), FID_INPUT_ISCD(종목코드),
+          FID_INPUT_HOUR_1(조회기준시각 HHMMSS — "미래일시 입력 시 현재가로 조회됨"이
+          원문 docstring에 명시됨), FID_PW_DATA_INCU_YN("Y"=과거데이터포함 — 이 값이
+          "N"이면 과거 데이터가 안 실려 페이지네이션이 불가능해지므로 항상 "Y" 고정),
+          FID_ETC_CLS_CODE("")
+        - "실전계좌/모의계좌의 경우, 한 번의 호출에 최대 30건까지 확인 가능" (원문 docstring)
+        - "당일 분봉 데이터만 제공됩니다(전일자 분봉 미제공)" (원문 docstring)
+      output2 필드명 — 공식 예제 파일 자체는 pd.DataFrame(res.getBody().output2)로 KIS가
+      내려주는 raw JSON 키를 그대로 통과시켜 컬럼명을 하드코딩하지 않는다(동적 패스스루).
+      이 레포 안에서 이미 공식 확인된 동일 계열 필드명(일봉 REST — crawler.fetch_kis_ohlcv:
+      stck_bsop_date/stck_oprc/stck_hgpr/stck_lwpr/stck_clpr/acml_vol, 실시간체결 WS —
+      server/services/kis_ws.py 상단 H0STCNT0 필드표: STCK_CNTG_HOUR/CNTG_VOL 등)와 동일
+      명명 규칙이며, 커뮤니티 교차검증(inflearn.com/community/questions/1606220 — "국내주식
+      과거 분봉데이터 관련" 질문의 답변이 output2 필드로 stck_cntg_hour/stck_prpr/stck_oprc/
+      stck_hgpr/stck_lwpr/cntg_vol 을 명시하고, 페이지네이션도 "마지막 stck_cntg_hour를
+      다음 FID_INPUT_HOUR_1로 교체해 while 반복 호출"이라 설명 — 아래 구현과 일치)로
+      확인한 필드명을 사용한다:
+        stck_bsop_date(영업일자), stck_cntg_hour(체결시각 HHMMSS),
+        stck_prpr(체결 시점 현재가 — 해당 분봉 종가로 사용),
+        stck_oprc/stck_hgpr/stck_lwpr(시가/고가/저가), cntg_vol(해당 분 체결거래량).
+      실제 응답 필드가 위 명명과 다를 가능성에 대비해 각 행 파싱은 KeyError/ValueError를
+      개별 삼켜 스킵한다(기존 fetch_kis_ohlcv와 동일 관례) — 전량 스킵되면 빈 결과로
+      처리되어 호출부가 자연히 yfinance 폴백으로 넘어간다.
+    ────────────────────────────────────────────────────────────────────────
+
+    페이지네이션: 첫 호출 FID_INPUT_HOUR_1=현재시각(HHMMSS). 이후 호출은 직전 페이지의
+    가장 이른 체결시각에서 1분을 뺀 값을 다음 FID_INPUT_HOUR_1로 사용(경계 분봉 중복 재조회
+    방지). 응답이 비거나 더 과거로 진행 못하면 중단. max_pages 상한 반드시 준수. 페이지
+    호출 사이 KIS_RATE_LIMIT_DELAY sleep(다음 페이지를 실제로 호출할 때만).
+
+    반환 컬럼: date('YYYYMMDDHHMM' 문자열, 초 단위 절삭)/open/high/low/close/volume,
+    시간 오름차순, (영업일자,체결시각) 중복 제거. 장 시작 전·휴장이면 첫 페이지부터 빈
+    응답 → None(정상, 폴백 대상). 실패 시에도 None.
+    """
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(TIMEZONE)
+    now = datetime.now(tz)
+    today_str = now.strftime("%Y%m%d")
+
+    headers = _get_headers(token)
+    headers["tr_id"] = "FHKST03010200"
+
+    hour_cursor = now.strftime("%H%M%S")
+    rows: dict[tuple[str, str], dict] = {}
+
+    for page in range(max_pages):
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_HOUR_1": hour_cursor,
+            "FID_PW_DATA_INCU_YN": "Y",
+            "FID_ETC_CLS_CODE": "",
+        }
+        try:
+            resp = requests.get(KIS_MINUTE_PRICE_URL, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            print(f"[KIS] 분봉 요청 실패 ({code}, page={page}): {e}")
+            break
+
+        output2 = data.get("output2")
+        if not output2:
+            break
+
+        page_hours = []
+        for item in output2:
+            hour = item.get("stck_cntg_hour")
+            if not hour:
+                continue
+            page_hours.append(hour)
+            bsop = item.get("stck_bsop_date") or today_str
+            key = (bsop, hour)
+            if key in rows:
+                continue
+            try:
+                rows[key] = {
+                    "date": f"{bsop}{hour[:4]}",
+                    "open": int(item["stck_oprc"]),
+                    "high": int(item["stck_hgpr"]),
+                    "low": int(item["stck_lwpr"]),
+                    "close": int(item["stck_prpr"]),
+                    "volume": int(item["cntg_vol"]),
+                }
+            except (KeyError, ValueError):
+                continue
+
+        if not page_hours:
+            break
+
+        earliest_hour = min(page_hours)
+        try:
+            prev_dt = datetime.strptime(earliest_hour[:6].ljust(6, "0"), "%H%M%S") - timedelta(minutes=1)
+        except ValueError:
+            break
+        new_cursor = prev_dt.strftime("%H%M%S")
+
+        if new_cursor >= hour_cursor:
+            break  # 더 과거로 진행 못함 — 무한루프 방지
+        hour_cursor = new_cursor
+
+        time.sleep(KIS_RATE_LIMIT_DELAY)
+
+    if not rows:
+        return None
+
+    df = pd.DataFrame(list(rows.values())).sort_values("date")
+    # 방어적 중복 제거: dict 키는 (bsop_date,정확한 HHMMSS) 단위라 초 단위까지 다르면 별개
+    # 항목으로 남을 수 있으나, 최종 date 문자열은 분(HHMM) 단위로 절삭하므로 혹시라도 같은
+    # 분에 두 레코드가 잡히면 여기서 한 번 더 걸러 분당 1행만 남긴다.
+    df = df.drop_duplicates(subset=["date"], keep="last").reset_index(drop=True)
+    return df
 
 
 def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:

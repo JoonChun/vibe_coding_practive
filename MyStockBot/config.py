@@ -26,6 +26,11 @@ KIS_WS_URL = "ws://ops.koreainvestment.com:21000"
 # 기간별 시세(일봉, 최대 100건): inquire-daily-itemchartprice / FHKST03010100
 # (기존 inquire-daily-price(FHKST01010100)는 날짜범위 미지원·output2 미반환이라 항상 빈 응답이었음)
 KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
+# 주식당일분봉조회(당일 1분봉, 호출당 최대 30건): inquire-time-itemchartprice / FHKST03010200
+# 출처(WebFetch 공식 확인, 추측 아님): raw.githubusercontent.com/koreainvestment/open-trading-api
+# /main/examples_llm/domestic_stock/inquire_time_itemchartprice/inquire_time_itemchartprice.py
+# — src/crawler.py 의 fetch_kis_minutes() 상단 주석에 세부 근거 기록.
+KIS_MINUTE_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
 KIS_FINANCIAL_RATIO_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
 KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-statement"
 

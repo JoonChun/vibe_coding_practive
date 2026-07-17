@@ -33,6 +33,10 @@ from config import (
     TIMEZONE,
 )
 
+# 60분봉 리샘플 유틸(resample_items)만 재사용한다(candles.py 소유 로직 — 짧은 변환
+# 함수까지 끌어오기보다 이 유틸 하나만 공유해 중복을 줄인다).
+from . import candles
+
 _MAX_WORKERS = 4
 
 _MARKET_OPEN = dtime(9, 0)
@@ -147,6 +151,37 @@ def _df_to_candle_items_minute(df: pd.DataFrame) -> list[dict]:
     items = []
     for ts, row in df.iterrows():
         t = _minute_ts_to_epoch(ts)
+        if t is None:
+            continue
+        items.append({
+            "t": t,
+            "open": _safe_float(row.get("open")),
+            "high": _safe_float(row.get("high")),
+            "low": _safe_float(row.get("low")),
+            "close": _safe_float(row.get("close")),
+            "volume": _safe_int(row.get("volume")),
+        })
+    return items
+
+
+def _kis_minute_epoch(date_str) -> int | None:
+    """'YYYYMMDDHHMM' 문자열(KST, KIS 당일분봉)을 Unix epoch(초)로 변환. 파싱 실패 시 None.
+    candles.py _kis_minute_epoch 와 동일 규칙(짧은 변환 로직이라 모듈 경계 넘어 재사용하기
+    보다 로컬에 둔다 — 이 파일 상단 주석과 동일 관례)."""
+    try:
+        dt = datetime.strptime(str(date_str)[:12], "%Y%m%d%H%M").replace(tzinfo=ZoneInfo("Asia/Seoul"))
+        return int(dt.timestamp())
+    except (ValueError, TypeError):
+        return None
+
+
+def _df_to_candle_items_minute_kis(df: pd.DataFrame) -> list[dict]:
+    """crawler.fetch_kis_minutes 결과 전용 변환. 이 df는 (yfinance 분봉과 달리) 의미 있는
+    tz-aware 인덱스가 없고 정수 RangeIndex이므로, 'date'='YYYYMMDDHHMM' 문자열을 직접
+    KST로 파싱한다."""
+    items = []
+    for _, row in df.iterrows():
+        t = _kis_minute_epoch(row.get("date"))
         if t is None:
             continue
         items.append({
@@ -282,10 +317,47 @@ def _get_daily_df(code: str, token: str | None) -> tuple[pd.DataFrame | None, st
     return (pd.DataFrame(stored) if stored else daily_df), source
 
 
-def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
+def _fetch_60m_items(code: str, token: str | None) -> tuple[list[dict], str | None]:
+    """60분봉 소스: KIS 당일분봉(1분) 리샘플 우선 → 실패/빈 데이터(장전·휴장·소형주
+    정상거래무 등)면 yfinance 로 시끄럽게(경고 로그) 폴백한다. 소형주(예 010170)도
+    KIS 당일분봉으로 60m 이 채워져 단기 판정이 나오게 하는 것이 목적.
+
+    token 은 _run_cycle 에서 이미 발급받은 사이클 공용 토큰을 그대로 받는다(사이클마다
+    KIS 토큰을 중복 발급하지 않기 위함 — _get_daily_df 와 동일 관례).
+    """
+    if token is not None:
+        try:
+            df1 = crawler.fetch_kis_minutes(code, token)
+        except Exception as e:
+            print(f"[collector] ⚠ KIS 당일분봉 수집 예외({code}) — yfinance 폴백: {e}")
+            df1 = None
+
+        if df1 is not None and not df1.empty:
+            one_min_items = _df_to_candle_items_minute_kis(df1)
+            if one_min_items:
+                items60 = candles.resample_items(one_min_items, 60)
+                if items60:
+                    return items60, "kis"
+
+        print(f"[collector] ⚠ KIS 60분봉(당일분봉 리샘플) 수집 실패/데이터없음 — yfinance 폴백: {code}")
+    else:
+        print(f"[collector] ⚠ KIS 토큰 미발급 — 60분봉 yfinance 폴백: {code}")
+    try:
+        df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
+    except Exception as e:
+        print(f"[collector] 60분봉 yfinance 폴백 실패 ({code}): {e}")
+        df60 = None
+
+    if df60 is None or df60.empty:
+        return [], None
+
+    return _df_to_candle_items_minute(df60), "yfinance"
+
+
+def _get_60m_df(code: str, token: str | None) -> tuple[pd.DataFrame | None, str | None]:
     """60분봉 신선도 게이트(5분). 신선하면 저장소에서 바로 서빙(외부 fetch 생략),
-    stale/없으면 기존과 동일하게 yfinance 재수집. fetch 실패 시 동작은 기존과 동일
-    (None 반환 → 호출부에서 macd_60m 등 None 유지, 스코프 확대 없음).
+    stale/없으면 KIS 당일분봉(1분) 리샘플 우선 → yfinance 폴백으로 재수집. fetch 실패
+    시 동작은 기존과 동일(None 반환 → 호출부에서 macd_60m 등 None 유지, 스코프 확대 없음).
 
     60분봉은 시간당 1회 갱신이면 충분한 데이터라 분봉 일반 기준(60초)보다 여유 있는
     임계치를 둔다.
@@ -296,21 +368,14 @@ def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
         if stored:
             return pd.DataFrame(stored), _remembered_source(code, "60m")
 
-    try:
-        df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
-    except Exception as e:
-        print(f"[collector] 60분봉 수집 실패 ({code}): {e}")
-        df60 = None
-
-    if df60 is None or df60.empty:
+    items60, source = _fetch_60m_items(code, token)
+    if not items60:
         return None, None
 
-    items60 = _df_to_candle_items_minute(df60)
-    if items60:
-        db.upsert_candles(code, "60m", items60)
-    _remember_source(code, "60m", "yfinance")
+    db.upsert_candles(code, "60m", items60)
+    _remember_source(code, "60m", source)
     stored = db.get_candles_store(code, "60m", 150)
-    return (pd.DataFrame(stored) if stored else df60), "yfinance"
+    return (pd.DataFrame(stored) if stored else pd.DataFrame(items60)), source
 
 
 def _collect_one(item: dict, token: str | None) -> dict:
@@ -338,7 +403,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
         bb_upper = bb_mid = bb_lower = None
 
     # ② 60분봉(신선도 게이트 — 5분 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
-    store60_df, source_60m = _get_60m_df(code)
+    store60_df, source_60m = _get_60m_df(code, token)
     macd_60m = rsi_60m = None
     rsi_value_60m = None
     if store60_df is not None and not store60_df.empty:
