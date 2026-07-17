@@ -320,8 +320,10 @@ async def _handle_control_frame(ws, raw: str) -> None:
     tr_id = header.get("tr_id")
 
     if tr_id == "PINGPONG":
+        # KIS 앱레벨 PINGPONG은 받은 JSON을 텍스트로 그대로 echo 해야 세션이 유지된다
+        # (공식 예제 방식). ws.pong()은 프로토콜 레벨 PONG이라 KIS가 인식하지 못한다.
         try:
-            await ws.pong(raw)
+            await ws.send(raw)
         except Exception as e:
             logger.warning("[kis_ws] PINGPONG 응답 실패: %s", e)
         return
