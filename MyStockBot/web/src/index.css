@@ -1166,6 +1166,13 @@ select:focus-visible {
   grid-column: span 12;
 }
 
+/* 장기 탭에서 기여요인 분해 카드 아래 눌림목 분석 카드가 쌓이므로 세로 스택으로 전환 */
+.detail-grid__factors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap);
+}
+
 @media (min-width: 1024px) {
   .detail-grid__gauge {
     grid-column: span 4;
@@ -1311,39 +1318,8 @@ select:focus-visible {
   }
 }
 
-/* 눌림목 판정 배지 — 게이지 카드 아래(상세 페이지 장기 탭 한정). 확정 판정을 압도하지
-   않도록 배경은 항상 transparent, SignalChip과 동일한 외곽선+텍스트 톤만 사용한다. */
-.pullback-badge {
-  margin-top: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  text-align: center;
-}
-
-.pullback-badge__chip {
-  display: inline-block;
-  padding: 0.25rem 0.65rem;
-  border-radius: var(--radius-full);
-  border: 1px solid transparent;
-  background-color: transparent;
-  font-size: 0.75rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.pullback-badge__reason {
-  margin: 0;
-  max-width: 14rem;
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--on-surface-variant);
-}
-
 /* 기여요인 분해 카드 */
 .factor-card {
-  height: 100%;
   background-color: var(--surface-container-lowest);
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-xl);
@@ -1448,6 +1424,116 @@ select:focus-visible {
 
 .factor-row__fill--neg {
   background-color: #f87171;
+}
+
+/* 눌림목 분석 카드 — 독립 섹션(상세 페이지 장기 탭 한정), 기여요인 분해 카드와
+   동일한 시각 문법(카드 컨테이너·헤딩 좌 한글/우 영문 보조라벨)을 재사용한다.
+   detail-grid__factors 컬럼 내 기여요인 분해 카드 아래에 스택으로 배치. */
+.pullback-card {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--gutter);
+}
+
+.pullback-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pullback-card__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.pullback-card__meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+/* 상태칩 — 6종 전부 동일 스타일(외곽선 pill), 색만 상태별로 다름(PullbackCard.tsx STATUS_COLOR) */
+.pullback-card__chip {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-color: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pullback-check-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.pullback-check {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.pullback-check__glyph {
+  flex: none;
+  width: 1rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pullback-check__label {
+  color: var(--on-surface);
+  overflow-wrap: anywhere;
+}
+
+.pullback-check--ok .pullback-check__glyph {
+  color: #16a34a;
+}
+
+.pullback-check--fail .pullback-check__glyph {
+  color: var(--outline);
+}
+
+.pullback-check--fail .pullback-check__label {
+  color: var(--on-surface-variant);
+}
+
+/* 추세 필터(1~3) 미충족 시 4~6 — 순차 파이프라인 대기 상태를 더 흐리게 표현 */
+.pullback-check--waiting {
+  opacity: 0.45;
+}
+
+.pullback-card__footer {
+  margin-top: 1rem;
+}
+
+.pullback-card__caption {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--on-surface-variant);
+}
+
+.pullback-card__reason {
+  margin: 0.25rem 0 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--outline);
 }
 
 /* 볼린저 밴드 카드 */

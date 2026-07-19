@@ -209,6 +209,68 @@ def test_pullback_exit_when_ma20_broken_down_beyond_threshold():
 
 
 # ────────────────────────────────────────────
+# pullback_signal — checks(체크리스트) 구조화 필드
+# ────────────────────────────────────────────
+
+_PULLBACK_CHECK_LABELS = [
+    "정배열 (MA5>MA20>MA60)",
+    "MA20 기울기 상승",
+    "추세 강도 (ADX≥20)",
+    "MA20 근접 (눌림 깊이)",
+    "거래량 수축 (≤60%)",
+    "반등 트리거 (양봉·전일고가·거래량)",
+]
+
+
+def test_pullback_checks_empty_when_data_insufficient():
+    """데이터부족 상태는 평가 자체가 불가하므로 checks=[] (빈 리스트)."""
+    df = _linear_df(PULLBACK_MIN_BARS - 1)
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "데이터부족"
+    assert result["checks"] == []
+
+
+def test_pullback_checks_bounce_candidate_length_order_and_flags():
+    """눌림목 반등(매수후보) 픽스처에서 checks는 6개·label 순서 고정이며, 추세·근접·
+    반등트리거 관련 5개 항목은 True다. 단 '거래량 수축(≤60%)'과 '반등 트리거'의
+    거래량 팽창(≥140%)은 같은 현재봉 vol_ratio에서 유도되는 상호 배타 조건이라
+    (하나의 비율이 ≤0.6이면서 동시에 ≥1.4일 수 없음) 반등 상태에서는 수축 항목이
+    논리적으로 False가 된다 — 체크리스트는 각 조건의 '독립' 상태를 보여줄 뿐,
+    전 항목 동시 충족을 뜻하지 않는다(pullback_signal 상단 docstring 참조)."""
+    df = _consolidation_df()
+    prev_close = df.loc[df.index[-2], "close"]
+    last_idx = df.index[-1]
+    df.loc[last_idx, "open"] = prev_close - 0.3
+    df.loc[last_idx, "close"] = prev_close + 2.0
+    df.loc[last_idx, "high"] = prev_close + 2.1
+    df.loc[last_idx, "low"] = prev_close - 0.4
+    df.loc[last_idx, "volume"] = 3000
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "눌림목 반등(매수후보)"
+    checks = result["checks"]
+    assert len(checks) == 6
+    assert [c["label"] for c in checks] == _PULLBACK_CHECK_LABELS
+    assert checks[0]["ok"] is True   # 정배열(Close>MA60 포함)
+    assert checks[1]["ok"] is True   # MA20 기울기 상승
+    assert checks[2]["ok"] is True   # 추세 강도(ADX)
+    assert checks[3]["ok"] is True   # MA20 근접(눌림 깊이)
+    assert checks[4]["ok"] is False  # 거래량 수축 — 반등 트리거의 팽창과 상호배타
+    assert checks[5]["ok"] is True   # 반등 트리거
+
+
+def test_pullback_checks_not_trend_state_length_order_and_some_false():
+    """추세아님 픽스처(지속 하락·역배열)에서도 checks는 6개·label 순서 고정으로 채워지며,
+    추세 필터 3항목(정배열/기울기/ADX) 중 하나 이상은 False다."""
+    df = _linear_df(80, start=200.0, step=-1.0)
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "추세아님"
+    checks = result["checks"]
+    assert len(checks) == 6
+    assert [c["label"] for c in checks] == _PULLBACK_CHECK_LABELS
+    assert any(not c["ok"] for c in checks[:3])
+
+
+# ────────────────────────────────────────────
 # 6상태 reason 비어있지 않음 + trend_up 정합 일괄 점검
 # ────────────────────────────────────────────
 

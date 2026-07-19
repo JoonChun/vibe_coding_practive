@@ -62,7 +62,7 @@ _FACTOR_ERROR_FIELDS = [
     "bb_upper", "bb_mid", "bb_lower",
     "per", "pbr", "roe", "revenue", "net_income",
     "short_score", "long_score",
-    "pullback_status", "pullback_reason", "pullback_trend_up",
+    "pullback_status", "pullback_reason", "pullback_trend_up", "pullback_checks",
 ]
 
 _state: dict | None = None
@@ -462,9 +462,10 @@ def _collect_one(item: dict, token: str | None) -> dict:
         pullback_status = pullback.get("status")
         pullback_reason = pullback.get("reason")
         pullback_trend_up = pullback.get("trend_up")
+        pullback_checks = pullback.get("checks")
     except Exception as e:
         print(f"[collector] 눌림목 판정 실패 ({code}): {e}")
-        pullback_status = pullback_reason = pullback_trend_up = None
+        pullback_status = pullback_reason = pullback_trend_up = pullback_checks = None
 
     # ② 60분봉(신선도 게이트 — 5분 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
     store60_df, source_60m = _get_60m_df(code, token)
@@ -508,6 +509,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
         "pullback_status": pullback_status,
         "pullback_reason": pullback_reason,
         "pullback_trend_up": pullback_trend_up,
+        "pullback_checks": pullback_checks,
         **financials,
         **view_data,
         "source": source, "source_60m": source_60m,

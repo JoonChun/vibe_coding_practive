@@ -131,7 +131,8 @@ export function searchStocks(
   return request<StockSearchResponse>(`/api/stocks/search?${params.toString()}`);
 }
 
-/** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150·최대 300(마지막 N개). */
+/** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150(마지막 N개).
+ * 최대치는 tf별로 다름 — 1d/1w/60m/120m/240m는 최대 1000, 그 외(1m/5m/15m/30m/1M/1y)는 최대 300. */
 export function getCandles(
   code: string,
   tf: Timeframe = "1d",

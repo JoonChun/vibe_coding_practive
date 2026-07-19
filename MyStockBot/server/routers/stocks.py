@@ -14,8 +14,9 @@ _DEFAULT_SEARCH_LIMIT = 10
 _MAX_SEARCH_LIMIT = 30
 
 _DEFAULT_CANDLES_COUNT = 150
-# Query 단계에서는 전 tf 공통 상한(1d/1w의 확장 상한 1000)만 검증한다. tf별 실제 상한
-# (1d/1w=1000, 그 외=300)은 candles.get_candles() 내부에서 조용히 clamp한다(기존 계약).
+# Query 단계에서는 전 tf 공통 상한(1d/1w/60m/120m/240m의 확장 상한 1000)만 검증한다.
+# tf별 실제 상한(1d/1w/60m/120m/240m=1000, 그 외=300)은 candles.get_candles() 내부에서
+# 조용히 clamp한다(기존 계약).
 _MAX_CANDLES_COUNT = 1000
 
 # 화이트리스트 겸 FastAPI/Pydantic 자동 422 검증용 Literal.

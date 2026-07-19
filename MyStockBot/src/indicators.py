@@ -111,10 +111,17 @@ def pullback_signal(df: pd.DataFrame) -> dict:
     """정배열 추세 + MA20 되돌림(눌림목) 판정. 순수 함수(외부 I/O 없음).
 
     입력: 일봉 DataFrame(t 오름차순, open/high/low/close/volume 컬럼 필수, 최대 100봉 가정).
-    반환: {"status": str, "reason": str, "trend_up": bool}.
+    반환: {"status": str, "reason": str, "trend_up": bool, "checks": list[dict]}.
 
     status 는 정확히 다음 6개 문자열 중 하나(프론트 계약 — 문자열 변경 금지):
       데이터부족 / 추세아님 / 추세지속 / 눌림 진행중(관망) / 눌림목 반등(매수후보) / 눌림 이탈(무효)
+
+    checks 는 프론트 체크리스트용 구조화 항목(순서·label 문자열 고정 — 프론트 계약):
+      [정배열(MA5>MA20>MA60, Close>MA60 포함), MA20 기울기 상승, 추세 강도(ADX≥20),
+       MA20 근접(눌림 깊이), 거래량 수축(≤60%), 반등 트리거(양봉·전일고가·거래량)]
+    각 항목은 status 산정에 쓰는 조건의 독립 상태를 그대로 보여줄 뿐 — 항목끼리 서로
+    배타적일 수 있다(예: 거래량 수축과 반등 트리거의 거래량 팽창은 동시에 True일 수 없다).
+    "데이터부족" 상태에서는 평가 자체가 불가하므로 checks=[] (빈 리스트).
 
     판정 순서: 데이터부족 → 추세 필터(추세아님) → 이탈 → 반등 → 진행중 → (그 외) 추세지속.
     """
@@ -123,6 +130,7 @@ def pullback_signal(df: pd.DataFrame) -> dict:
             "status": "데이터부족",
             "reason": f"유효 봉수 부족({len(df)}<{PULLBACK_MIN_BARS})",
             "trend_up": False,
+            "checks": [],
         }
 
     close = df["close"].astype(float)
@@ -160,13 +168,37 @@ def pullback_signal(df: pd.DataFrame) -> dict:
 
     required = [curr_close, curr_ma_short, curr_ma_mid, curr_ma_long, prev_ma_mid, curr_adx, curr_vol_ma]
     if any(_is_nan(v) for v in required):
-        return {"status": "데이터부족", "reason": "지표 계산 불가(NaN)", "trend_up": False}
+        return {"status": "데이터부족", "reason": "지표 계산 불가(NaN)", "trend_up": False, "checks": []}
 
     aligned = curr_ma_short > curr_ma_mid > curr_ma_long
     above_long = curr_close > curr_ma_long
     slope_up = curr_ma_mid > prev_ma_mid
     adx_ok = curr_adx >= PULLBACK_ADX_TREND_MIN
     trend_up = aligned and above_long and slope_up and adx_ok
+
+    # checks 구성에 필요한 나머지 불리언들 — status 분기(trend_up 여부)와 무관하게
+    # 항상 계산해 둔다(추세아님·이탈 상태에서도 checks=[6개]를 온전히 채우기 위함).
+    # 이미 위에서 NaN 검증을 마친 curr_vol_ma/curr_ma_mid 등을 그대로 재사용한다.
+    proximity_pct = abs(curr_close - curr_ma_mid) / curr_ma_mid * 100
+    swing_high = high.iloc[-PULLBACK_SWING_HIGH_LOOKBACK:].max()
+    depth_pct = (swing_high - curr_close) / swing_high * 100 if swing_high else float("nan")
+    in_proximity = proximity_pct <= PULLBACK_PROXIMITY_PCT
+    depth_ok = not _is_nan(depth_pct) and depth_pct <= PULLBACK_MAX_DEPTH_PCT
+    vol_ratio = curr_volume / curr_vol_ma if curr_vol_ma else float("nan")
+
+    is_bullish = curr_close > curr_open
+    breaks_prev_high = curr_close > prev_high
+    vol_expansion = not _is_nan(vol_ratio) and vol_ratio >= PULLBACK_VOL_EXPANSION_RATIO
+    vol_contraction = not _is_nan(vol_ratio) and vol_ratio <= PULLBACK_VOL_CONTRACTION_RATIO
+
+    checks = [
+        {"label": "정배열 (MA5>MA20>MA60)", "ok": bool(aligned and above_long)},
+        {"label": "MA20 기울기 상승", "ok": bool(slope_up)},
+        {"label": "추세 강도 (ADX≥20)", "ok": bool(adx_ok)},
+        {"label": "MA20 근접 (눌림 깊이)", "ok": bool(in_proximity and depth_ok)},
+        {"label": "거래량 수축 (≤60%)", "ok": bool(vol_contraction)},
+        {"label": "반등 트리거 (양봉·전일고가·거래량)", "ok": bool(is_bullish and breaks_prev_high and vol_expansion)},
+    ]
 
     if not trend_up:
         reasons = []
@@ -178,7 +210,12 @@ def pullback_signal(df: pd.DataFrame) -> dict:
             reasons.append("MA20 기울기 하락")
         if not adx_ok:
             reasons.append(f"ADX {curr_adx:.1f}<{PULLBACK_ADX_TREND_MIN}")
-        return {"status": "추세아님", "reason": "·".join(reasons) or "추세 필터 미충족", "trend_up": False}
+        return {
+            "status": "추세아님",
+            "reason": "·".join(reasons) or "추세 필터 미충족",
+            "trend_up": False,
+            "checks": checks,
+        }
 
     # 이하 trend_up == True 확정 구간
     exit_pct = (curr_ma_mid - curr_close) / curr_ma_mid * 100  # 양수면 MA20 하회
@@ -187,32 +224,23 @@ def pullback_signal(df: pd.DataFrame) -> dict:
             "status": "눌림 이탈(무효)",
             "reason": f"MA20 대비 {exit_pct:.1f}% 하회(기준 {PULLBACK_EXIT_PCT}%)",
             "trend_up": True,
+            "checks": checks,
         }
-
-    proximity_pct = abs(curr_close - curr_ma_mid) / curr_ma_mid * 100
-    swing_high = high.iloc[-PULLBACK_SWING_HIGH_LOOKBACK:].max()
-    depth_pct = (swing_high - curr_close) / swing_high * 100 if swing_high else float("nan")
-    in_proximity = proximity_pct <= PULLBACK_PROXIMITY_PCT
-    depth_ok = not _is_nan(depth_pct) and depth_pct <= PULLBACK_MAX_DEPTH_PCT
-    vol_ratio = curr_volume / curr_vol_ma if curr_vol_ma else float("nan")
-
-    is_bullish = curr_close > curr_open
-    breaks_prev_high = curr_close > prev_high
-    vol_expansion = not _is_nan(vol_ratio) and vol_ratio >= PULLBACK_VOL_EXPANSION_RATIO
 
     if in_proximity and depth_ok and is_bullish and breaks_prev_high and vol_expansion:
         return {
             "status": "눌림목 반등(매수후보)",
             "reason": f"양봉·전일고가 돌파·거래량 {vol_ratio * 100:.0f}%",
             "trend_up": True,
+            "checks": checks,
         }
 
-    vol_contraction = not _is_nan(vol_ratio) and vol_ratio <= PULLBACK_VOL_CONTRACTION_RATIO
     if in_proximity and depth_ok and vol_contraction:
         return {
             "status": "눌림 진행중(관망)",
             "reason": f"MA20 근접 {proximity_pct:.1f}%·거래량 {vol_ratio * 100:.0f}%로 수축",
             "trend_up": True,
+            "checks": checks,
         }
 
     if not in_proximity:
@@ -221,7 +249,7 @@ def pullback_signal(df: pd.DataFrame) -> dict:
         reason = f"전고점 대비 낙폭 {depth_pct:.1f}%(눌림 범위 {PULLBACK_MAX_DEPTH_PCT}% 초과)"
     else:
         reason = f"MA20 근접이나 거래량 {vol_ratio * 100:.0f}%(수축·팽창 기준 미충족)"
-    return {"status": "추세지속", "reason": reason, "trend_up": True}
+    return {"status": "추세지속", "reason": reason, "trend_up": True, "checks": checks}
 
 
 _NO_DATA = (None, "데이터부족")

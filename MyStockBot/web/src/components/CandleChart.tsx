@@ -62,6 +62,22 @@ const TF_ARIA_LABEL: Record<Timeframe, string> = {
   "1y": "년봉",
 };
 
+// tf별 요청 개수 — 백엔드 계약(count 최대: 1d/1w/60m/120m/240m는 1000, 그 외 300)에 맞춰
+// "과거 데이터가 안 보인다"는 문제를 근본적으로 없앨 만큼 충분히 깊게 조회한다.
+const COUNT_MAP: Record<Timeframe, number> = {
+  "1m": 390, // 정규장 하루치(09:00~15:30 ≈ 390분) — 그 이상은 1분봉 특성상 무의미
+  "5m": 300, // yfinance 원천 한계(최근 60일 이하)에서 뽑을 수 있는 사실상 최대
+  "15m": 300, // 위와 동일 — 60일 한계
+  "30m": 300, // 위와 동일 — 60일 한계
+  "60m": 1000, // 백엔드가 yfinance 730일까지 확장 — 60분봉 기준 약 1000봉 커버
+  "120m": 500, // 730일 한계 내에서 120분 간격으로 환산한 봉 수
+  "240m": 300, // 730일 한계 내에서 240분 간격으로 환산한 봉 수
+  "1d": 1000, // 일봉 1000개 ≈ 4년 — "재작년 게 안 보인다" 문제 해소
+  "1w": 1000, // 주봉 1000개 ≈ 19년
+  "1M": 300, // 월봉 300개 ≈ 25년
+  "1y": 50, // 년봉은 종목 상장 이력을 다 담아도 50개면 충분
+};
+
 const MA_CONFIG = [
   { period: 5, color: "#16a34a", label: "MA5" },
   { period: 20, color: "#dc2626", label: "MA20" },
@@ -157,6 +173,9 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: "#c5c6cd" },
       timeScale: { borderColor: "#c5c6cd", timeVisible: false },
+      // 한국 표기 관행: 날짜는 년-월-일 순 — 기본 로케일(일-월-년, 예: "17 Jul '25")을
+      // ko-KR + yyyy-MM-dd로 교체(크로스헤어 날짜 라벨·시간축 눈금 모두 적용).
+      localization: { locale: "ko-KR", dateFormat: "yyyy-MM-dd" },
     });
 
     const candleSeries = chart.addCandlestickSeries({
@@ -235,7 +254,7 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
     setLoading(true);
     setErrorMessage(null);
 
-    getCandles(code, tf)
+    getCandles(code, tf, COUNT_MAP[tf])
       .then((res) => {
         if (requestIdRef.current !== requestId) return;
         setData(res);

@@ -6,7 +6,7 @@ import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
 import { LiveReferenceStrip } from "../components/LiveReferenceStrip";
-import { PullbackBadge } from "../components/PullbackBadge";
+import { PullbackCard } from "../components/PullbackCard";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
@@ -219,15 +219,16 @@ export default function StockDetailPage() {
                 />
               }
             />
-            {tab === "long" ? (
-              <PullbackBadge
-                status={item?.factors?.pullback_status ?? null}
-                reason={item?.factors?.pullback_reason ?? null}
-              />
-            ) : null}
           </div>
           <div className="detail-grid__factors">
             <FactorBreakdown rows={factorRows} />
+            {tab === "long" ? (
+              <PullbackCard
+                status={item?.factors?.pullback_status ?? null}
+                reason={item?.factors?.pullback_reason ?? null}
+                checks={item?.factors?.pullback_checks}
+              />
+            ) : null}
           </div>
           <div className="detail-grid__bollinger">
             <BollingerTrack

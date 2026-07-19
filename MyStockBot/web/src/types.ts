@@ -54,6 +54,12 @@ export interface StockSearchResponse {
   items: SearchItem[];
 }
 
+/** 눌림목 체크리스트 항목 — 순서 고정 6개(백엔드 schemas.py와 1:1, 정배열→기울기→추세강도→근접→거래량수축→반등트리거) */
+export interface PullbackCheck {
+  label: string;
+  ok: boolean;
+}
+
 export interface SnapshotFactors {
   macd_1d: string | null;
   rsi_1d: string | null;
@@ -73,6 +79,8 @@ export interface SnapshotFactors {
   pullback_status: PullbackStatus | null;
   pullback_reason: string | null;
   pullback_trend_up: boolean | null;
+  /** 눌림목 조건 체크리스트 — "데이터부족" 상태면 빈 배열, 구버전 응답이면 undefined/null일 수 있음 */
+  pullback_checks?: PullbackCheck[] | null;
 }
 
 /** WS bar_update로 계속 갱신되는 실시간 참고 판정 — 확정 판정(short_view/long_view)과는 별개.

@@ -19,6 +19,13 @@ class WatchlistListResponse(BaseModel):
     items: list[WatchlistItemOut]
 
 
+class PullbackCheck(BaseModel):
+    """눌림목 체크리스트 항목 1개(프론트 렌더 계약 — label 문자열·순서 고정,
+    src/indicators.py pullback_signal 의 checks 리스트를 그대로 옮겨 담는다)."""
+    label: str
+    ok: bool
+
+
 class FactorDetail(BaseModel):
     macd_1d: str | None = None
     rsi_1d: str | None = None
@@ -37,6 +44,7 @@ class FactorDetail(BaseModel):
     pullback_status: str | None = None
     pullback_reason: str | None = None
     pullback_trend_up: bool | None = None
+    pullback_checks: list[PullbackCheck] | None = None
 
 
 class LiveJudgment(BaseModel):
