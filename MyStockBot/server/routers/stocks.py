@@ -1,12 +1,15 @@
 import asyncio
+from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 
 import db
+from config import TIMEZONE
 
-from ..schemas import CandlesResponse, SearchResponse
-from ..services import candles
+from ..schemas import CandlesResponse, SearchResponse, WhatIfResponse
+from ..services import candles, whatif
 
 router = APIRouter(prefix="/api")
 
@@ -18,6 +21,10 @@ _DEFAULT_CANDLES_COUNT = 150
 # tf별 실제 상한(1d/1w/60m/120m/240m=1000, 그 외=300)은 candles.get_candles() 내부에서
 # 조용히 clamp한다(기존 계약).
 _MAX_CANDLES_COUNT = 1000
+
+_WHATIF_DATE_FMT = "%Y-%m-%d"
+_MIN_WHATIF_AMOUNT = 1
+_MAX_WHATIF_AMOUNT = 100_000_000
 
 # 화이트리스트 겸 FastAPI/Pydantic 자동 422 검증용 Literal.
 CandleTf = Literal["1m", "5m", "15m", "30m", "60m", "120m", "240m", "1d", "1w", "1M", "1y"]
@@ -48,4 +55,30 @@ async def get_stock_candles(
 
     # KIS/yfinance 네트워크 호출은 블로킹이므로 스레드로 넘겨 이벤트루프를 막지 않는다.
     result = await asyncio.to_thread(candles.get_candles, normalized_code, tf, count)
+    return result
+
+
+@router.get("/stocks/{code}/whatif", response_model=WhatIfResponse)
+async def get_stock_whatif(
+    code: str,
+    date: str = Query(..., description="매수 가정일 YYYY-MM-DD"),
+    amount: int = Query(..., ge=_MIN_WHATIF_AMOUNT, le=_MAX_WHATIF_AMOUNT),
+):
+    try:
+        normalized_code = db.normalize_code(code)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        parsed_date = datetime.strptime(date, _WHATIF_DATE_FMT).date()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail=f"날짜 형식 오류(YYYY-MM-DD): {date}")
+
+    today_kst = datetime.now(ZoneInfo(TIMEZONE)).date()
+    if parsed_date > today_kst:
+        raise HTTPException(status_code=422, detail=f"미래 날짜는 조회할 수 없습니다: {date}")
+
+    # candles read-through + 지표 계산(pandas)이 섞인 블로킹 로직 — 스레드로 넘긴다
+    # (위 candles 라우트와 동일 관례).
+    result = await asyncio.to_thread(whatif.compute_whatif, normalized_code, date, amount)
     return result

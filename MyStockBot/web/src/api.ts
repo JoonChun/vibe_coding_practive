@@ -6,6 +6,7 @@ import type {
   WatchlistItem,
   WatchlistItemInput,
   WatchlistListResponse,
+  WhatIfResponse,
 } from "./types";
 
 // 개발: 빈 값(상대경로) → vite dev 프록시(/api → localhost:8000)가 처리.
@@ -141,5 +142,18 @@ export function getCandles(
   const params = new URLSearchParams({ tf, count: String(count) });
   return request<CandlesResponse>(
     `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
+  );
+}
+
+/** Phase 3 "그날의 나" 타임머신(What-if) 조회. date는 'YYYY-MM-DD', amount는 1~100,000,000원.
+ * 미래 날짜/형식 오류는 422(ApiError로 throw) — 그 외 사유(상장 전 등)는 200 응답의 error 필드로 내려온다. */
+export function getWhatIf(
+  code: string,
+  date: string,
+  amount: number
+): Promise<WhatIfResponse> {
+  const params = new URLSearchParams({ date, amount: String(amount) });
+  return request<WhatIfResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/whatif?${params.toString()}`
   );
 }

@@ -1860,3 +1860,455 @@ select:focus-visible {
     padding: 0.35rem 0.7rem;
   }
 }
+
+/* ============================================================
+   Phase 3 "그날의 나" 타임머신(What-if) — docs/wireframes/phase3-timemachine.md
+   색은 전부 기존 토큰/기존 색상 재사용(§11-1). 새 색 없음.
+   ============================================================ */
+
+/* 차트 봉 탭 힌트(§5-1) / 미지원 tf 토스트(§7-1) */
+.candle-chart__tap-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+}
+
+.candle-chart__toast {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  max-width: calc(100% - 1.5rem);
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-full);
+  background-color: var(--primary-container);
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: var(--shadow-card);
+}
+
+/* 타임머신 카드 — 화면1(인라인)에서는 독립 패널, 화면2(시트)에서는 시트 자체가 이미
+   패널 역할을 하므로 배경/테두리/그림자를 제거해 "이중 카드" 되지 않게 한다. */
+.timemachine-card {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--gutter);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.timemachine-card--sheet {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.timemachine-card__header {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem; /* bottom-sheet__close(원형 2.25rem)와 같은 행에서 세로 정렬 안정 */
+}
+
+.timemachine-card__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.timemachine-card__title-en {
+  margin-left: 0.4rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-card__intro {
+  margin: 0.15rem 0 0;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-card__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: none;
+  background: transparent;
+  padding: 0;
+  padding-right: 2.5rem; /* bottom-sheet__close(우측 상단 고정)와 겹치지 않도록 */
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.timemachine-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.timemachine-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.timemachine-card__field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-card__date-input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-lowest);
+  color: var(--on-surface);
+  font-size: 14px;
+}
+
+.timemachine-card__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-card__amount-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-lowest);
+}
+
+.timemachine-card__amount-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0;
+  border: none;
+  background: transparent;
+  color: var(--on-surface);
+  font-size: 14px;
+  text-align: right;
+}
+
+.timemachine-card__amount-unit {
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-card__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.timemachine-card__submit {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.timemachine-card__spinner-sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+.timemachine-card__retry {
+  border: none;
+  cursor: pointer;
+}
+
+/* 결과 카드(§6) — 화면1 하단·화면2 시트 안 공용 */
+.timemachine-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.timemachine-result--loading {
+  min-height: 160px;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}
+
+.timemachine-result--loading p {
+  margin: 0;
+}
+
+.timemachine-result__headline {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.timemachine-result__subline {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.75rem 0;
+}
+
+.timemachine-result__hero-multiple {
+  font-size: 38px;
+  line-height: 1.1;
+  font-weight: 800;
+}
+
+.timemachine-result__hero-pct {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.timemachine-result__hero--up .timemachine-result__hero-multiple,
+.timemachine-result__hero--up .timemachine-result__hero-pct {
+  color: #b91c1c;
+}
+
+.timemachine-result__hero--down .timemachine-result__hero-multiple,
+.timemachine-result__hero--down .timemachine-result__hero-pct {
+  color: #1d4ed8;
+}
+
+.timemachine-result__principal {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result__divider {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--outline-variant);
+  margin: 0.25rem 0;
+}
+
+.timemachine-result__compare {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.timemachine-result__compare-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.timemachine-result__compare-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result__compare-track {
+  height: 0.6rem;
+  border-radius: var(--radius-full);
+  background-color: var(--surface-container-high);
+  overflow: hidden;
+}
+
+.timemachine-result__compare-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+.timemachine-result__compare-fill--up {
+  background-color: rgba(220, 38, 38, 0.5);
+}
+
+.timemachine-result__compare-fill--down {
+  background-color: rgba(37, 99, 235, 0.5);
+}
+
+.timemachine-result__compare-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-surface);
+  white-space: nowrap;
+}
+
+.timemachine-result__judgment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.timemachine-result__judgment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.timemachine-result__judgment-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.timemachine-result__judgment-factors {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result__pullback-chip {
+  align-self: flex-start;
+}
+
+.timemachine-result__judgment-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result__actions {
+  display: flex;
+  justify-content: center;
+}
+
+.timemachine-result__share {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.timemachine-result__share:hover {
+  background-color: var(--surface-container);
+}
+
+.timemachine-result__disclaimer {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result__empty-icon {
+  display: block;
+  text-align: center;
+  font-size: 28px;
+}
+
+.timemachine-result__empty-message {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.timemachine-result__empty-submessage {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--on-surface-variant);
+}
+
+.timemachine-result--empty {
+  align-items: center;
+}
+
+.timemachine-result--empty .timemachine-card__retry {
+  align-self: center;
+}
+
+/* 바텀시트(화면2) — 백드롭·핸들·닫기·포커스 트랩만 소유(BottomSheet.tsx) */
+.bottom-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.bottom-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+}
+
+.bottom-sheet__panel {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background-color: var(--surface-container-lowest);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-card);
+  padding: 0.75rem var(--gutter) calc(1rem + env(safe-area-inset-bottom));
+}
+
+.bottom-sheet__handle {
+  width: 2.5rem;
+  height: 0.25rem;
+  margin: 0 auto 0.75rem;
+  border-radius: var(--radius-full);
+  background-color: var(--outline-variant);
+}
+
+.bottom-sheet__close {
+  position: absolute;
+  top: 0.5rem;
+  right: var(--gutter);
+}
+
+.bottom-sheet__content {
+  padding-top: 0.25rem;
+}
+
+@media (max-width: 640px) {
+  .timemachine-result__hero-multiple {
+    font-size: 32px;
+  }
+
+  .timemachine-result__compare-row {
+    grid-template-columns: 3.75rem 1fr auto;
+    gap: 0.4rem;
+  }
+
+  .bottom-sheet__panel {
+    max-width: none;
+  }
+}

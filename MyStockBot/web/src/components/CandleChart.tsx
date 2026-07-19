@@ -9,9 +9,10 @@ import {
   type LineData,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { getCandles } from "../api";
 import type { CandleItem, CandlesResponse, LiveBar, Timeframe } from "../types";
+import { epochToKstDateStr } from "../utils/format";
 import { SourceBadge } from "./SourceBadge";
 
 interface CandleChartProps {
@@ -20,6 +21,9 @@ interface CandleChartProps {
   liveBars?: Partial<Record<Timeframe, LiveBar>>;
   /** tickStream.connected && tickStream.kisConnected — 툴바 LIVE 태그 노출 조건(연결 살아있을 때만) */
   wsConnected?: boolean;
+  /** 봉을 짧게 탭했을 때(§7) 그 봉의 날짜(YYYY-MM-DD, KST)를 알려줌 — Phase 3 "그날의 나" 진입점.
+   * 미전달 시 탭 판별 로직 자체를 붙이지 않아 기존 크로스헤어/팬/줌 동작에 전혀 영향 없다. */
+  onBarTap?: (dateStr: string) => void;
 }
 
 const UP_COLOR = "#dc2626"; // 양봉 적색 (국내 HTS 관행)
@@ -97,6 +101,34 @@ function isLiveCapableTf(tf: Timeframe): boolean {
   return LIVE_CAPABLE_TFS.has(tf);
 }
 
+// 봉 탭(§7-1) 지원 tf — 하루 이내(또는 하루 그 자체) 시각을 갖는 봉만 "그 봉의 날짜"가 모호함이
+// 없다(1w/1M/1y는 한 봉이 여러 날을 품어 지원하지 않음). 오늘 시점 값은 LIVE_CAPABLE_TFS와
+// 우연히 같지만 개념이 다른 규칙(하나는 WS bar_update 수신 가능 여부, 하나는 탭 프리필 가능 여부)
+// 이라 별도 상수로 둔다 — 훗날 둘 중 하나만 바뀌어도 서로 영향받지 않도록.
+const TAP_SUPPORTED_TFS = new Set<Timeframe>([...MINUTE_TFS, "1d"]);
+
+function isTapSupportedTf(tf: Timeframe): boolean {
+  return TAP_SUPPORTED_TFS.has(tf);
+}
+
+// 탭/롱프레스/드래그 판별 임계값(§7) — 실측 후 조정 가능한 초안 수치.
+// TAP_MAX 는 lightweight-charts 내부 터치 롱프레스(크로스헤어 진입, 약 240ms로 알려짐)보다
+// 짧게 잡아 "크로스헤어도 뜨고 탭도 발동"하는 이중 해석 구간을 없앤다(검수 발견).
+const TAP_MAX_MS = 220;
+const LONG_PRESS_MS = 450;
+const MOVE_THRESHOLD_PX = 8;
+const TAP_TOAST_DURATION_MS = 2000;
+const TAP_UNSUPPORTED_TOAST = '이 주기에서는 지원하지 않아요 — 일봉 이하에서 사용해주세요';
+
+interface TapGestureState {
+  pointerId: number;
+  x: number;
+  y: number;
+  startTime: number;
+  moved: boolean;
+  longPressFired: boolean;
+}
+
 /** open/high/low/close/volume이 모두 유효한 숫자로 채워진 캔들. */
 type ValidCandle = CandleItem & {
   open: number;
@@ -139,11 +171,12 @@ function computeMovingAverage(bars: ValidCandle[], period: number): LineData[] {
  * 분봉(1·5·15·30·60·120·240)/일/주/월/년 전환, 거래량 오버레이, MA 5/20/60/120을 그린다.
  * tf·code 변경 시 이전 요청 응답은 무시하고(레이스 방지) 최신 데이터로만 갱신한다.
  */
-export function CandleChart({ code, liveBars, wsConnected = false }: CandleChartProps) {
+export function CandleChart({ code, liveBars, wsConnected = false, onBarTap }: CandleChartProps) {
   const [tf, setTf] = useState<Timeframe>("1d");
   const [data, setData] = useState<CandlesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [tapToast, setTapToast] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -151,6 +184,9 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const maSeriesRef = useRef<Partial<Record<number, ISeriesApi<"Line">>>>({});
   const requestIdRef = useRef(0);
+  const gestureRef = useRef<TapGestureState | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 차트 인스턴스는 마운트 시 1회만 생성 — 리사이즈 대응 + 언마운트 시 정리.
   useEffect(() => {
@@ -351,6 +387,120 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
     handleTfChange(value as Timeframe);
   }
 
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function showTapToast(message: string) {
+    setTapToast(message);
+    if (tapToastTimerRef.current) clearTimeout(tapToastTimerRef.current);
+    tapToastTimerRef.current = setTimeout(() => setTapToast(null), TAP_TOAST_DURATION_MS);
+  }
+
+  // 토스트 타이머 정리(언마운트 시) — onBarTap 유무와 무관하게 항상 안전하게 정리.
+  useEffect(() => {
+    return () => {
+      if (tapToastTimerRef.current) clearTimeout(tapToastTimerRef.current);
+    };
+  }, []);
+
+  // 컨테이너 밖에서 pointerup/cancel이 나면(팬 도중 손가락이 캔버스 밖으로 나가는 등) 우리 쪽
+  // 제스처 추적이 미아 상태로 남지 않도록 하는 안전망 — 실제 탭 판정은 하지 않고 상태만 정리한다.
+  useEffect(() => {
+    if (!onBarTap) return;
+    function reset(e: PointerEvent) {
+      const state = gestureRef.current;
+      if (state && state.pointerId === e.pointerId) {
+        gestureRef.current = null;
+        clearLongPressTimer();
+      }
+    }
+    window.addEventListener("pointerup", reset);
+    window.addEventListener("pointercancel", reset);
+    return () => {
+      window.removeEventListener("pointerup", reset);
+      window.removeEventListener("pointercancel", reset);
+    };
+  }, [onBarTap]);
+
+  function handleBarTapConfirmed(clientX: number) {
+    if (!onBarTap) return;
+    if (!isTapSupportedTf(tf)) {
+      showTapToast(TAP_UNSUPPORTED_TOAST);
+      return;
+    }
+    const container = containerRef.current;
+    const chart = chartRef.current;
+    if (!container || !chart) return;
+    const rect = container.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const time = chart.timeScale().coordinateToTime(x);
+    if (typeof time !== "number") return; // 데이터 없는 여백을 탭한 경우 등 — 조용히 무시
+    onBarTap(epochToKstDateStr(time));
+  }
+
+  // 탭 vs 롱프레스 vs 드래그 판별(§7) — 시간(ms)+이동거리(px) 두 축으로만 갈라 애매함을 없앤다.
+  // preventDefault/stopPropagation을 전혀 쓰지 않아 lightweight-charts 자체의 크로스헤어·팬·줌은
+  // 완전히 그대로 동작한다(이 핸들러들은 그 위에 얹힌 "관찰자"일 뿐).
+  function handleCanvasPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (gestureRef.current) {
+      // 두 번째 손가락 도착 = 핀치 줌 시작 — 기존 탭 후보를 통째로 무효화한다.
+      // (무시만 하면 앵커 손가락이 8px 미만 이동 후 릴리즈될 때 탭으로 오발동 — 검수 발견)
+      gestureRef.current = null;
+      clearLongPressTimer();
+      return;
+    }
+    gestureRef.current = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      startTime: performance.now(),
+      moved: false,
+      longPressFired: false,
+    };
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      const state = gestureRef.current;
+      if (state && !state.moved) {
+        // 크로스헤어 스크럽 진입 — 시각 피드백은 lightweight-charts 자체의 크로스헤어가 담당(§7 "권장").
+        state.longPressFired = true;
+      }
+    }, LONG_PRESS_MS);
+  }
+
+  function handleCanvasPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const state = gestureRef.current;
+    if (!state || state.pointerId !== e.pointerId || state.moved) return;
+    const dx = e.clientX - state.x;
+    const dy = e.clientY - state.y;
+    if (Math.hypot(dx, dy) >= MOVE_THRESHOLD_PX) {
+      state.moved = true; // 드래그로 확정 — 이후 팬/줌은 라이브러리 기본 동작에 맡기고 우리는 손 뗀다
+      clearLongPressTimer();
+    }
+  }
+
+  function handleCanvasPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const state = gestureRef.current;
+    if (!state || state.pointerId !== e.pointerId) return;
+    gestureRef.current = null;
+    clearLongPressTimer();
+    if (state.moved || state.longPressFired) return; // 드래그였거나 이미 롱프레스(스크럽) 해제 — 탭 아님
+    const elapsed = performance.now() - state.startTime;
+    if (elapsed > TAP_MAX_MS) return; // 탭 창(220ms) 초과 — 크로스헤어 영역이므로 아무 것도 하지 않음
+    handleBarTapConfirmed(e.clientX);
+  }
+
+  function handleCanvasPointerCancel(e: ReactPointerEvent<HTMLDivElement>) {
+    const state = gestureRef.current;
+    if (!state || state.pointerId !== e.pointerId) return;
+    gestureRef.current = null;
+    clearLongPressTimer();
+  }
+
   const isEmpty = !loading && data !== null && data.items.length === 0;
   const overlayMessage = errorMessage ?? (isEmpty ? "이 주기의 데이터가 없습니다" : null);
 
@@ -412,6 +562,12 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
         ))}
       </div>
 
+      {onBarTap && isTapSupportedTf(tf) ? (
+        <p className="candle-chart__tap-hint">
+          🕰 봉을 탭하면 &quot;그날의 나&quot;를 볼 수 있어요
+        </p>
+      ) : null}
+
       <div className="candle-chart__canvas-wrap">
         <div
           ref={containerRef}
@@ -420,6 +576,10 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
           aria-label={`${TF_ARIA_LABEL[tf]} 캔들 차트${
             data ? `, 최근 ${data.items.length}개 봉` : ""
           }`}
+          onPointerDown={onBarTap ? handleCanvasPointerDown : undefined}
+          onPointerMove={onBarTap ? handleCanvasPointerMove : undefined}
+          onPointerUp={onBarTap ? handleCanvasPointerUp : undefined}
+          onPointerCancel={onBarTap ? handleCanvasPointerCancel : undefined}
         />
         {loading ? (
           <div className="candle-chart__overlay" role="status" aria-live="polite">
@@ -430,6 +590,11 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
         {!loading && overlayMessage ? (
           <div className="candle-chart__overlay candle-chart__overlay--empty" role="status">
             <p>{overlayMessage}</p>
+          </div>
+        ) : null}
+        {tapToast ? (
+          <div className="candle-chart__toast" role="status" aria-live="polite">
+            {tapToast}
           </div>
         ) : null}
       </div>

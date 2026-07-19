@@ -583,6 +583,41 @@ def fetch_yf_ohlcv(code: str, interval: str, period: str) -> pd.DataFrame | None
         return None
 
 
+def fetch_yf_index_ohlcv(ticker: str, interval: str = "1d", period: str = "max") -> pd.DataFrame | None:
+    """Yahoo Finance 지수(코스피 등) OHLCV 조회 — fetch_yf_ohlcv와 별개 함수.
+
+    fetch_yf_ohlcv는 내부에서 _yf_ticker()를 거쳐 종목코드에 .KS/.KQ 접미사를 붙이는데,
+    "^KS11" 같은 지수 심볼은 이 접미사 규칙 대상이 아니라(붙이면 존재하지 않는 티커가 됨)
+    원시 ticker 문자열을 그대로 yf.Ticker에 전달하는 전용 경로가 필요하다. fetch_yf_ohlcv
+    본체는 그대로 두고(기존 종목 조회 무변경) 별도로 병치한다.
+
+    반환 스키마는 fetch_yf_ohlcv와 동일: date(일봉류 YYYYMMDD/분봉류 YYYYMMDDHHMM)/
+    open/high/low/close/volume 컬럼 + 원본 tz-aware DatetimeIndex 유지. 실패·빈 데이터 시 None.
+    """
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        hist = ticker_obj.history(period=period, interval=interval)
+        if hist is None or hist.empty:
+            return None
+        hist = hist.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+        if hist.empty:
+            return None
+        date_fmt = "%Y%m%d" if interval in ("1d", "1wk", "1mo") else "%Y%m%d%H%M"
+        df = pd.DataFrame({
+            "date": hist.index.strftime(date_fmt),
+            "open": hist["Open"].astype(float),
+            "high": hist["High"].astype(float),
+            "low": hist["Low"].astype(float),
+            "close": hist["Close"].astype(float),
+            "volume": hist["Volume"].astype(int),
+        })
+        df.index = hist.index
+        return df
+    except Exception as e:
+        print(f"[YF] 지수 OHLCV 수집 실패 ({ticker}, interval={interval}, period={period}): {e}")
+        return None
+
+
 def _yf_intraday_60m(code: str) -> pd.DataFrame | None:
     """기존 호출부(스냅샷 수집 60분봉 지표) 전용 — reset_index 로 기존 RangeIndex 동작 유지."""
     df = fetch_yf_ohlcv(code, interval="60m", period="6mo")

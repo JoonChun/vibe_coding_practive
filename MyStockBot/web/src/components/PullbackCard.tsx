@@ -11,7 +11,8 @@ interface PullbackCardProps {
 // 색은 기존 팔레트 재사용: 매수/관망은 SignalChip.CHIP_STYLES와 동일 색, 이탈(무효)은
 // FactorBreakdown의 톤다운 적색을 재사용해 확정 판정보다 채도를 낮추고, 중립 3종(추세아님/추세지속/
 // 데이터부족)은 SignalChip의 "데이터부족" 아웃라인 색(#9ca3af)을 재사용한다.
-const STATUS_COLOR: Record<PullbackStatus, string> = {
+// export: TimeMachineCard(Phase 3)가 "그날 봇 판정"의 눌림목 칩 색으로 재사용(§8 컴포넌트 분해표).
+export const STATUS_COLOR: Record<PullbackStatus, string> = {
   "눌림목 반등(매수후보)": "#65a30d",
   "눌림 진행중(관망)": "#6b7280",
   "눌림 이탈(무효)": "#f87171",

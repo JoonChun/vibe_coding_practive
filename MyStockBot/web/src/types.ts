@@ -159,3 +159,43 @@ export interface LiveBar {
   close: number;
   volume: number;
 }
+
+/** GET /api/stocks/{code}/whatif — 종목·코스피 병치 손익(가격 비율 기준, 배당/분할/수수료 미반영). */
+export interface WhatIfSide {
+  buy_price: number;
+  current_price: number;
+  eval_amount: number;
+  profit: number;
+  return_pct: number;
+  multiple: number;
+}
+
+/** 매수일 시점까지의 데이터만으로 재현한 "그날의 봇 판정"(참고용) — 재무비율(PER/PBR/ROE)은
+ * 과거 재현 불가로 항상 제외되며, note는 그 사실을 알리는 고정 문구(항상 채워짐). */
+export interface WhatIfBotJudgment {
+  long_view: SignalView | null;
+  macd_1d: string | null;
+  rsi_1d: string | null;
+  pullback_status: PullbackStatus | null;
+  note: string;
+}
+
+export interface WhatIfResponse {
+  code: string;
+  requested_date: string;
+  buy_date: string | null;
+  buy_price: number | null;
+  amount: number;
+  shares: number | null;
+  current_date: string | null;
+  current_price: number | null;
+  eval_amount: number | null;
+  profit: number | null;
+  return_pct: number | null;
+  multiple: number | null;
+  kospi: WhatIfSide | null;
+  bot_judgment: WhatIfBotJudgment | null;
+  source: SnapshotSource | null;
+  /** 채워지면 나머지 필드는 신뢰하지 않고 에러 상태로 그린다 — 백엔드가 내려주는 한글 문구를 그대로 노출. */
+  error: string | null;
+}

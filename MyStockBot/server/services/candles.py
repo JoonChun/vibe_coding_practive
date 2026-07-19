@@ -454,3 +454,49 @@ def get_candles(code: str, tf: str, count: int = _DEFAULT_COUNT) -> dict:
         return _build_response(code, tf, _remembered_source(code, tf), stored, safe_count)
 
     return _build_response(code, tf, None, [], safe_count)
+
+
+# ────────────────────────────────────────────
+# 코스피 지수(^KS11) 캐싱 — Phase 3 "그날의 나" What-if 코스피 병치용.
+# 위 get_candles()(종목 캔들) 로직은 무변경 — 별도 함수로 병치한다. db.upsert_candles/
+# get_candles_store/get_candles_age_seconds 는 code 형식을 검증하지 않으므로 pseudo-code
+# "^KS11" 을 그대로 (code, tf) PK 로 통용할 수 있다(정도전 설계 확인 완료).
+# ────────────────────────────────────────────
+
+_INDEX_CODE = "^KS11"
+_INDEX_TF = "1d"
+_INDEX_YF_PERIOD = "max"
+
+
+def get_index_candles(count: int = 1000) -> list[dict]:
+    """코스피 지수(^KS11) 일봉 read-through 캐시.
+
+    신선도 게이트는 일봉+ 와 동일한 _DAILY_FRESH_SECONDS(600초)를 재사용한다. 저장소가
+    신선하고 요청 개수만큼 쌓여 있으면 fetch 없이 바로 서빙. stale 이거나 얕으면
+    crawler.fetch_yf_index_ohlcv(period="max")로 1회 넉넉히 적재(yfinance 지수 데이터는
+    KIS 대상이 아니므로 KIS 경로 없음 — yfinance 단일 소스). fetch 실패 시 저장소에 남은
+    값(낡아도)을 그대로 서빙, 그마저 없으면 빈 리스트(호출부 whatif.py가 kospi=null 로
+    처리해 whatif 응답 전체를 막지 않는다).
+    """
+    safe_count = max(1, min(int(count), _MAX_COUNT_DEEP))
+
+    age = db.get_candles_age_seconds(_INDEX_CODE, _INDEX_TF)
+    if age is not None and age < _DAILY_FRESH_SECONDS:
+        stored = db.get_candles_store(_INDEX_CODE, _INDEX_TF, safe_count)
+        if len(stored) >= safe_count:
+            return stored
+        # else: 얕음 — 아래에서 재적재 시도.
+
+    try:
+        df = crawler.fetch_yf_index_ohlcv(_INDEX_CODE, interval="1d", period=_INDEX_YF_PERIOD)
+    except Exception as e:
+        print(f"[candles] 코스피 지수(^KS11) 수집 실패: {e}")
+        df = None
+
+    if df is not None and not df.empty:
+        items = _df_to_items_daily(df)
+        if items:
+            db.upsert_candles(_INDEX_CODE, _INDEX_TF, items)
+            print(f"[candles] 코스피 지수(^KS11) 적재 — {len(items)}건 upsert")
+
+    return db.get_candles_store(_INDEX_CODE, _INDEX_TF, safe_count)

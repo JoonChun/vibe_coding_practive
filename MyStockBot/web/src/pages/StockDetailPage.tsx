@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getWatchlist } from "../api";
 import { BollingerTrack } from "../components/BollingerTrack";
+import { BottomSheet } from "../components/BottomSheet";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
 import { LiveReferenceStrip } from "../components/LiveReferenceStrip";
 import { PullbackCard } from "../components/PullbackCard";
 import { RealtimeBadge } from "../components/RealtimeBadge";
+import { TimeMachineCard, type TimeMachineCardHandle } from "../components/TimeMachineCard";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
@@ -15,6 +17,10 @@ import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import { useTickStream } from "../hooks/useTickStream";
 import { buildFactorRows, sumFactorScores } from "../utils/factorScoring";
 import { formatKrw } from "../utils/format";
+
+// BottomSheet의 aria-labelledby와 TimeMachineCard(sheet 변형)의 헤딩 id가 반드시 일치해야 하므로
+// 상수로 고정(이 페이지에 인스턴스가 동시에 하나뿐이라 충돌 없음).
+const TIMEMACHINE_SHEET_TITLE_ID = "timemachine-sheet-title";
 
 type AnalysisTab = "short" | "long";
 
@@ -43,6 +49,12 @@ export default function StockDetailPage() {
   const relativeUpdatedAt = useRelativeTime(snapshot.lastUpdatedAt);
   const tickStream = useTickStream();
   const tick = tickStream.ticks[code] ?? null;
+
+  // Phase 3 "그날의 나" — 차트 봉 탭으로 연 바텀시트(§5). null이면 닫힘, 문자열이면 그 날짜로 프리필해 열림.
+  const [timeMachineSheetDate, setTimeMachineSheetDate] = useState<string | null>(null);
+  // 이번 세션 마지막으로 계산에 쓴 금액(§7-2) — 인라인 카드·시트 양쪽의 다음 기본값으로 재사용.
+  const [lastAmount, setLastAmount] = useState(1_000_000);
+  const timeMachineSheetCardRef = useRef<TimeMachineCardHandle>(null);
 
   // 관심종목 등록 여부만 확인(방금 추가된 종목의 "수집 중" 판정용) — 스냅샷과 별개로 1회 조회
   const [watchlistCodes, setWatchlistCodes] = useState<Set<string> | null>(null);
@@ -243,10 +255,37 @@ export default function StockDetailPage() {
               code={code}
               liveBars={tickStream.liveBars[code]}
               wsConnected={wsConnected}
+              onBarTap={setTimeMachineSheetDate}
             />
           </div>
         </div>
+
+        <TimeMachineCard
+          code={code}
+          name={name}
+          initialAmount={lastAmount}
+          onAmountUsed={setLastAmount}
+        />
       </main>
+
+      {timeMachineSheetDate !== null ? (
+        <BottomSheet
+          onClose={() => setTimeMachineSheetDate(null)}
+          titleId={TIMEMACHINE_SHEET_TITLE_ID}
+          onRequestInitialFocus={() => timeMachineSheetCardRef.current?.focusDate()}
+        >
+          <TimeMachineCard
+            ref={timeMachineSheetCardRef}
+            code={code}
+            name={name}
+            variant="sheet"
+            titleId={TIMEMACHINE_SHEET_TITLE_ID}
+            initialDate={timeMachineSheetDate}
+            initialAmount={lastAmount}
+            onAmountUsed={setLastAmount}
+          />
+        </BottomSheet>
+      ) : null}
 
       <footer className="app-footer">
         ⓘ 기계적 참고 지표 · 투자 권유 아님 · 최종 판단은 본인에게 있습니다
