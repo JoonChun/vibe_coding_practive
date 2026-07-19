@@ -1,3 +1,5 @@
+import { formatKrw } from "../utils/format";
+
 interface BollingerTrackProps {
   upper: number | null;
   mid: number | null;
@@ -48,9 +50,9 @@ function BollingerVisual({
   const midFraction = mid !== null ? Math.max(0, Math.min(1, (mid - lower) / range)) : null;
   const midTopPct = midFraction !== null ? (1 - midFraction) * 100 : null;
 
-  const ariaLabel = `볼린저 밴드: 상단 ${upper.toLocaleString("ko-KR")}, 중간 ${
-    mid !== null ? mid.toLocaleString("ko-KR") : "정보 없음"
-  }, 하단 ${lower.toLocaleString("ko-KR")}, 현재가 ${price.toLocaleString("ko-KR")}${
+  const ariaLabel = `볼린저 밴드: 상단 ${formatKrw(upper)}, 중간 ${
+    mid !== null ? formatKrw(mid) : "정보 없음"
+  }, 하단 ${formatKrw(lower)}, 현재가 ${formatKrw(price)}${
     outOfRange ? (rawFraction > 1 ? ", 상단 밴드 이탈" : ", 하단 밴드 이탈") : ""
   }`;
 
@@ -72,7 +74,7 @@ function BollingerVisual({
           aria-hidden="true"
         >
           <span className="bollinger-visual__dot" />
-          <span className="bollinger-visual__price">{price.toLocaleString("ko-KR")}</span>
+          <span className="bollinger-visual__price">{formatKrw(price)}</span>
         </span>
       </div>
       {outOfRange ? (

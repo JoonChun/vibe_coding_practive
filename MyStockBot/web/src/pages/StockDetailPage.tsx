@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getWatchlist } from "../api";
 import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
 import { LiveReferenceStrip } from "../components/LiveReferenceStrip";
+import { PullbackBadge } from "../components/PullbackBadge";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
@@ -12,6 +14,7 @@ import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import { useTickStream } from "../hooks/useTickStream";
 import { buildFactorRows, sumFactorScores } from "../utils/factorScoring";
+import { formatKrw } from "../utils/format";
 
 type AnalysisTab = "short" | "long";
 
@@ -41,10 +44,32 @@ export default function StockDetailPage() {
   const tickStream = useTickStream();
   const tick = tickStream.ticks[code] ?? null;
 
+  // 관심종목 등록 여부만 확인(방금 추가된 종목의 "수집 중" 판정용) — 스냅샷과 별개로 1회 조회
+  const [watchlistCodes, setWatchlistCodes] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getWatchlist()
+      .then((res) => {
+        if (cancelled) return;
+        setWatchlistCodes(
+          new Set(res.items.filter((i) => i.is_active).map((i) => i.code))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setWatchlistCodes(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const item = useMemo(
     () => snapshot.data?.items.find((i) => i.code === code) ?? null,
     [snapshot.data, code]
   );
+
+  // 관심종목엔 있으나 스냅샷에 아직 없음 → 수집 중
+  const collecting = item === null && (watchlistCodes?.has(code) ?? false);
 
   const view = tab === "short" ? (item?.short_view ?? null) : (item?.long_view ?? null);
   const otherView = tab === "short" ? (item?.long_view ?? null) : (item?.short_view ?? null);
@@ -77,14 +102,14 @@ export default function StockDetailPage() {
   const changeText =
     change === null || changePct === null
       ? "—"
-      : `${change > 0 ? "+" : ""}${change.toLocaleString("ko-KR")} (${
+      : `${change > 0 ? "+" : ""}${formatKrw(change)} (${
           changePct > 0 ? "+" : ""
         }${changePct.toFixed(2)}%)`;
   const changeAriaLabel =
     change === null || changePct === null
       ? "등락 정보 없음"
-      : `전일 대비 ${isUp ? "상승" : isDown ? "하락" : "보합"} ${Math.abs(change).toLocaleString(
-          "ko-KR"
+      : `전일 대비 ${isUp ? "상승" : isDown ? "하락" : "보합"} ${formatKrw(
+          Math.abs(change)
         )}원, ${Math.abs(changePct).toFixed(2)}퍼센트`;
 
   const unauthorized = snapshot.errorStatus === 401;
@@ -131,7 +156,7 @@ export default function StockDetailPage() {
               className={`price-section__row${flashClass ? ` ${flashClass}` : ""}`}
             >
               <span className="price-section__value">
-                {close !== null ? `${close.toLocaleString("ko-KR")}원` : "—"}
+                {close !== null ? `${formatKrw(close)}원` : "—"}
               </span>
               <span
                 className={`price-section__change price-section__change--${changeDirection}`}
@@ -183,6 +208,7 @@ export default function StockDetailPage() {
               score={score}
               threshold={threshold}
               relativeTime={relativeUpdatedAt || "방금"}
+              collecting={collecting}
               liveStrip={
                 <LiveReferenceStrip
                   variant="full"
@@ -193,6 +219,12 @@ export default function StockDetailPage() {
                 />
               }
             />
+            {tab === "long" ? (
+              <PullbackBadge
+                status={item?.factors?.pullback_status ?? null}
+                reason={item?.factors?.pullback_reason ?? null}
+              />
+            ) : null}
           </div>
           <div className="detail-grid__factors">
             <FactorBreakdown rows={factorRows} />

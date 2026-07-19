@@ -18,6 +18,7 @@ _FACTOR_KEYS = [
     "bb_upper", "bb_mid", "bb_lower",
     "per", "pbr", "roe",
     "short_score", "long_score",
+    "pullback_status", "pullback_reason", "pullback_trend_up",
 ]
 
 

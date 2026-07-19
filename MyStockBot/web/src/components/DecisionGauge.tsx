@@ -12,6 +12,8 @@ interface DecisionGaugeProps {
   /** 게이지 카드 안, 확정 판정 body 아래에 추가로 렌더할 콘텐츠 — LiveReferenceStrip(full) 삽입용.
    * 게이지 SVG·바늘·확정 라벨은 이 prop과 무관하게 100% 기존 그대로 유지된다. */
   liveStrip?: ReactNode;
+  /** 관심종목에 막 추가되어 스냅샷 수집이 아직 안 된 상태(additive) — true면 "판정 보류" 대신 "수집 중…" 표시 */
+  collecting?: boolean;
 }
 
 // 5단계 시맨틱 컬러 (SignalChip.tsx·DistributionStrip.tsx와 동일 값 유지)
@@ -61,6 +63,7 @@ export function DecisionGauge({
   threshold,
   relativeTime,
   liveStrip,
+  collecting = false,
 }: DecisionGaugeProps) {
   const insufficient = view === null || view === "데이터부족" || score === null;
 
@@ -73,7 +76,9 @@ export function DecisionGauge({
   const labelColor = insufficient ? "#6b7280" : (VIEW_COLORS[view as string] ?? "#6b7280");
 
   const ariaLabel = insufficient
-    ? "AI 종합 분석: 판정 보류, 데이터 부족"
+    ? collecting
+      ? "AI 종합 분석: 수집 중, 잠시 후 갱신됩니다"
+      : "AI 종합 분석: 판정 보류, 데이터 부족"
     : `AI 종합 분석: ${view}, 스코어 ${score! > 0 ? "+" : ""}${score}, 임계 플러스마이너스 ${threshold}`;
 
   return (
@@ -112,9 +117,11 @@ export function DecisionGauge({
       {insufficient ? (
         <div className="gauge-card__body">
           <div className="gauge-card__label" style={{ color: labelColor }}>
-            판정 보류
+            {collecting ? "수집 중…" : "판정 보류"}
           </div>
-          <p className="gauge-card__caption">데이터 부족</p>
+          <p className="gauge-card__caption">
+            {collecting ? "잠시 후 갱신됩니다" : "데이터 부족"}
+          </p>
         </div>
       ) : (
         <div className="gauge-card__body">

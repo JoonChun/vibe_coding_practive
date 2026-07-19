@@ -84,6 +84,8 @@ export default function DashboardPage() {
           source: snap?.source ?? null,
           market: item.market ?? null,
           live: snap?.live ?? null,
+          // 관심종목엔 있으나 스냅샷 items에 아직 없음 → 방금 추가되어 수집 중
+          collecting: !snap,
         };
       });
   }, [watchlist, snapshot.data]);
@@ -178,7 +180,10 @@ export default function DashboardPage() {
           query={query}
           onQueryChange={setQuery}
           existingCodes={existingCodes}
-          onAdded={() => void fetchWatchlist()}
+          onAdded={() => {
+            void fetchWatchlist();
+            snapshot.refresh();
+          }}
         />
         {watchlistError ? (
           <p className="panel__error" role="alert">

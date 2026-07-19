@@ -165,6 +165,9 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
       borderVisible: false,
       wickUpColor: UP_COLOR,
       wickDownColor: DOWN_COLOR,
+      // 원화는 소수점을 쓰지 않으므로 우측 가격축·크로스헤어 라벨에 기본 precision(2)이 남기는
+      // ".00" 노출을 제거(거래량 히스토그램은 기존 type: "volume" 포맷 그대로 유지, 영향 없음).
+      priceFormat: { type: "price", precision: 0, minMove: 1 },
     });
 
     const volumeSeries = chart.addHistogramSeries({
@@ -183,6 +186,7 @@ export function CandleChart({ code, liveBars, wsConnected = false }: CandleChart
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
+        priceFormat: { type: "price", precision: 0, minMove: 1 },
       });
     }
 

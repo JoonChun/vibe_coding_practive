@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { TickData } from "../hooks/useTickStream";
 import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import type { LiveJudgment, SignalView, SnapshotSource } from "../types";
+import { formatKrw } from "../utils/format";
 import { LiveReferenceStrip } from "./LiveReferenceStrip";
 import { SignalChip } from "./SignalChip";
 import { SourceBadge } from "./SourceBadge";
@@ -19,6 +20,8 @@ export interface StockCardData {
   market?: string | null;
   /** 실시간 참고 판정(additive) — 확정과 다를 때만 카드에 조용히 노출 */
   live?: LiveJudgment | null;
+  /** 관심종목에 막 추가되어 스냅샷 수집이 아직 안 된 상태(additive) */
+  collecting?: boolean;
 }
 
 interface StockCardProps {
@@ -113,7 +116,7 @@ export function StockCard({ row, onDelete, tick, wsConnected }: StockCardProps) 
 
         <div className="stock-card__price-row">
           <span className="stock-card__price">
-            {close !== null ? `${close.toLocaleString("ko-KR")}원` : "—"}
+            {close !== null ? `${formatKrw(close)}원` : "—"}
           </span>
           <span className={`stock-card__change ${changeClass}`} aria-label={changeAriaLabel}>
             <span aria-hidden="true">
@@ -126,8 +129,14 @@ export function StockCard({ row, onDelete, tick, wsConnected }: StockCardProps) 
         <Sparkline code={code} trendUp={isUp} trendDown={isDown} />
 
         <div className="stock-card__chips">
-          <SignalChip label={shortView} kind="단기" />
-          <SignalChip label={longView} kind="장기" />
+          {row.collecting ? (
+            <span className="stock-card__collecting">수집 중…</span>
+          ) : (
+            <>
+              <SignalChip label={shortView} kind="단기" />
+              <SignalChip label={longView} kind="장기" />
+            </>
+          )}
         </div>
 
         <div className="stock-card__live-row">

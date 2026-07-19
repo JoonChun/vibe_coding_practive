@@ -30,6 +30,7 @@ from config import (
     COLLECTOR_INTERVAL_IDLE,
     COLLECTOR_INTERVAL_MARKET,
     KIS_RATE_LIMIT_DELAY,
+    SIXTY_MIN_BOOTSTRAP_RETRY_COOLDOWN_SECONDS,
     TIMEZONE,
 )
 
@@ -61,6 +62,7 @@ _FACTOR_ERROR_FIELDS = [
     "bb_upper", "bb_mid", "bb_lower",
     "per", "pbr", "roe", "revenue", "net_income",
     "short_score", "long_score",
+    "pullback_status", "pullback_reason", "pullback_trend_up",
 ]
 
 _state: dict | None = None
@@ -76,6 +78,15 @@ _last_source_lock = threading.Lock()
 
 _thread: threading.Thread | None = None
 _stop_event = threading.Event()
+# 관심종목 추가 등 사용자 액션 직후 다음 수집 사이클을 즉시 앞당기기 위한 트리거.
+# set()은 어느 스레드(예: FastAPI 요청 핸들러)에서든 호출 가능하지만, 실제 사이클 실행은
+# 단일 루프 스레드(_loop)에서만 일어나므로 경합 없음 — _loop 가 폴링 후 clear 한다.
+_trigger_event = threading.Event()
+
+# 신규 종목 60분봉 초기 적재(_bootstrap_60m_if_needed) 재시도 쿨다운 — _financials_cache
+# 와 동일한 in-memory 쿨다운 패턴(코드별 마지막 시도 시각만 기록).
+_60m_bootstrap_cooldown: dict[str, float] = {}
+_60m_bootstrap_cooldown_lock = threading.Lock()
 
 
 # ────────────────────────────────────────────
@@ -354,14 +365,56 @@ def _fetch_60m_items(code: str, token: str | None) -> tuple[list[dict], str | No
     return _df_to_candle_items_minute(df60), "yfinance"
 
 
+def _bootstrap_60m_if_needed(code: str) -> None:
+    """신규 관심종목은 60분봉 저장소가 비어 있어 MACD/RSI 계산 최소 봉수
+    (indicators._MIN_BARS_MACD)를 채우기 전까지 단기판정이 계속 '데이터부족'이 된다.
+    저장소 봉수가 부족하면 yfinance 6개월치를 1회 적재해 초기 공백을 메운다(그 뒤로는
+    _get_60m_df 의 KIS 우선 수집이 정상적으로 이어서 쌓는다).
+
+    이는 KIS 우선 원칙을 깨는 예외가 아니라 신규 종목의 초기 적재 공백을 메우는 1회성
+    부트스트랩이다(로그 문구를 기존 "yfinance 폴백" 경고와 구분해 "60m 초기 적재"로 남긴다).
+    실패 시 조용히 쿨다운만 기록하고 현행 흐름(느린 자연 적재)을 유지한다 — 스코프 확대 없음.
+    """
+    stored_count = len(db.get_candles_store(code, "60m", 150))
+    if stored_count >= indicators._MIN_BARS_MACD:
+        return
+
+    now = time.monotonic()
+    with _60m_bootstrap_cooldown_lock:
+        last_attempt = _60m_bootstrap_cooldown.get(code)
+        if last_attempt is not None and (now - last_attempt) < SIXTY_MIN_BOOTSTRAP_RETRY_COOLDOWN_SECONDS:
+            return
+        _60m_bootstrap_cooldown[code] = now
+
+    try:
+        df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
+    except Exception as e:
+        print(f"[collector] 60m 초기 적재 실패 ({code}): {e}")
+        return
+
+    if df60 is None or df60.empty:
+        print(f"[collector] 60m 초기 적재: yfinance 데이터 없음 ({code})")
+        return
+
+    items60 = _df_to_candle_items_minute(df60)
+    if not items60:
+        return
+
+    db.upsert_candles(code, "60m", items60)
+    print(f"[collector] 60m 초기 적재 완료 ({code}): {len(items60)}건")
+
+
 def _get_60m_df(code: str, token: str | None) -> tuple[pd.DataFrame | None, str | None]:
     """60분봉 신선도 게이트(5분). 신선하면 저장소에서 바로 서빙(외부 fetch 생략),
     stale/없으면 KIS 당일분봉(1분) 리샘플 우선 → yfinance 폴백으로 재수집. fetch 실패
     시 동작은 기존과 동일(None 반환 → 호출부에서 macd_60m 등 None 유지, 스코프 확대 없음).
 
     60분봉은 시간당 1회 갱신이면 충분한 데이터라 분봉 일반 기준(60초)보다 여유 있는
-    임계치를 둔다.
+    임계치를 둔다. 신규 종목(저장소 봉수 부족)은 먼저 _bootstrap_60m_if_needed 로
+    초기 적재를 시도한 뒤 기존 신선도 게이트 로직을 그대로 이어간다.
     """
+    _bootstrap_60m_if_needed(code)
+
     age = db.get_candles_age_seconds(code, "60m")
     if age is not None and age < _60M_FRESH_SECONDS:
         stored = db.get_candles_store(code, "60m", 150)
@@ -402,6 +455,17 @@ def _collect_one(item: dict, token: str | None) -> dict:
         rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
 
+    # ①-2 눌림목(pullback) 판정 — 기존 일봉 지표(MACD/RSI/BB) try 블록과 분리된 별도
+    # try/except. 이 계산이 실패해도 위 지표들에는 영향이 없어야 한다(스코프 격리).
+    try:
+        pullback = indicators.pullback_signal(daily_store_df)
+        pullback_status = pullback.get("status")
+        pullback_reason = pullback.get("reason")
+        pullback_trend_up = pullback.get("trend_up")
+    except Exception as e:
+        print(f"[collector] 눌림목 판정 실패 ({code}): {e}")
+        pullback_status = pullback_reason = pullback_trend_up = None
+
     # ② 60분봉(신선도 게이트 — 5분 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
     store60_df, source_60m = _get_60m_df(code, token)
     macd_60m = rsi_60m = None
@@ -419,15 +483,18 @@ def _collect_one(item: dict, token: str | None) -> dict:
     # ③ 재무(6시간 캐시)
     financials = _get_financials_cached(code, token)
 
-    # ④ views/scores
+    # ④ views/scores — 장기(1d) 관점은 눌림목 추세 필터(trend_up) 반영: 추세장에서는
+    # RSI 과매수 감점을 무효화한다(indicators._rsi_score 참조). 실패 시 pullback_trend_up
+    # 이 None 이므로 bool(None)=False 로 안전 폴백(기존 동작과 동일).
+    trend_up = bool(pullback_trend_up)
     view_data = {
         "short_view": indicators.short_term_view(macd_60m, rsi_60m),
         "long_view": indicators.long_term_view(
-            macd_1d, rsi_1d, financials["per"], financials["pbr"], financials["roe"]
+            macd_1d, rsi_1d, financials["per"], financials["pbr"], financials["roe"], trend_up=trend_up
         ),
         "short_score": indicators.short_term_score(macd_60m, rsi_60m),
         "long_score": indicators.long_term_score(
-            macd_1d, rsi_1d, financials["per"], financials["pbr"], financials["roe"]
+            macd_1d, rsi_1d, financials["per"], financials["pbr"], financials["roe"], trend_up=trend_up
         ),
     }
 
@@ -438,6 +505,9 @@ def _collect_one(item: dict, token: str | None) -> dict:
         "macd_1d": macd_1d, "rsi_1d": rsi_1d, "rsi_value_1d": rsi_value_1d,
         "macd_60m": macd_60m, "rsi_60m": rsi_60m, "rsi_value_60m": rsi_value_60m,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
+        "pullback_status": pullback_status,
+        "pullback_reason": pullback_reason,
+        "pullback_trend_up": pullback_trend_up,
         **financials,
         **view_data,
         "source": source, "source_60m": source_60m,
@@ -487,6 +557,23 @@ def _run_cycle() -> None:
     print(f"[collector] 사이클 완료: 성공 {success}건 실패 {len(items) - success}건 (전체 {len(items)}건)")
 
 
+def _interruptible_wait(interval: int) -> bool:
+    """interval 초를 1초 단위로 쪼개 기다리며 _stop_event/_trigger_event 를 폴링한다.
+
+    stop 시 True(루프 종료) 반환. trigger 시 이벤트를 clear 하고 False(즉시 사이클 재개)
+    반환. 정상 만료 시에도 False 반환. 단일 루프 스레드에서만 호출되므로 경합 없음.
+    """
+    elapsed = 0
+    while elapsed < interval:
+        if _stop_event.wait(1):
+            return True
+        if _trigger_event.is_set():
+            _trigger_event.clear()
+            return False
+        elapsed += 1
+    return False
+
+
 def _loop() -> None:
     print("[collector] 수집 루프 시작")
     try:
@@ -496,7 +583,7 @@ def _loop() -> None:
 
     while not _stop_event.is_set():
         interval = _cycle_interval_seconds()
-        if _stop_event.wait(interval):
+        if _interruptible_wait(interval):
             break
         try:
             _run_cycle()
@@ -506,9 +593,17 @@ def _loop() -> None:
     print("[collector] 수집 루프 종료")
 
 
+def trigger_immediate_cycle() -> None:
+    """다음 수집 사이클을 즉시 앞당긴다(대기 인터벌 중단). 관심종목 신규 추가 직후처럼
+    사용자가 결과를 빨리 보고 싶어하는 시점에 호출한다. 이벤트 set만 하고 즉시 반환하며,
+    실제 수집은 루프 스레드가 다음 폴링에서 수행한다."""
+    _trigger_event.set()
+
+
 def start() -> None:
     global _thread
     _stop_event.clear()
+    _trigger_event.clear()
     _thread = threading.Thread(target=_loop, daemon=True, name="collector-loop")
     _thread.start()
 

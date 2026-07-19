@@ -753,6 +753,13 @@ select:focus-visible {
   gap: 0.4rem;
 }
 
+/* 관심종목 추가 직후, 스냅샷 수집 전 SignalChip 대신 표시하는 캡션 */
+.stock-card__collecting {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
 /* 실시간 참고 판정 행 — 확정과 다를 때만 노출되지만, 폴링마다 카드 높이가 들썩이지
    않도록 내용이 없어도 높이를 예약해둔다(phase2v2-live-ui.md §3). */
 .stock-card__live-row {
@@ -1302,6 +1309,36 @@ select:focus-visible {
     transform: scale(0.95);
     opacity: 0.4;
   }
+}
+
+/* 눌림목 판정 배지 — 게이지 카드 아래(상세 페이지 장기 탭 한정). 확정 판정을 압도하지
+   않도록 배경은 항상 transparent, SignalChip과 동일한 외곽선+텍스트 톤만 사용한다. */
+.pullback-badge {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+.pullback-badge__chip {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-color: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pullback-badge__reason {
+  margin: 0;
+  max-width: 14rem;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--on-surface-variant);
 }
 
 /* 기여요인 분해 카드 */

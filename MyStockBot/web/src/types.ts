@@ -13,6 +13,15 @@ export type DecisionView = Exclude<SignalView, "데이터부족">;
 
 export type SnapshotSource = "kis" | "yfinance";
 
+/** 눌림목 판정 — 정확히 6종(백엔드 schemas.py와 1:1). 점수엔 미반영, 정보성 전용(장기/일봉 개념). */
+export type PullbackStatus =
+  | "데이터부족"
+  | "추세아님"
+  | "추세지속"
+  | "눌림 진행중(관망)"
+  | "눌림목 반등(매수후보)"
+  | "눌림 이탈(무효)";
+
 /** stock_master.market — 코스피/코스닥 구분 */
 export type MarketType = "KOSPI" | "KOSDAQ";
 
@@ -60,6 +69,10 @@ export interface SnapshotFactors {
   roe: number | null;
   short_score: number | null; // 단기 스코어 합 (임계 ±2)
   long_score: number | null; // 장기 스코어 합 (임계 ±3)
+  /** additive 신규 필드(눌림목 판정) — 장기(일봉) 개념, 점수엔 미반영(정보성 전용) */
+  pullback_status: PullbackStatus | null;
+  pullback_reason: string | null;
+  pullback_trend_up: boolean | null;
 }
 
 /** WS bar_update로 계속 갱신되는 실시간 참고 판정 — 확정 판정(short_view/long_view)과는 별개.

@@ -1,5 +1,9 @@
 // MACD/RSI/재무 지표 라벨 → 기여 점수 매핑.
 // MyStockBot/src/indicators.py 의 _macd_score / _rsi_score / _fundamental_score 규칙과 동일하게 유지할 것.
+//
+// 백엔드 동기화 규칙(추가): long(장기) 한정 — factors.pullback_trend_up === true 이고
+// RSI 라벨이 "과매수(매도)"면 rsi 점수를 -1 대신 0으로 완화한다(눌림목 추세 중 RSI 과매수를
+// 매도 신호로 오인하지 않게 하기 위함). short(60분봉)은 무변경. 눌림목 자체는 점수에 미반영.
 
 import type { SnapshotFactors } from "../types";
 
@@ -18,12 +22,13 @@ export function macdScore(label: string | null): number {
   }
 }
 
-export function rsiScore(label: string | null): number {
+/** trendUp이 true고 라벨이 "과매수(매도)"면 -1 대신 0(완화) — long 한정, short는 기본값(false)으로 무변경. */
+export function rsiScore(label: string | null, trendUp = false): number {
   switch (label) {
     case "과매도(진입)":
       return 1;
     case "과매수(매도)":
-      return -1;
+      return trendUp ? 0 : -1;
     default:
       return 0;
   }
@@ -104,7 +109,7 @@ function buildLongRows(factors: SnapshotFactors): FactorRow[] {
     {
       key: "rsi",
       label: `RSI ${rsiZone}${rsiValueText}`,
-      score: rsiScore(factors.rsi_1d),
+      score: rsiScore(factors.rsi_1d, factors.pullback_trend_up ?? false),
       maxAbs: 1,
     },
     {

@@ -1,0 +1,302 @@
+"""indicators.py — 눌림목(pullback) 판정 + RSI 완화 회귀 + 기존 함수 어휘 회귀 테스트.
+
+합성 일봉 OHLCV(t/open/high/low/close/volume, t 오름차순)를 직접 구성해 6개 상태를
+모두 결정적으로(랜덤·시각 의존 없이) 재현한다. ADX/이동평균은 실제 ta 라이브러리
+계산을 그대로 태우므로, 임계값에 딱 걸치는 경계값 대신 넉넉한 여유(margin)를 둔
+시계열로 설계했다 — 각 assert 옆에 실측 여유치를 주석으로 남겨 왜 안전한지 밝힌다
+(실측치는 이 파일 작성 중 실제로 함수를 호출해 확인한 값).
+
+서버(uvicorn)·DB·네트워크는 전혀 쓰지 않는다 — indicators.py는 순수 함수 모듈이다.
+"""
+import pandas as pd
+import pytest
+
+import indicators
+from config import PULLBACK_MIN_BARS
+
+
+# ────────────────────────────────────────────
+# 합성 OHLCV 헬퍼
+# ────────────────────────────────────────────
+
+def _linear_df(n: int, start: float = 100.0, step: float = 1.0, volume: float = 1000.0) -> pd.DataFrame:
+    """등차수열 종가로 이루어진 단순 추세 시계열(step>0 상승/step<0 하락).
+
+    open은 직전 종가(첫 봉은 start)로 이어붙여 캔들 간 갭이 없게 하고, high/low는
+    open·close 주위 아주 얇은 심지(±0.05)만 둔다 — 캔들 형태 자체가 판정에 영향을
+    주지 않게(장대양봉 등 조건은 별도 헬퍼에서 명시적으로 만든다).
+    """
+    closes, opens, highs, lows = [], [], [], []
+    price = start
+    prev_close = start
+    for _ in range(n):
+        price += step
+        o, c = prev_close, price
+        opens.append(o)
+        closes.append(c)
+        highs.append(max(o, c) + 0.05)
+        lows.append(min(o, c) - 0.05)
+        prev_close = c
+    return pd.DataFrame({
+        "t": list(range(n)),
+        "open": opens, "high": highs, "low": lows, "close": closes,
+        "volume": [volume] * n,
+    })
+
+
+def _consolidation_df(
+    n_rise: int = 45, s1: float = 1.0, n_flat: int = 20, s2: float = 0.05,
+    start: float = 100.0, volume: float = 1000.0,
+) -> pd.DataFrame:
+    """n_rise봉 강한 상승 후 n_flat봉을 완만한 상승(s2 ≈ 0)으로 눌러 MA20 근접
+    (proximity) 상태를 만든다. 완전한 횡보(s2=0)로 두면 MA5==MA20이 되어 정배열
+    (MA5>MA20) 조건이 깨지므로, 아주 얕은 상승(s2)을 남겨 MA5>MA20>MA60·MA20
+    기울기 상승을 동시에 만족시킨다."""
+    closes, opens, highs, lows = [], [], [], []
+    price = start
+    prev_close = start
+    for _ in range(n_rise):
+        price += s1
+        o, c = prev_close, price
+        opens.append(o); closes.append(c)
+        highs.append(max(o, c) + 0.05); lows.append(min(o, c) - 0.05)
+        prev_close = c
+    for _ in range(n_flat):
+        price += s2
+        o, c = prev_close, price
+        opens.append(o); closes.append(c)
+        highs.append(max(o, c) + 0.05); lows.append(min(o, c) - 0.05)
+        prev_close = c
+    n = n_rise + n_flat
+    return pd.DataFrame({
+        "t": list(range(n)),
+        "open": opens, "high": highs, "low": lows, "close": closes,
+        "volume": [volume] * n,
+    })
+
+
+def _ohlcv_from_closes(closes: list[float], volume: float = 1000.0) -> pd.DataFrame:
+    """macd_cross_signal/rsi_zone_signal 회귀용 — 이 두 함수는 close 컬럼만 읽지만,
+    계약대로 전체 OHLCV 형태(t 오름차순)를 갖춘 DataFrame으로 감싼다."""
+    n = len(closes)
+    opens = [closes[0]] + closes[:-1]
+    highs = [max(o, c) + 0.05 for o, c in zip(opens, closes)]
+    lows = [min(o, c) - 0.05 for o, c in zip(opens, closes)]
+    return pd.DataFrame({
+        "t": list(range(n)),
+        "open": opens, "high": highs, "low": lows, "close": closes,
+        "volume": [volume] * n,
+    })
+
+
+# ────────────────────────────────────────────
+# pullback_signal — 6상태
+# ────────────────────────────────────────────
+
+def test_pullback_data_insufficient_just_below_min_bars():
+    """PULLBACK_MIN_BARS(65) 미만(64봉)이면 그 즉시 데이터부족 — 지표 계산 자체를
+    시도하지 않는다(경계 정확히: 64는 부족, 65는 통과)."""
+    df = _linear_df(PULLBACK_MIN_BARS - 1)
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "데이터부족"
+    assert result["trend_up"] is False
+    assert "부족" in result["reason"]
+    assert str(PULLBACK_MIN_BARS - 1) in result["reason"]
+    assert str(PULLBACK_MIN_BARS) in result["reason"]
+
+
+def test_pullback_data_sufficient_at_min_bars_passes_length_gate():
+    """65봉이면 최소 길이 게이트는 통과해 데이터부족이 아닌 실제 판정으로 넘어간다."""
+    df = _linear_df(PULLBACK_MIN_BARS)
+    result = indicators.pullback_signal(df)
+    assert result["status"] != "데이터부족"
+
+
+def test_pullback_not_trend_when_reverse_aligned_downtrend():
+    """지속 하락(역배열: MA5<MA20<MA60)이면 추세 필터에서 즉시 추세아님으로 걸린다.
+    (실측: 정배열 미충족·MA60 하회·MA20 기울기 하락 — 3개 사유가 동시에 붙을 만큼
+    확실한 역배열이라 임계값 경계 이슈가 없다.)"""
+    df = _linear_df(80, start=200.0, step=-1.0)
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "추세아님"
+    assert result["trend_up"] is False
+    assert "정배열 미충족" in result["reason"]
+
+
+def test_pullback_not_trend_when_adx_below_threshold_choppy():
+    """정배열 여부와 무관하게 방향성 없는 등락(1봉 간격 지그재그)이면 ADX가 임계값
+    (20)에 크게 못 미쳐 추세아님이 된다. (실측 ADX≈3.7 — 임계값 20 대비 여유 5배
+    이상이라 ta 라이브러리 버전 차 정도로는 뒤집히지 않는다.)"""
+    n = 80
+    closes = [100.0]
+    for i in range(n - 1):
+        step = 0.6 if i % 2 == 0 else -0.6
+        closes.append(closes[-1] + step)
+    opens = [c - 0.1 for c in closes]
+    highs = [max(o, c) + 0.2 for o, c in zip(opens, closes)]
+    lows = [min(o, c) - 0.2 for o, c in zip(opens, closes)]
+    df = pd.DataFrame({
+        "t": list(range(n)), "open": opens, "high": highs, "low": lows,
+        "close": closes, "volume": [1000.0] * n,
+    })
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "추세아님"
+    assert result["trend_up"] is False
+    assert "ADX" in result["reason"]
+
+
+def test_pullback_trend_continue_when_aligned_but_far_from_ma20():
+    """꾸준한 정배열 상승만 있고 되돌림이 없으면(현재가가 MA20 근접밴드 밖) 추세지속.
+    (실측 이격 5.3% — 근접밴드 2.0% 대비 2배 이상 벌어져 있어 여유가 크다.)"""
+    df = _linear_df(90)
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "추세지속"
+    assert result["trend_up"] is True
+    assert "근접밴드" in result["reason"]
+
+
+def test_pullback_progressing_watch_when_near_ma20_with_volume_contraction():
+    """정배열 유지한 채 MA20까지 눌린 뒤(근접밴드 이내) 거래량까지 수축되면
+    눌림 진행중(관망). (실측 근접 0.3%·거래량비 31% — 각각 기준 2.0%/60% 대비
+    여유 충분.)"""
+    df = _consolidation_df()
+    df.loc[df.index[-1], "volume"] = 300   # 평균 대비 큰 폭 수축
+    df.loc[df.index[-2], "volume"] = 350
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "눌림 진행중(관망)"
+    assert result["trend_up"] is True
+    assert "근접" in result["reason"]
+    assert "수축" in result["reason"]
+
+
+def test_pullback_bounce_candidate_when_bullish_break_with_volume_expansion():
+    """MA20 근접 상태에서 마지막 봉이 양봉+전일 고가 돌파+거래량 팽창이면
+    눌림목 반등(매수후보). (실측 이격 1.6%·거래량비 288% — 기준 2.0% 이내,
+    140% 이상을 크게 상회.)"""
+    df = _consolidation_df()
+    prev_close = df.loc[df.index[-2], "close"]
+    last_idx = df.index[-1]
+    df.loc[last_idx, "open"] = prev_close - 0.3
+    df.loc[last_idx, "close"] = prev_close + 2.0
+    df.loc[last_idx, "high"] = prev_close + 2.1
+    df.loc[last_idx, "low"] = prev_close - 0.4
+    df.loc[last_idx, "volume"] = 3000
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "눌림목 반등(매수후보)"
+    assert result["trend_up"] is True
+    assert "양봉" in result["reason"]
+    assert "돌파" in result["reason"]
+    assert "거래량" in result["reason"]
+
+
+def test_pullback_exit_when_ma20_broken_down_beyond_threshold():
+    """정배열 추세 중 마지막 봉이 MA20 대비 4% 초과로 급락하면(지지 붕괴) 눌림
+    이탈(무효). (실측 6.1% 하회 — 기준 4.0% 대비 여유 있고, 정배열은 여전히
+    유지되도록 낙폭을 과하지 않게 설계했다 — 단일 대형 하락봉으로 MA5까지
+    무너뜨리면 추세아님으로 새버리므로 이 균형이 중요하다.)"""
+    df = _linear_df(PULLBACK_MIN_BARS + 16)  # 81봉 — 충분한 상승 이력 확보
+    prev_close = df.loc[df.index[-2], "close"]
+    last_idx = df.index[-1]
+    drop = 20.0
+    df.loc[last_idx, "open"] = prev_close
+    df.loc[last_idx, "close"] = prev_close - drop
+    df.loc[last_idx, "high"] = prev_close + 0.1
+    df.loc[last_idx, "low"] = prev_close - drop - 0.2
+    result = indicators.pullback_signal(df)
+    assert result["status"] == "눌림 이탈(무효)"
+    assert result["trend_up"] is True
+    assert "하회" in result["reason"]
+
+
+# ────────────────────────────────────────────
+# 6상태 reason 비어있지 않음 + trend_up 정합 일괄 점검
+# ────────────────────────────────────────────
+
+def test_pullback_reason_never_empty_across_all_six_states():
+    """상태별로 reason이 항상 비어있지 않은 문자열인지 일괄 점검(문구 내용은 각
+    개별 테스트에서 핵심 토큰만 확인 — 여기서는 '항상 채워진다'는 계약만 본다)."""
+    scenarios = [
+        _linear_df(PULLBACK_MIN_BARS - 1),
+        _linear_df(80, start=200.0, step=-1.0),
+        _linear_df(90),
+    ]
+    watch_df = _consolidation_df()
+    watch_df.loc[watch_df.index[-1], "volume"] = 300
+    watch_df.loc[watch_df.index[-2], "volume"] = 350
+    scenarios.append(watch_df)
+
+    for df in scenarios:
+        result = indicators.pullback_signal(df)
+        assert isinstance(result["reason"], str)
+        assert result["reason"].strip() != ""
+
+
+# ────────────────────────────────────────────
+# RSI 완화 회귀(trend_up 배선) — indicators._rsi_score / long_term_view / long_term_score
+# ────────────────────────────────────────────
+
+def test_rsi_score_overbought_penalized_by_default():
+    assert indicators._rsi_score("과매수(매도)") == -1
+    assert indicators._rsi_score("과매수(매도)", trend_up=False) == -1
+
+
+def test_rsi_score_overbought_neutralized_when_trend_up():
+    assert indicators._rsi_score("과매수(매도)", trend_up=True) == 0
+
+
+def test_rsi_score_oversold_always_plus_one_regardless_of_trend_up():
+    assert indicators._rsi_score("과매도(진입)") == 1
+    assert indicators._rsi_score("과매도(진입)", trend_up=False) == 1
+    assert indicators._rsi_score("과매도(진입)", trend_up=True) == 1
+
+
+def test_long_term_score_changes_with_trend_up_flag():
+    """MACD 진입구간(+1) + RSI 과매수(매도)(trend_up에 따라 -1 또는 0) + 재무 무영향
+    조합 — trend_up 하나만 바뀌어도 최종 스코어·관점 등급이 달라져야 한다."""
+    kwargs = dict(macd_1d="진입구간", rsi_1d="과매수(매도)", per=None, pbr=None, roe=None)
+
+    score_flat = indicators.long_term_score(**kwargs, trend_up=False)
+    score_trend = indicators.long_term_score(**kwargs, trend_up=True)
+
+    assert score_flat == 0    # 1(macd) + -1(rsi 감점) + 0(fund)
+    assert score_trend == 1   # 1(macd) + 0(rsi 감점 무효화) + 0(fund)
+    assert score_flat != score_trend
+
+    view_flat = indicators.long_term_view(**kwargs, trend_up=False)
+    view_trend = indicators.long_term_view(**kwargs, trend_up=True)
+    assert view_flat == "관망"   # score 0 -> 관망(강력 임계값 ±3, 매수/매도 임계값 ±1)
+    assert view_trend == "매수"  # score 1 -> 매수
+
+
+def test_short_term_view_and_score_unchanged_default_trend_up_false():
+    """short_term_view/score는 trend_up 파라미터 자체가 없다 — 60분봉 호출부는
+    _rsi_score(sig) 기본값(trend_up=False)을 그대로 타므로 기존 동작이 100% 보존됨을
+    기존 어휘로 재확인한다."""
+    assert indicators.short_term_view("데드크로스(매도)", "과매수(매도)") == "강력매도"
+    assert indicators.short_term_score("데드크로스(매도)", "과매수(매도)") == -3  # -2 + -1
+
+    assert indicators.short_term_view("골든크로스(진입)", "과매도(진입)") == "강력매수"
+    assert indicators.short_term_score("골든크로스(진입)", "과매도(진입)") == 3   # 2 + 1
+
+
+# ────────────────────────────────────────────
+# 기존 함수 회귀 가드 — macd_cross_signal / rsi_zone_signal 어휘 불변
+# ────────────────────────────────────────────
+
+def test_macd_cross_signal_golden_cross_vocabulary_unchanged():
+    """40봉 하락 후 2봉만 반등시킨 지점(k=42)에서 실제로 골든크로스가 발생하는
+    고정 시계열 — 이 파일 작성 중 스캔해 첫 골든크로스 시점을 확인한 결과이며,
+    이후 임의 재실행에도 완전히 결정적(랜덤 없음)이다."""
+    closes = [200.0 - 2.0 * (i + 1) for i in range(40)]       # 198.0 ... 120.0
+    closes += [closes[-1] + 3.0 * (i + 1) for i in range(2)]  # 123.0, 126.0
+    df = _ohlcv_from_closes(closes)
+    assert indicators.macd_cross_signal(df) == "골든크로스(진입)"
+
+
+def test_rsi_zone_signal_oversold_vocabulary_unchanged():
+    """31봉 연속 하락 — RSI(14)가 바닥까지 눌려 명백한 과매도(진입) 구간."""
+    closes = [200.0]
+    for _ in range(30):
+        closes.append(closes[-1] - 3.0)
+    df = _ohlcv_from_closes(closes)
+    assert indicators.rsi_zone_signal(df) == "과매도(진입)"

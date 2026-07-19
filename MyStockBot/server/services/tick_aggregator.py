@@ -480,17 +480,25 @@ async def _bar_broadcast_loop() -> None:
 # 참고 판정 태스크(장중에만, 5초 주기)
 # ────────────────────────────────────────────
 
-def _financials_for(code: str) -> tuple[float | None, float | None, float | None]:
-    """collector 가 이미 수집·캐시해둔 재무값(per/pbr/roe)을 재사용한다 — 참고 판정도
-    collector._collect_one 과 동일한 long_term_view/long_term_score 호출 방식(같은 인자
-    구성)을 따르되, 재무데이터를 이 모듈에서 다시 조회하지는 않는다(신규 KIS 콜 없음)."""
+def _collector_context_for(code: str) -> tuple[float | None, float | None, float | None, bool]:
+    """collector 가 이미 수집·캐시해둔 재무값(per/pbr/roe)과 눌림목 추세 플래그
+    (pullback_trend_up)를 재사용한다 — 참고 판정도 collector._collect_one 과 동일한
+    long_term_view/long_term_score 호출 방식(같은 인자 구성, trend_up 포함)을 따르되,
+    이 모듈에서 재조회·재계산하지는 않는다(신규 KIS 콜·pullback_signal 재계산 없음).
+    trend_up 을 빠뜨리면 확정 판정(RSI 과매수 완화 적용)과 실시간 참고 판정이
+    같은 데이터에서 서로 다른 결과를 내는 유령 불일치가 생긴다."""
     state = collector.get_state()
     if state is None:
-        return None, None, None
+        return None, None, None, False
     for item in state.get("items", []):
         if item.get("code") == code:
-            return item.get("per"), item.get("pbr"), item.get("roe")
-    return None, None, None
+            return (
+                item.get("per"),
+                item.get("pbr"),
+                item.get("roe"),
+                bool(item.get("pullback_trend_up")),
+            )
+    return None, None, None, False
 
 
 def _merge_progressing(history: list[dict], progressing: dict | None) -> list[dict]:
@@ -509,6 +517,7 @@ def _compute_judgment(
     per: float | None,
     pbr: float | None,
     roe: float | None,
+    trend_up: bool = False,
 ) -> dict:
     """pandas/지표 연산 — 반드시 asyncio.to_thread 로만 호출할 것(이벤트루프 블로킹 금지).
 
@@ -533,8 +542,12 @@ def _compute_judgment(
     return {
         "short_view_live": indicators.short_term_view(macd_60m, rsi_60m),
         "short_score_live": indicators.short_term_score(macd_60m, rsi_60m),
-        "long_view_live": indicators.long_term_view(macd_1d, rsi_1d, per, pbr, roe),
-        "long_score_live": indicators.long_term_score(macd_1d, rsi_1d, per, pbr, roe),
+        "long_view_live": indicators.long_term_view(
+            macd_1d, rsi_1d, per, pbr, roe, trend_up=trend_up
+        ),
+        "long_score_live": indicators.long_term_score(
+            macd_1d, rsi_1d, per, pbr, roe, trend_up=trend_up
+        ),
     }
 
 
@@ -544,6 +557,7 @@ def _reference_worker(
     per: float | None,
     pbr: float | None,
     roe: float | None,
+    trend_up: bool = False,
 ) -> dict:
     """asyncio.to_thread 전용(결함2) — 동기 SQLite I/O(db.get_candles_store ×2, 호출마다
     sqlite3.connect 를 여는 완전 동기 함수)와 pandas/지표 연산을 전부 이 함수 안에서
@@ -566,16 +580,18 @@ def _reference_worker(
     daily_items = _merge_progressing(daily_hist, day_bar)
     hour_items = _merge_progressing(hour_hist, hour_bar)
 
-    return _compute_judgment(daily_items, hour_items, per, pbr, roe)
+    return _compute_judgment(daily_items, hour_items, per, pbr, roe, trend_up=trend_up)
 
 
 async def _recompute_reference_for_code(code: str, now_dt: datetime) -> None:
     # 루프 스레드에서 스냅샷(_snapshot_code 의 스레드 안전 불변식 주석 참고).
     snapshot = _snapshot_code(code)
     # 인메모리 collector 상태 조회 — DB/pandas 가 아니라 to_thread 밖에 남겨도 무해.
-    per, pbr, roe = _financials_for(code)
+    per, pbr, roe, trend_up = _collector_context_for(code)
 
-    judgment = await asyncio.to_thread(_reference_worker, code, snapshot, per, pbr, roe)
+    judgment = await asyncio.to_thread(
+        _reference_worker, code, snapshot, per, pbr, roe, trend_up
+    )
     judgment["updated_at"] = now_dt.isoformat()
     _reference_state[code] = judgment  # 종목별 원자 교체(dict 통째 바꿔치기) — 루프 스레드에서
 

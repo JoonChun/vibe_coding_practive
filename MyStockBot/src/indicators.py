@@ -12,6 +12,10 @@ import ta.volatility
 from config import (
     RSI_PERIOD, MACD_FAST, MACD_SLOW, MACD_SIGNAL,
     BB_PERIOD, BB_STD, RSI_OVERSOLD, RSI_OVERBOUGHT,
+    PULLBACK_MA_SHORT, PULLBACK_MA_MID, PULLBACK_MA_LONG, PULLBACK_MA_SLOPE_LOOKBACK,
+    PULLBACK_PROXIMITY_PCT, PULLBACK_MAX_DEPTH_PCT, PULLBACK_SWING_HIGH_LOOKBACK,
+    PULLBACK_VOL_MA_PERIOD, PULLBACK_VOL_CONTRACTION_RATIO, PULLBACK_VOL_EXPANSION_RATIO,
+    PULLBACK_ADX_PERIOD, PULLBACK_ADX_TREND_MIN, PULLBACK_EXIT_PCT, PULLBACK_MIN_BARS,
 )
 
 
@@ -96,6 +100,130 @@ def bollinger(df: pd.DataFrame) -> dict:
     }
 
 
+def _is_nan(val) -> bool:
+    try:
+        return math.isnan(float(val))
+    except (TypeError, ValueError):
+        return True
+
+
+def pullback_signal(df: pd.DataFrame) -> dict:
+    """정배열 추세 + MA20 되돌림(눌림목) 판정. 순수 함수(외부 I/O 없음).
+
+    입력: 일봉 DataFrame(t 오름차순, open/high/low/close/volume 컬럼 필수, 최대 100봉 가정).
+    반환: {"status": str, "reason": str, "trend_up": bool}.
+
+    status 는 정확히 다음 6개 문자열 중 하나(프론트 계약 — 문자열 변경 금지):
+      데이터부족 / 추세아님 / 추세지속 / 눌림 진행중(관망) / 눌림목 반등(매수후보) / 눌림 이탈(무효)
+
+    판정 순서: 데이터부족 → 추세 필터(추세아님) → 이탈 → 반등 → 진행중 → (그 외) 추세지속.
+    """
+    if len(df) < PULLBACK_MIN_BARS:
+        return {
+            "status": "데이터부족",
+            "reason": f"유효 봉수 부족({len(df)}<{PULLBACK_MIN_BARS})",
+            "trend_up": False,
+        }
+
+    close = df["close"].astype(float)
+    open_ = df["open"].astype(float)
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    volume = df["volume"].astype(float)
+
+    ma_short = close.rolling(PULLBACK_MA_SHORT).mean()
+    ma_mid = close.rolling(PULLBACK_MA_MID).mean()
+    ma_long = close.rolling(PULLBACK_MA_LONG).mean()
+    vol_ma = volume.rolling(PULLBACK_VOL_MA_PERIOD).mean()
+
+    try:
+        adx_series = ta.trend.ADXIndicator(
+            high=high, low=low, close=close, window=PULLBACK_ADX_PERIOD
+        ).adx()
+    except Exception:
+        adx_series = pd.Series([float("nan")] * len(df))
+
+    slope_lookback_idx = -1 - PULLBACK_MA_SLOPE_LOOKBACK
+
+    curr_close = close.iloc[-1]
+    curr_open = open_.iloc[-1]
+    prev_high = high.iloc[-2]
+    curr_ma_short = ma_short.iloc[-1]
+    curr_ma_mid = ma_mid.iloc[-1]
+    curr_ma_long = ma_long.iloc[-1]
+    prev_ma_mid = (
+        ma_mid.iloc[slope_lookback_idx] if len(ma_mid) >= abs(slope_lookback_idx) else float("nan")
+    )
+    curr_adx = adx_series.iloc[-1] if len(adx_series) else float("nan")
+    curr_volume = volume.iloc[-1]
+    curr_vol_ma = vol_ma.iloc[-1]
+
+    required = [curr_close, curr_ma_short, curr_ma_mid, curr_ma_long, prev_ma_mid, curr_adx, curr_vol_ma]
+    if any(_is_nan(v) for v in required):
+        return {"status": "데이터부족", "reason": "지표 계산 불가(NaN)", "trend_up": False}
+
+    aligned = curr_ma_short > curr_ma_mid > curr_ma_long
+    above_long = curr_close > curr_ma_long
+    slope_up = curr_ma_mid > prev_ma_mid
+    adx_ok = curr_adx >= PULLBACK_ADX_TREND_MIN
+    trend_up = aligned and above_long and slope_up and adx_ok
+
+    if not trend_up:
+        reasons = []
+        if not aligned:
+            reasons.append("정배열 미충족")
+        if not above_long:
+            reasons.append("MA60 하회")
+        if not slope_up:
+            reasons.append("MA20 기울기 하락")
+        if not adx_ok:
+            reasons.append(f"ADX {curr_adx:.1f}<{PULLBACK_ADX_TREND_MIN}")
+        return {"status": "추세아님", "reason": "·".join(reasons) or "추세 필터 미충족", "trend_up": False}
+
+    # 이하 trend_up == True 확정 구간
+    exit_pct = (curr_ma_mid - curr_close) / curr_ma_mid * 100  # 양수면 MA20 하회
+    if exit_pct > PULLBACK_EXIT_PCT:
+        return {
+            "status": "눌림 이탈(무효)",
+            "reason": f"MA20 대비 {exit_pct:.1f}% 하회(기준 {PULLBACK_EXIT_PCT}%)",
+            "trend_up": True,
+        }
+
+    proximity_pct = abs(curr_close - curr_ma_mid) / curr_ma_mid * 100
+    swing_high = high.iloc[-PULLBACK_SWING_HIGH_LOOKBACK:].max()
+    depth_pct = (swing_high - curr_close) / swing_high * 100 if swing_high else float("nan")
+    in_proximity = proximity_pct <= PULLBACK_PROXIMITY_PCT
+    depth_ok = not _is_nan(depth_pct) and depth_pct <= PULLBACK_MAX_DEPTH_PCT
+    vol_ratio = curr_volume / curr_vol_ma if curr_vol_ma else float("nan")
+
+    is_bullish = curr_close > curr_open
+    breaks_prev_high = curr_close > prev_high
+    vol_expansion = not _is_nan(vol_ratio) and vol_ratio >= PULLBACK_VOL_EXPANSION_RATIO
+
+    if in_proximity and depth_ok and is_bullish and breaks_prev_high and vol_expansion:
+        return {
+            "status": "눌림목 반등(매수후보)",
+            "reason": f"양봉·전일고가 돌파·거래량 {vol_ratio * 100:.0f}%",
+            "trend_up": True,
+        }
+
+    vol_contraction = not _is_nan(vol_ratio) and vol_ratio <= PULLBACK_VOL_CONTRACTION_RATIO
+    if in_proximity and depth_ok and vol_contraction:
+        return {
+            "status": "눌림 진행중(관망)",
+            "reason": f"MA20 근접 {proximity_pct:.1f}%·거래량 {vol_ratio * 100:.0f}%로 수축",
+            "trend_up": True,
+        }
+
+    if not in_proximity:
+        reason = f"MA20 이격 {proximity_pct:.1f}%(근접밴드 {PULLBACK_PROXIMITY_PCT}% 밖)"
+    elif not depth_ok:
+        reason = f"전고점 대비 낙폭 {depth_pct:.1f}%(눌림 범위 {PULLBACK_MAX_DEPTH_PCT}% 초과)"
+    else:
+        reason = f"MA20 근접이나 거래량 {vol_ratio * 100:.0f}%(수축·팽창 기준 미충족)"
+    return {"status": "추세지속", "reason": reason, "trend_up": True}
+
+
 _NO_DATA = (None, "데이터부족")
 
 
@@ -108,7 +236,12 @@ def _macd_score(sig) -> int:
     }.get(sig, 0)
 
 
-def _rsi_score(sig) -> int:
+def _rsi_score(sig, trend_up: bool = False) -> int:
+    # 추세장(trend_up=True)에서는 RSI 과매수가 장기간 유지되는 경우가 흔해(정배열 지속),
+    # 역추세 매도 신호로 오인하지 않도록 감점을 무효화한다(0). short(60m) 호출부는
+    # trend_up 기본값(False)을 그대로 사용해 기존 동작을 100% 보존한다.
+    if sig == "과매수(매도)" and trend_up:
+        return 0
     return {
         "과매도(진입)": 1,
         "과매수(매도)": -1,
@@ -155,11 +288,11 @@ def short_term_view(macd_60m, rsi_60m) -> str:
     return _level5(_macd_score(macd_60m) + _rsi_score(rsi_60m), strong=2)
 
 
-def long_term_view(macd_1d, rsi_1d, per, pbr, roe) -> str:
+def long_term_view(macd_1d, rsi_1d, per, pbr, roe, trend_up: bool = False) -> str:
     fund = _fundamental_score(per, pbr, roe)
     if macd_1d in _NO_DATA and rsi_1d in _NO_DATA and fund == 0:
         return "데이터부족"
-    tech = _macd_score(macd_1d) + _rsi_score(rsi_1d)
+    tech = _macd_score(macd_1d) + _rsi_score(rsi_1d, trend_up)
     return _level5(tech + fund, strong=3)
 
 
@@ -170,10 +303,10 @@ def short_term_score(macd_60m, rsi_60m) -> int | None:
     return _macd_score(macd_60m) + _rsi_score(rsi_60m)
 
 
-def long_term_score(macd_1d, rsi_1d, per, pbr, roe) -> int | None:
+def long_term_score(macd_1d, rsi_1d, per, pbr, roe, trend_up: bool = False) -> int | None:
     """장기(일봉+재무) 스코어 합. 임계값은 ±3 (long_term_view 와 동일 기준)."""
     fund = _fundamental_score(per, pbr, roe)
     if macd_1d in _NO_DATA and rsi_1d in _NO_DATA and fund == 0:
         return None
-    tech = _macd_score(macd_1d) + _rsi_score(rsi_1d)
+    tech = _macd_score(macd_1d) + _rsi_score(rsi_1d, trend_up)
     return tech + fund

@@ -34,6 +34,9 @@ class FactorDetail(BaseModel):
     roe: float | None = None
     short_score: int | None = None
     long_score: int | None = None
+    pullback_status: str | None = None
+    pullback_reason: str | None = None
+    pullback_trend_up: bool | None = None
 
 
 class LiveJudgment(BaseModel):
