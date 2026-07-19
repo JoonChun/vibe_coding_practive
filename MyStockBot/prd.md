@@ -1,3 +1,14 @@
+⚠️ **문서 상태 안내**
+
+이 문서는 **2025년 초 GitHub Actions 배치 봇 시절의 PRD**입니다. 현재 프로젝트는 **FastAPI 웹앱 + React Vite PWA로 완전히 피벗**되었으며, 현행 아키텍처와 배포 방식이 크게 다릅니다.
+
+**현행 설계 참고**:
+- `docs/ARCHITECTURE.md` — 수집/제공 분리, KIS WebSocket, 배포 B안(3인 공개)
+- `DEPLOY.md` — A-1~A-6 실행 순서 (Cloudflare Tunnel + Vercel)
+
+이 prd.md는 **참고 자료로만 보관**, 개발 시 docs/ARCHITECTURE.md를 우선 따르세요.
+
+---
 
 Gemini와의 대화
 매일 정해진 시간에 자동으로 실행되어, 설정된 종목의 주가 데이터를 수집해 구글 시트에 기록하는 자동화 프로그램을 만들고 싶어.

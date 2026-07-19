@@ -1,44 +1,117 @@
-# MyStockBot 백엔드 배포 가이드
+# MyStockBot 배포 가이드
 
-개인용 단일 사용자 배포. Windows PC(WSL2 Docker) 로컬 실행 + Cloudflare Tunnel 공개 연결.
+## A. 3인 공개 배포 (B안) — 추천 방식
 
-## 1. 홈PC(WSL2 Docker) 실행
+친구 2명과 함께 사용하는 개방형 배포. **Vercel(프론트) + PC Docker(백엔드) + Cloudflare Tunnel(HTTPS 공개)**.
 
-### 사전 준비
-- Docker Desktop 설치 (WSL2 백엔드 활성화)
-- MyStockBot/.env 파일 작성 (KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO, CORS_ALLOWED_ORIGINS 등)
+### A-0. 사전 준비
 
-### 실행
+- ✅ Docker Desktop 설치 (WSL2 활성화)
+- ✅ MyStockBot/.env 파일 준비 (KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO)
+- ✅ Cloudflare 무료 계정
+- ✅ Vercel 계정 (GitHub 연동)
+
+**중요**: 이 가이드의 A-1~A-6 단계는 **모두 WSL(Ubuntu) 터미널에서 실행해야 합니다**. Windows 기본 터미널인 PowerShell에서 그대로 복사·붙여넣기하면 bash 문법 오류로 실패합니다. Windows Terminal을 열고 WSL 프로필을 선택하거나, PowerShell에서 `wsl` 명령으로 WSL에 진입한 후 다음 단계를 실행하세요.
+
+이 가이드는 **사용자가 직접** 실행하는 단계를 기준.
+
+### A-1. 백엔드 .env 준비 (사용자가 직접)
+
+```bash
+cd MyStockBot
+cat > .env << EOF
+# === KIS API 인증 ===
+KIS_APP_KEY=<당신의 KIS앱키>
+KIS_APP_SECRET=<당신의 KIS비밀키>
+KIS_ACCOUNT_NO=<당신의 KIS계좌번호>
+
+# === API 토큰 (공유) ===
+MYSTOCKBOT_API_TOKEN=$(openssl rand -hex 32)
+
+# === CORS (친구들이 접속할 도메인) ===
+CORS_ALLOWED_ORIGINS=http://localhost:5173,https://<your-vercel-project>.vercel.app,https://mystockbot.<your-domain>
+
+# === 기타 설정 ===
+TIMEZONE=Asia/Seoul
+COLLECTOR_INTERVAL_MARKET=30
+COLLECTOR_INTERVAL_IDLE=600
+EOF
+```
+
+**생성된 토큰 값을 기록해두세요** (친구들에게 공유할 때 필요).
+
+### A-2. Docker 시작 (사용자가 직접)
+
 ```bash
 cd MyStockBot
 docker compose up -d --build
 ```
 
-### 자동시작 설정
-재부팅 후 자동으로 서버가 실행되도록:
-1. Docker Desktop 설정 → "General" → "Start Docker Desktop when you log in" 체크
-2. Windows 작업 스케줄러에 docker compose 자동실행 태스크 추가 (선택사항)
-
-### 주의
-PC 절전/수면 모드 해제 필요. Sleep에서 복귀할 때 Docker 재시작 필요할 수 있음.
-
-### 로그 확인
+**확인**:
 ```bash
-docker compose logs -f mystockbot-api
+docker compose logs mystockbot-api | grep "API 토큰 인증 활성"
 ```
 
-### 중지
+"API 토큰 인증 활성"이 로그에 보이면 성공. **PC를 켜둔 상태로 유지해야 함**.
+
+### A-3. Cloudflare Tunnel 설정 (사용자가 직접)
+
+1. **cloudflared 설치**
+   - 다운로드: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+   - 또는 `choco install cloudflared` (Windows Chocolatey)
+
+2. **터널 생성 및 실행**
+   ```bash
+   cloudflared tunnel login
+   cloudflared tunnel create mystockbot
+   cloudflared tunnel route dns mystockbot <your-domain>
+   cloudflared tunnel run mystockbot
+   ```
+
+3. **시스템 서비스로 등록 (자동시작, 선택)**
+   ```bash
+   cloudflared service install
+   ```
+
+**확인**: `https://mystockbot.<your-domain>` 접속 → 401 오류(토큰 미입력은 정상)
+
+### A-4. Vercel 프론트 배포 (사용자가 직접)
+
 ```bash
-docker compose down
+cd web
+vercel env add VITE_API_BASE
+# 프롬프트: https://mystockbot.<your-domain>
+vercel deploy --prod
 ```
+
+### A-5. 친구 온보딩 (사용자가 직접)
+
+친구 2명에게 다음 전달:
+1. **링크**: `https://mystockbot.<your-domain>`
+2. **토큰**: A-1 단계에서 생성한 값 (개별 전달, 단체 채팅 X)
+
+친구 접속 순서:
+1. 링크 접속 → 초록 배너에서 토큰 입력
+2. PWA 설치: Android(Chrome "앱 설치") / iOS(Safari "홈화면에 추가")
+3. 완료!
+
+### A-6. 권장: Cloudflare Access (2단계 인증, 선택)
+
+Cloudflare 계정에서:
+1. Tunnel → mystockbot → Access 탭 → 정책 추가
+2. "이메일 주소 포함" → 3명의 이메일 입력
+3. 저장
+
+이후 친구들이 이메일로도 인증 가능.
 
 ---
 
-## 2. 모바일에서 보기 (개인용)
+## B. 개인용: 모바일에서만 보기
 
-공개 배포 없이 내 폰에서 확인/설치만 하고 싶을 때.
+공개 배포 없이 본인 폰에서만 확인/설치하고 싶을 때.
 
-### ① 같은 와이파이
+### B-1. 같은 와이파이
+
 PC와 폰이 같은 공유기에 물려 있으면, PC의 LAN IP로 바로 접속 가능.
 
 ```bash
@@ -49,198 +122,191 @@ npm run dev -- --host
 Windows에서 `ipconfig`로 PC의 IPv4 주소 확인 (예: `192.168.0.15`) 후,
 폰 브라우저에서 `http://192.168.0.15:5173` 접속.
 
-정직하게 밝히면: 이 방식은 **HTTP**라서 "보안 컨텍스트"가 아니므로 서비스워커(오프라인 캐시)는
-동작하지 않는다. 그래도 홈 화면에 바로가기 아이콘을 추가해 앱처럼 켤 수는 있음(오프라인 지원 없이).
+**주의**: 이 방식은 **HTTP**라서 서비스워커(오프라인 캐시)는 동작하지 않음.
 
-### ② Tailscale (권장 — HTTPS로 PWA 완전 설치)
-[Tailscale](https://tailscale.com)은 무료 사설망(mesh VPN). `tailscale serve`를 쓰면
-유효한 HTTPS 인증서가 자동 발급되어(`https://<pc-이름>.<tailnet>.ts.net`) 서비스워커·
-standalone 설치까지 완전하게 동작한다.
+### B-2. Tailscale (권장 — HTTPS로 PWA 완전 설치)
+
+[Tailscale](https://tailscale.com)은 무료 사설망. `tailscale serve`로 자동 HTTPS 인증서.
 
 **설치**
 - PC: https://tailscale.com/download → 설치 후 로그인
-- 폰: App Store/Play Store에서 Tailscale 앱 설치 → 같은 계정으로 로그인
+- 폰: App Store/Play Store Tailscale 앱 → 같은 계정으로 로그인
 
-**PC에서 서비스 노출** (예시 명령)
+**PC에서 서비스 노출**
 ```bash
-# 백엔드(FastAPI, 8000번 포트)를 HTTPS로 노출
+# 백엔드
 tailscale serve --bg --https=8443 http://localhost:8000
 
-# 프론트를 빌드해서 정적으로 노출 (vite preview 사용)
+# 프론트
 cd web
 npm run build
 npm run preview -- --host --port 4173
 tailscale serve --bg --https=443 http://localhost:4173
 ```
 
-프론트가 다른 오리진(443)에서 백엔드(8443)를 호출하려면 `web/.env.local`에
-`VITE_API_BASE=https://<pc-이름>.<tailnet>.ts.net:8443`을 지정한 뒤 다시 빌드.
-(같은 오리진으로 합치고 싶다면 `tailscale serve`의 path 라우팅으로 `/api`만 백엔드로
-넘기는 구성도 가능 — Tailscale 문서 참고.)
+프론트가 백엔드를 호출하려면 `web/.env.local` 수정:
+```
+VITE_API_BASE=https://<pc-이름>.<tailnet>.ts.net:8443
+```
 
-이후 폰에서 `https://<pc-이름>.<tailnet>.ts.net` 접속.
+다시 빌드 후 폰에서 `https://<pc-이름>.<tailnet>.ts.net` 접속.
 
-### ③ 설치법
-- **Android (Chrome)**: 우측 상단 메뉴 → "앱 설치" 또는 "홈 화면에 추가"
+### B-3. PWA 설치법
+
+- **Android (Chrome)**: 우측 상단 메뉴 → "앱 설치"
 - **iOS (Safari)**: 공유 버튼 → "홈 화면에 추가"
 
-설치하면 standalone 모드(주소창 없이 전체화면)로 실행되고, 서비스워커가 정적 자산을
-프리캐시해 재실행이 빨라진다. (API 응답은 캐시하지 않으므로 시세는 항상 최신 요청.)
-
-> 공개 배포(Vercel/Cloudflare Tunnel)까지 갈 필요 없이, 개인용은 Tailscale로 충분하다.
-
 ---
 
-## 3. Cloudflare Tunnel (무료 HTTPS 고정 URL)
+## C. 보안 및 인증
 
-### 사전 준비
-- Cloudflare 계정 (무료)
-- cloudflared CLI 설치
+### API 토큰 (MYSTOCKBOT_API_TOKEN)
 
-### 터널 생성 및 설정
+외부 공개 시 **반드시 토큰을 설정**할 것. 설정하지 않으면 누구나 watchlist 조작 가능.
+
+**토큰 생성 및 설정**
 ```bash
-# cloudflared 로그인
-cloudflared tunnel login
+openssl rand -hex 32  # 토큰 생성
+# MyStockBot/.env에 추가
+MYSTOCKBOT_API_TOKEN=<위 결과>
 
-# 터널 생성 (예: mystockbot)
-cloudflared tunnel create mystockbot
-
-# 터널 설정 파일 작성
-# ~/.cloudflare-warp/config.yml 또는 명령줄로:
-cloudflared tunnel route dns mystockbot <your-domain.com>
-
-# 터널 시작 (localhost:8000과 연결)
-cloudflared tunnel run --url http://localhost:8000 mystockbot
-```
-
-**또는** systemd/Windows 서비스로 자동시작:
-```bash
-cloudflared service install
-```
-
-### 결과
-- 고정 HTTPS URL 획득: `https://mystockbot.<your-domain.com>`
-- 포트포워딩 불필요 (Cloudflare가 중개)
-- 공유기 설정 변경 불필요
-
----
-
-## 4. Vercel 프론트엔드 연결
-
-### 프론트 배포
-```bash
-cd web/
-vercel deploy
-```
-
-### 환경변수 설정 (Vercel)
-Vercel 프로젝트 설정 → "Environment Variables":
-```
-VITE_API_BASE=https://mystockbot.<your-domain.com>
-```
-
-### 백엔드 CORS 설정 (MyStockBot/.env)
-Vercel 도메인을 `CORS_ALLOWED_ORIGINS`에 추가:
-```
-CORS_ALLOWED_ORIGINS=http://localhost:5173,https://<your-vercel-app>.vercel.app,https://mystockbot.<your-domain.com>
-```
-
-변경 후 docker compose 재시작:
-```bash
+# 재시작
 docker compose restart mystockbot-api
 ```
 
+**동작**
+- 모든 `/api/*` 요청에 `Authorization: Bearer <토큰>` 헤더 필수
+- 예외: `GET /api/health`, CORS preflight(OPTIONS)
+- WS `/ws/ticks`는 `?token=` 쿼리로 전달 (헤더 제약)
+
+**프론트엔드 입력**
+- 빌드 환경변수(`VITE_*`)로 토큰을 넣지 말 것 (공개 노출)
+- 대신: 브라우저 접속 후 초록 배너에 입력 → `localStorage` 저장
+
+### 추가 방안 (병행 권장)
+
+1. **Cloudflare Access**: 이메일 인증 (A-6 참고)
+2. **Tailscale 사설망**: 신뢰 네트워크만 접근 (B-2 참고)
+
 ---
 
-## 5. 보안 주의 ⚠️
+## D. 운영
 
-### API 토큰 인증 (MYSTOCKBOT_API_TOKEN)
-Cloudflare Tunnel 등으로 외부 공개 시 **반드시 토큰을 설정**할 것. 설정하지 않으면
-누구나 watchlist 조작·조회가 가능한 무인증 상태로 동작한다 (서버 시작 로그에
-"⚠ API 토큰 미설정 — 인증 비활성" 경고가 출력됨).
+### Docker 기본 명령
 
-**1) 토큰 생성**
 ```bash
-openssl rand -hex 32
+# 재시작 (코드/설정 반영)
+docker compose down
+docker compose up -d --build
+
+# 로그 (실시간)
+docker compose logs -f mystockbot-api
+
+# DB 초기화
+rm -rf data/mystockbot.db
+docker compose restart mystockbot-api
+
+# 중지
+docker compose down
 ```
 
-**2) MyStockBot/.env 에 설정**
+### Stock Master 갱신
+
+```bash
+# 자동 (평일 매일 16:00 실행, APScheduler cron, 7일 stale 조건)
+# 또는 수동:
+python3 -c "import sys; sys.path.insert(0, 'src'); import stock_master; stock_master.refresh_stock_master()"
 ```
-MYSTOCKBOT_API_TOKEN=<위에서 생성한 값>
+
+### 성능 점검
+
+**응답시간 목표**:
+- `/api/snapshot`: < 5ms
+- `/api/stocks/search`: < 50ms
+- `/api/stocks/{code}/candles`: 신선(600s) < 50ms, 아니면 < 2초
+
+```bash
+# 확인
+time curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/snapshot
 ```
-설정 후 `docker compose restart mystockbot-api` (또는 `up -d --build`)로 재시작.
-서버 로그에 "API 토큰 인증 활성"이 출력되면 정상 적용된 것.
 
-**3) 동작 방식**
-- 토큰이 설정되면 모든 `/api/*` 요청에 `Authorization: Bearer <토큰>` 헤더가 필요하다.
-- 예외: `GET /api/health` (헬스체크용, 항상 무인증), CORS preflight(OPTIONS).
-- 헤더 누락/불일치 시 `401 {"detail": "인증이 필요합니다"}` 반환.
+### Cloudflare Tunnel 상태
 
-**4) 프론트엔드에서 토큰 입력 — 빌드에 토큰을 넣지 말 것**
-토큰을 Vite 빌드 환경변수(`VITE_*`)로 넣으면 브라우저에 배포되는 공개 번들에
-그대로 노출된다 (프론트 정적 파일은 누구나 열람 가능). 대신:
-- 브라우저로 접속 후 최초 1회 토큰 입력 UI에서 입력
-- `localStorage` 키 `mystockbot_api_token` 에 저장, 이후 모든 요청에 자동 첨부
-- 401 응답 수신 시 토큰 입력 UI를 다시 노출
+```bash
+cloudflared tunnel info mystockbot
+cloudflared tunnel logs mystockbot
+```
 
-### 추가 방안 (선택, 병행 권장)
-1. **Tailscale (사설망)**: 무료. 본인과 신뢰 사용자만 접근
-   - `https://mystockbot.tailnet-abc.ts.net`으로 접근
-   - Cloudflare 대신 Tailscale MagicDNS 사용
+### Vercel 재배포
 
-2. **Cloudflare Access (무료 계층)**: Cloudflare 계정으로 인증
-   - Tunnel 설정 시 "Access" 정책 추가
+```bash
+cd web
+vercel deploy --prod
+```
 
-토큰 인증만으로도 공개 노출 시 최소한의 보호는 되지만, Tailscale/Cloudflare Access와
-병행하면 이중 방어가 된다.
+### DB 백업
+
+```bash
+cp data/mystockbot.db data/mystockbot.db.$(date +%Y%m%d).bak
+```
+
+### 자동시작 설정 (PC 재부팅 후)
+
+1. Docker Desktop → Settings → "Start Docker Desktop when you log in" 체크
+2. cloudflared를 Windows 서비스로 등록 (A-3 참고)
 
 ---
 
-## 6. VPS/서버 이사 (향후)
+## E. VPS 이사 (향후)
 
 Oracle Cloud Always Free(서울), AWS EC2 등으로 이사 시:
+
 ```bash
-# 이 docker-compose.yml을 그대로 사용
+# 1. DB + .env 백업
+cp data/mystockbot.db ./mystockbot.db.bak
+
+# 2. VPS로 복사 후
 docker compose up -d --build
+
+# 3. Cloudflare Tunnel IP 갱신
 ```
 
-- DB 백업: `cp data/mystockbot.db ./mystockbot.db.bak`
-- 환경변수 파일(`.env`) 복사 후 비밀값 갱신
-- Cloudflare Tunnel 재설정 (IP 변경)
-
 ---
 
-## 7. Vercel에 백엔드를 배포할 수 없는 이유
+## F. 트러블슈팅
 
-- **서버리스 제약**: Vercel은 함수형 서버리스(AWS Lambda 유사). 요청 당 cold start, 최대 실행 시간 제한
-- **상시 프로세스 불가**: APScheduler 평일 16:00 자동실행 불가
-- **SQLite 부적합**: 임시 파일시스템. 데이터 영속성 보장 없음
-- **WebSocket 제한**: Phase 2 KIS WebSocket 상시 연결 불가능
-
-→ 완전한 서버가 필요하므로 로컬 Docker 또는 VPS 필수.
-
----
-
-## 트러블슈팅
-
-### Docker 컨테이너 실행 안 됨
+### Docker 실행 안 됨
 ```bash
 docker compose logs mystockbot-api
 ```
 에러 메시지 확인. 주로 .env 파일 누락 또는 KIS API 키 오류.
 
-### 데이터베이스 초기화 필요
-```bash
-rm -rf data/mystockbot.db
-docker compose restart mystockbot-api
-```
-
-### Cloudflare Tunnel 연결 안 됨
+### Tunnel 연결 안 됨
 ```bash
 cloudflared tunnel info mystockbot
+cloudflared tunnel restart mystockbot
 ```
-터널 상태 확인. 인증서 갱신 필요 시 `cloudflared tunnel delete/create`.
+
+### 토큰 재생성
+```bash
+NEW_TOKEN=$(openssl rand -hex 32)
+echo "MYSTOCKBOT_API_TOKEN=$NEW_TOKEN" >> .env
+docker compose restart mystockbot-api
+# 브라우저: TokenBanner에서 새 토큰 입력
+```
 
 ---
 
-마지막 업데이트: 2026-07-12
+## G. 배포 불가능한 이유: Vercel 백엔드
+
+- **서버리스 제약**: Cold start, 실행시간 제한
+- **상시 프로세스 불가**: APScheduler 자동실행 불가
+- **SQLite 부적합**: 임시 파일시스템
+- **WebSocket 제한**: KIS 실시간 WS 불가능
+
+→ 완전한 서버(로컬 Docker 또는 VPS) 필수.
+
+---
+
+**마지막 갱신**: 2026-07-18
+**다음 검토**: A-1~A-6 공개 배포 실제 운영 후
