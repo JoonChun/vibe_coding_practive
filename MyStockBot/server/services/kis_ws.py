@@ -8,11 +8,17 @@
       asyncio.Queue(maxsize 등은 호출측이 결정)를 등록/해제해 tick/status 이벤트를
       pull 방식으로 받는다. 등록된 큐가 가득 차면 가장 오래된 항목을 버리고 최신
       이벤트를 넣는다(느린 클라이언트가 전체 브로드캐스트를 막지 않도록).
+    - broadcast_event(event: dict): 이 모듈 밖(server/services/tick_aggregator.py 등)
+      에서 만든 이벤트를 동일한 리스너 큐 집합으로 그대로 중계하고 싶을 때 쓰는 통로.
+      내부 _broadcast() 위임일 뿐 별도 검증·가공은 하지 않는다.
 
 발행 이벤트(dict, 큐로 push):
     {"type": "tick", "code": str, "price": float, "change": float,
-     "change_pct": float, "volume": int | None, "time": "HH:MM:SS"}
+     "change_pct": float, "volume": int | None, "time": "HH:MM:SS",
+     "day_open": float | None, "day_high": float | None, "day_low": float | None}
     {"type": "status", "kis_connected": bool, "subscribed": list[str]}  (연결 상태 변화 시)
+    {"type": "bar_update", ...}  (tick_aggregator.py 가 조립해 broadcast_event() 로 위임 —
+     이 모듈은 내용에 관여하지 않고 그대로 전달만 한다. 스키마는 tick_aggregator.py 참조.)
 
 동작 개요:
     1) 연결 태스크(_connection_loop): approval_key 발급(kis_auth.get_approval_key) →
@@ -56,7 +62,9 @@ H0STCNT0(국내주식 실시간체결가, KRX) 필드 순서 — 공식 출처(W
     (이하 15~45: 이 모듈에서는 사용하지 않음 — 매도/매수 체결건수, 체결강도 등)
 
     이 모듈이 실제로 쓰는 인덱스는 0(코드), 1(시간), 2(현재가), 3(부호), 4(전일대비),
-    5(전일대비율), 13(누적거래량)뿐이다.
+    5(전일대비율), 7(당일 시가), 8(당일 고가), 9(당일 저가), 13(누적거래량)이다.
+    (7~9는 tick_aggregator.py 의 진행중 1일봉 조립용 additive 필드 — 기존 tick 이벤트
+    계약을 깨지 않도록 day_open/day_high/day_low 키로 추가할 뿐 기존 키는 그대로 둔다.)
 
     PRDY_VRSS_SIGN(전일 대비 부호) 코드 — KIS REST/WS 전 API 공통 관례:
         1 상한가, 2 상승, 3 보합, 4 하한가, 5 하락.
@@ -98,6 +106,9 @@ _IDX_PRICE = 2
 _IDX_SIGN = 3
 _IDX_CHANGE = 4
 _IDX_CHANGE_PCT = 5
+_IDX_DAY_OPEN = 7
+_IDX_DAY_HIGH = 8
+_IDX_DAY_LOW = 9
 _IDX_VOLUME = 13
 
 # PRDY_VRSS_SIGN 코드 → 극성(1 상한/2 상승 = +, 3 보합 = 0, 4 하한/5 하락 = -)
@@ -220,6 +231,15 @@ async def _broadcast(event: dict) -> None:
         _put_nowait_drop_oldest(queue, event)
 
 
+async def broadcast_event(event: dict) -> None:
+    """모듈 밖(tick_aggregator.py 등)에서 만든 이벤트를 리스너 큐 집합으로 그대로 중계한다.
+
+    내부 _broadcast() 위임일 뿐 이 함수 자체는 검증·가공을 하지 않는다 — 이벤트의
+    스키마 계약은 호출측(tick_aggregator.py)이 진다.
+    """
+    await _broadcast(event)
+
+
 async def _broadcast_status() -> None:
     await _broadcast({"type": "status", **get_status()})
 
@@ -252,6 +272,9 @@ def _parse_ccnl_record(fields: list[str]) -> dict | None:
         )
         volume_raw = fields[_IDX_VOLUME]
         volume = int(float(volume_raw)) if volume_raw else None
+        day_open = float(fields[_IDX_DAY_OPEN]) if fields[_IDX_DAY_OPEN] else None
+        day_high = float(fields[_IDX_DAY_HIGH]) if fields[_IDX_DAY_HIGH] else None
+        day_low = float(fields[_IDX_DAY_LOW]) if fields[_IDX_DAY_LOW] else None
     except (ValueError, IndexError):
         return None
 
@@ -265,6 +288,11 @@ def _parse_ccnl_record(fields: list[str]) -> dict | None:
         "change_pct": round(change_pct_magnitude * polarity, 2),
         "volume": volume,
         "time": _format_time(raw_time),
+        # additive(신규 키) — tick_aggregator.py 의 진행중 1일봉 조립 전용. 기존
+        # 소비자(브라우저 tick 리스너 등)는 몰라도 되는 필드라 계약을 깨지 않는다.
+        "day_open": day_open,
+        "day_high": day_high,
+        "day_low": day_low,
     }
 
 

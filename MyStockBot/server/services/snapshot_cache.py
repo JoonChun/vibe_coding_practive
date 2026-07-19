@@ -29,8 +29,15 @@ def _to_factors(item: dict) -> dict | None:
 
 
 def _to_snapshot_item(item: dict) -> dict:
+    # 지연 import — tick_aggregator.py 가 collector.py 를 참조하고(재무값 재사용),
+    # 이 모듈도 collector.py 를 참조하므로 모듈 최상단 import는 순환 위험을 키운다.
+    from . import tick_aggregator
+
+    code = item.get("code")
+    live_state = tick_aggregator.get_reference_state().get(code) if code else None
+
     return {
-        "code": item.get("code"),
+        "code": code,
         "name": item.get("name"),
         "close": item.get("close"),
         "short_view": item.get("short_view"),
@@ -40,6 +47,7 @@ def _to_snapshot_item(item: dict) -> dict:
         "change": item.get("change"),
         "change_pct": item.get("change_pct"),
         "factors": _to_factors(item),
+        "live": live_state,
     }
 
 

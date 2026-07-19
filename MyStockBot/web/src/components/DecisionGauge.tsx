@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { SignalView } from "../types";
 
 interface DecisionGaugeProps {
@@ -8,6 +9,9 @@ interface DecisionGaugeProps {
   threshold: number;
   /** "방금" / "3초 전" 등 상대 시간 문자열 */
   relativeTime: string;
+  /** 게이지 카드 안, 확정 판정 body 아래에 추가로 렌더할 콘텐츠 — LiveReferenceStrip(full) 삽입용.
+   * 게이지 SVG·바늘·확정 라벨은 이 prop과 무관하게 100% 기존 그대로 유지된다. */
+  liveStrip?: ReactNode;
 }
 
 // 5단계 시맨틱 컬러 (SignalChip.tsx·DistributionStrip.tsx와 동일 값 유지)
@@ -51,7 +55,13 @@ const SEGMENTS = [0, 1, 2, 3, 4].map((i) => ({
  * AI 종합 분석 반원 게이지. 바늘 각도는 score를 [-threshold, +threshold]로 클램프한 뒤
  * 180˚(강력매도) ~ 0˚(강력매수) 범위로 선형 매핑한다.
  */
-export function DecisionGauge({ view, score, threshold, relativeTime }: DecisionGaugeProps) {
+export function DecisionGauge({
+  view,
+  score,
+  threshold,
+  relativeTime,
+  liveStrip,
+}: DecisionGaugeProps) {
   const insufficient = view === null || view === "데이터부족" || score === null;
 
   const clampedScore = insufficient ? 0 : Math.max(-threshold, Math.min(threshold, score));
@@ -119,6 +129,7 @@ export function DecisionGauge({ view, score, threshold, relativeTime }: Decision
           </p>
         </div>
       )}
+      {liveStrip}
     </div>
   );
 }

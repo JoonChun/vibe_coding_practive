@@ -74,6 +74,17 @@ CORS_ALLOWED_ORIGINS = [
 COLLECTOR_INTERVAL_MARKET = 30   # 장중(평일 09:00~15:40 Asia/Seoul)
 COLLECTOR_INTERVAL_IDLE = 600    # 그 외 시간대
 
+# 틱 합성기(server/services/tick_aggregator.py) 관련 설정
+TICK_AGG_BAR_BROADCAST_INTERVAL_SECONDS = int(
+    os.environ.get("TICK_AGG_BAR_BROADCAST_INTERVAL_SECONDS", "2")
+)
+TICK_AGG_REFERENCE_INTERVAL_SECONDS = int(
+    os.environ.get("TICK_AGG_REFERENCE_INTERVAL_SECONDS", "5")
+)
+TICK_AGG_RING_BUFFER_MAX_MINUTES = int(
+    os.environ.get("TICK_AGG_RING_BUFFER_MAX_MINUTES", "400")
+)
+
 # 종목마스터(전 종목 검색용) 관련 설정
 # 다운로드 URL은 KIS 공식 예제(open-trading-api/stocks_info/kis_*_code_mst.py)와 동일.
 # 인증 불필요(공개 정적 파일), 대신 해당 서버가 자체서명/구식 인증서라 SSL 검증을 끈다

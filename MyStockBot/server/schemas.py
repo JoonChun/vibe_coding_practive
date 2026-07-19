@@ -36,6 +36,16 @@ class FactorDetail(BaseModel):
     long_score: int | None = None
 
 
+class LiveJudgment(BaseModel):
+    """tick_aggregator.py 가 5초 주기로 재계산하는 실시간 참고 판정(참고용, 확정 아님).
+    계산 불가한 항목은 None, 장외에는 마지막 값이 그대로 유지된다(freeze)."""
+    short_view_live: str | None = None
+    short_score_live: int | None = None
+    long_view_live: str | None = None
+    long_score_live: int | None = None
+    updated_at: str | None = None
+
+
 class SnapshotItem(BaseModel):
     code: str
     name: str
@@ -47,6 +57,7 @@ class SnapshotItem(BaseModel):
     change: float | None = None
     change_pct: float | None = None
     factors: FactorDetail | None = None
+    live: LiveJudgment | None = None
 
 
 class SnapshotResponse(BaseModel):

@@ -11,11 +11,15 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { getCandles } from "../api";
-import type { CandleItem, CandlesResponse, Timeframe } from "../types";
+import type { CandleItem, CandlesResponse, LiveBar, Timeframe } from "../types";
 import { SourceBadge } from "./SourceBadge";
 
 interface CandleChartProps {
   code: string;
+  /** WS bar_update로 갱신되는 이 code의 타임프레임별 진행중(미마감) 봉 — useTickStream().liveBars[code] */
+  liveBars?: Partial<Record<Timeframe, LiveBar>>;
+  /** tickStream.connected && tickStream.kisConnected — 툴바 LIVE 태그 노출 조건(연결 살아있을 때만) */
+  wsConnected?: boolean;
 }
 
 const UP_COLOR = "#dc2626"; // 양봉 적색 (국내 HTS 관행)
@@ -69,6 +73,14 @@ function isMinuteTf(tf: Timeframe): boolean {
   return (MINUTE_TFS as readonly string[]).includes(tf);
 }
 
+// WS bar_update가 실어나르는 tf 범위 — 분봉 7종 + 일봉(백엔드 계약: 1w/1M/1y는 오지 않음).
+// 와이어프레임(§5)은 "분봉 한정"을 가정으로 남겼으나, 백엔드 계약에 1d가 이미 포함돼 있어 확정.
+const LIVE_CAPABLE_TFS = new Set<Timeframe>([...MINUTE_TFS, "1d"]);
+
+function isLiveCapableTf(tf: Timeframe): boolean {
+  return LIVE_CAPABLE_TFS.has(tf);
+}
+
 /** open/high/low/close/volume이 모두 유효한 숫자로 채워진 캔들. */
 type ValidCandle = CandleItem & {
   open: number;
@@ -111,7 +123,7 @@ function computeMovingAverage(bars: ValidCandle[], period: number): LineData[] {
  * 분봉(1·5·15·30·60·120·240)/일/주/월/년 전환, 거래량 오버레이, MA 5/20/60/120을 그린다.
  * tf·code 변경 시 이전 요청 응답은 무시하고(레이스 방지) 최신 데이터로만 갱신한다.
  */
-export function CandleChart({ code }: CandleChartProps) {
+export function CandleChart({ code, liveBars, wsConnected = false }: CandleChartProps) {
   const [tf, setTf] = useState<Timeframe>("1d");
   const [data, setData] = useState<CandlesResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -267,6 +279,44 @@ export function CandleChart({ code }: CandleChartProps) {
     chartRef.current?.timeScale().fitContent();
   }, [data]);
 
+  // 진행중 봉(WS bar_update) 반영 — 전체 setData 재호출 없이 candleSeries.update()/volumeSeries.update()로
+  // 증분 갱신한다. MA선은 설계상(와이어프레임 §5) 진행중 봉 동안 갱신하지 않는다.
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    if (!candleSeries || !volumeSeries) return;
+    // 이력 미로딩 중이거나, code/tf 전환 직후 이전 이력이 아직 남아있는 레이스 상황이면
+    // update()가 엉뚱한 종목/주기에 적용되거나 예외를 던질 수 있어 건너뛴다.
+    if (loading || !data || data.code !== code || data.tf !== tf) return;
+
+    const liveBar = liveBars?.[tf];
+    if (!liveBar) return;
+
+    const bars = (data.items ?? [])
+      .filter(isValidCandle)
+      .slice()
+      .sort((a, b) => a.t - b.t);
+    if (bars.length === 0) return;
+
+    // lightweight-charts의 update()는 마지막 봉보다 이른 시각이 오면 예외를 던지므로 반드시 가드.
+    // 같으면 해당 봉을 교체, 크면 새 봉으로 추가된다(둘 다 정상 동작).
+    const lastBar = bars[bars.length - 1];
+    if (liveBar.t < lastBar.t) return;
+
+    candleSeries.update({
+      time: liveBar.t as UTCTimestamp,
+      open: liveBar.open,
+      high: liveBar.high,
+      low: liveBar.low,
+      close: liveBar.close,
+    });
+    volumeSeries.update({
+      time: liveBar.t as UTCTimestamp,
+      value: liveBar.volume,
+      color: liveBar.close >= liveBar.open ? UP_VOLUME_COLOR : DOWN_VOLUME_COLOR,
+    });
+  }, [liveBars, code, tf, data, loading]);
+
   function handleTfChange(next: Timeframe) {
     if (next === tf) return;
     setTf(next);
@@ -295,7 +345,19 @@ export function CandleChart({ code }: CandleChartProps) {
             </span>
           ))}
         </div>
-        {data ? <SourceBadge source={data.source} /> : null}
+        <div className="candle-chart__toolbar-right">
+          {isLiveCapableTf(tf) && wsConnected ? (
+            <span
+              className="candle-chart__live-tag"
+              title="마지막 봉은 미마감 상태로 실시간 갱신됩니다"
+              aria-label="마지막 봉은 미마감 상태로 실시간 갱신됩니다"
+            >
+              <span className="live-strip__dot live-strip__dot--pulse" aria-hidden="true" />
+              LIVE
+            </span>
+          ) : null}
+          {data ? <SourceBadge source={data.source} /> : null}
+        </div>
       </div>
 
       <div className="tf-bar" role="group" aria-label="차트 타임프레임 선택">

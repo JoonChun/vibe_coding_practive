@@ -26,7 +26,11 @@ router = APIRouter(tags=["stream"])
 
 # 느린 클라이언트가 전체 브로드캐스트를 막지 않도록 유한 큐(가득 차면 kis_ws 쪽에서
 # 가장 오래된 항목을 drop — 계약: add_listener(q) 를 등록만 하면 됨).
-_QUEUE_MAXSIZE = 200
+# 200 → 2000(결함1): tick_aggregator 의 bar_update 버스트가 활성 41종목×8tf=최대 328건
+# /주기(2초)라 200으로는 여유가 없어 앞쪽 종목들의 bar_update·대기 중이던 tick이 매
+# 주기 통째로 drop-oldest 유실됐다. 328건 + 여유를 담을 상한으로 2000을 잡는다(이벤트
+# 1건이 수백 byte 수준이라 상한 도달 시에도 큐 메모리는 수백KB 남짓 — 부담 없음).
+_QUEUE_MAXSIZE = 2000
 
 # 토큰 불일치 시 종료 코드. 4000~4999 는 애플리케이션 전용 대역(RFC 6455).
 _CLOSE_CODE_UNAUTHORIZED = 4401

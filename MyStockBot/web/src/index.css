@@ -753,6 +753,16 @@ select:focus-visible {
   gap: 0.4rem;
 }
 
+/* 실시간 참고 판정 행 — 확정과 다를 때만 노출되지만, 폴링마다 카드 높이가 들썩이지
+   않도록 내용이 없어도 높이를 예약해둔다(phase2v2-live-ui.md §3). */
+.stock-card__live-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.35rem;
+}
+
 /* 신호등 칩 (기존 5단계 시맨틱 컬러 유지 — 인라인 스타일로 배경/글자색 지정) */
 .signal-chip {
   display: inline-block;
@@ -768,6 +778,13 @@ select:focus-visible {
   border-style: dashed;
   border-width: 1px;
   background-color: transparent;
+}
+
+/* 실시간 참고 판정용 저채도 변형 — 배경 없이 외곽선+글자만(확정 칩을 압도하지 않게) */
+.signal-chip--live {
+  border-style: solid;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.45rem;
 }
 
 /* 데이터 출처 배지 */
@@ -824,6 +841,10 @@ select:focus-visible {
 
   .tick-flash-up,
   .tick-flash-down {
+    animation: none;
+  }
+
+  .live-strip__dot--pulse {
     animation: none;
   }
 }
@@ -1214,6 +1235,75 @@ select:focus-visible {
   color: var(--on-surface-variant);
 }
 
+/* 실시간 참고 판정 구분선 — 게이지 카드 안, 확정 판정 body 아래(phase2v2-live-ui.md §4) */
+.gauge-card__divider {
+  border-top: 1px solid var(--outline-variant);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  width: 100%;
+}
+
+/* 실시간 참고 판정 스트립 — StockCard(compact)·상세 게이지(full) 공용.
+   확정 판정을 압도하지 않도록 배경은 항상 transparent, 색은 outline/텍스트에만 적용. */
+.live-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.live-strip--compact {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+.live-strip--full {
+  font-size: 12px;
+}
+
+.live-strip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #f59e0b;
+  flex: none;
+}
+
+/* fresh 상태에서만 깜빡임 — stale/warming_up은 정적 점(펄스 생략) */
+.live-strip__dot--pulse {
+  animation: pulse-dot-amber 2s infinite;
+}
+
+.live-strip__value {
+  color: var(--on-surface-variant);
+}
+
+.live-strip--full .live-strip__value {
+  font-weight: 500;
+}
+
+.live-strip__caption {
+  margin: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--on-surface-variant);
+}
+
+@keyframes pulse-dot-amber {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.4;
+  }
+}
+
 /* 기여요인 분해 카드 */
 .factor-card {
   height: 100%;
@@ -1480,6 +1570,24 @@ select:focus-visible {
   height: 0.5rem;
   border-radius: 50%;
   flex: none;
+}
+
+/* 툴바 우측 묶음 — LIVE 태그 + SourceBadge(있으면)를 나란히, space-between 3분할 방지 */
+.candle-chart__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* "마지막 봉은 미마감" 안내 — 정보성(클릭 불가), 분봉+일봉이고 실시간 연결이 살아있을 때만 노출 */
+.candle-chart__live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
 }
 
 /* 타임프레임 선택 바 — 분봉 셀렉트 + 일/주/월/년 토글 버튼 */

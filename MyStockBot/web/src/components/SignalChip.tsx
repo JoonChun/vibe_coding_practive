@@ -4,6 +4,8 @@ interface SignalChipProps {
   label: SignalView | null;
   /** 접근성 라벨 보강용 — "단기" | "장기" 등 */
   kind: string;
+  /** "live"면 실시간 참고 판정용 저채도 외곽선 스타일(.signal-chip--live) — 확정 판정(confirmed)을 압도하지 않게 */
+  variant?: "confirmed" | "live";
 }
 
 interface ChipStyle {
@@ -38,15 +40,18 @@ function resolveStyle(label: SignalView | null): {
   return { display: "데이터부족", style: CHIP_STYLES["데이터부족"] };
 }
 
-export function SignalChip({ label, kind }: SignalChipProps) {
+export function SignalChip({ label, kind, variant = "confirmed" }: SignalChipProps) {
   const { display, style } = resolveStyle(label);
+  const isLive = variant === "live";
 
   return (
     <span
-      className={`signal-chip${style.outline ? " signal-chip--outline" : ""}`}
+      className={`signal-chip${style.outline ? " signal-chip--outline" : ""}${
+        isLive ? " signal-chip--live" : ""
+      }`}
       style={{
-        backgroundColor: style.bg,
-        color: style.fg,
+        backgroundColor: isLive ? "transparent" : style.bg,
+        color: isLive ? style.border : style.fg,
         borderColor: style.border,
       }}
       aria-label={`${kind} 관점: ${display}`}

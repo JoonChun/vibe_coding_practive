@@ -83,6 +83,7 @@ export default function DashboardPage() {
           longView: snap?.long_view ?? null,
           source: snap?.source ?? null,
           market: item.market ?? null,
+          live: snap?.live ?? null,
         };
       });
   }, [watchlist, snapshot.data]);
@@ -241,6 +242,7 @@ export default function DashboardPage() {
                 row={row}
                 onDelete={handleDelete}
                 tick={tickStream.ticks[row.code] ?? null}
+                wsConnected={tickStream.connected && tickStream.kisConnected}
               />
             ))}
           </ul>

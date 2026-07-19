@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiToken } from "../api";
+import type { LiveBar, Timeframe } from "../types";
 
 // ⚠️ 보안 주의: token을 ?token= query parameter로 전달하므로 브라우저 DevTools 및
 // 서버 로그(access log 등)에 평문으로 노출될 수 있다. WebSocket 표준상 Authorization
@@ -22,6 +23,9 @@ export interface TickData {
 export interface UseTickStreamResult {
   /** 종목코드 → 최신 틱. 수신된 적 있는 종목만 키로 존재(장외 등 틱이 없으면 빈 객체일 수 있음) */
   ticks: Record<string, TickData>;
+  /** 종목코드 → 타임프레임별 진행중(미마감) 봉. bar_update 미수신 종목/tf는 키 자체가 없음.
+   * 재연결로 WS가 잠시 끊겨도 지우지 않는다(ticks와 동일 원칙 — 재연결 즉시 다시 채워짐) */
+  liveBars: Record<string, Partial<Record<Timeframe, LiveBar>>>;
   /** 브라우저 ↔ 서버 WS 연결 상태 */
   connected: boolean;
   /** 서버 ↔ KIS 실시간 시세 연결 상태(status 이벤트 기준). 장외엔 서버가 KIS에 연결돼 있어도 틱이 없는 게 정상 */
@@ -63,6 +67,54 @@ function isRawTickMessage(data: unknown): data is RawTickMessage {
   );
 }
 
+/** bar_update.tf 허용값 — candles API와 동일 Timeframe 중 1w/1M/1y는 오지 않는다 */
+const VALID_BAR_TFS: ReadonlySet<string> = new Set([
+  "1m",
+  "5m",
+  "15m",
+  "30m",
+  "60m",
+  "120m",
+  "240m",
+  "1d",
+]);
+
+interface RawBarUpdateMessage {
+  type: "bar_update";
+  code: string;
+  tf: Timeframe;
+  bar: Record<string, unknown>;
+}
+
+function isRawBarUpdateMessage(data: unknown): data is RawBarUpdateMessage {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    obj.type === "bar_update" &&
+    typeof obj.code === "string" &&
+    typeof obj.tf === "string" &&
+    VALID_BAR_TFS.has(obj.tf) &&
+    typeof obj.bar === "object" &&
+    obj.bar !== null
+  );
+}
+
+/** bar 필드가 전부 유효한 숫자일 때만 LiveBar로 승격(계약상 결측 없어야 하지만 방어적으로 검증) */
+function parseLiveBar(raw: Record<string, unknown>): LiveBar | null {
+  const { t, open, high, low, close, volume } = raw;
+  if (
+    typeof t === "number" &&
+    typeof open === "number" &&
+    typeof high === "number" &&
+    typeof low === "number" &&
+    typeof close === "number" &&
+    typeof volume === "number"
+  ) {
+    return { t, open, high, low, close, volume };
+  }
+  return null;
+}
+
 /**
  * 서버 /ws/ticks 구독 — KIS 실시간 체결 틱을 브라우저로 중계.
  * 장외 시간엔 틱 자체가 없는 게 정상(연결은 유지될 수 있음). 연결이 끊기면 지수 백오프(1s→30s)로
@@ -70,6 +122,9 @@ function isRawTickMessage(data: unknown): data is RawTickMessage {
  */
 export function useTickStream(): UseTickStreamResult {
   const [ticks, setTicks] = useState<Record<string, TickData>>({});
+  const [liveBars, setLiveBars] = useState<
+    Record<string, Partial<Record<Timeframe, LiveBar>>>
+  >({});
   const [connected, setConnected] = useState(false);
   const [kisConnected, setKisConnected] = useState(false);
 
@@ -79,6 +134,31 @@ export function useTickStream(): UseTickStreamResult {
     let reconnectTimer: number | null = null;
     let backoffMs = INITIAL_BACKOFF_MS;
     const wsBase = buildWsBase();
+
+    // 장중엔 종목×tf 수십 건이 2초 주기로 몰려올 수 있어, 메시지마다 setState하지 않고
+    // 같은 애니메이션 프레임 안에 도착한 갱신을 하나로 병합해 1회만 반영(리렌더 폭풍 방지).
+    let pendingLiveBars: Record<string, Partial<Record<Timeframe, LiveBar>>> | null =
+      null;
+    let flushRafId: number | null = null;
+
+    function scheduleLiveBarsFlush() {
+      if (flushRafId !== null) return;
+      flushRafId = window.requestAnimationFrame(() => {
+        flushRafId = null;
+        const pending = pendingLiveBars;
+        pendingLiveBars = null;
+        if (!pending || cancelled) return;
+        setLiveBars((prev) => {
+          const next: Record<string, Partial<Record<Timeframe, LiveBar>>> = {
+            ...prev,
+          };
+          for (const code of Object.keys(pending)) {
+            next[code] = { ...next[code], ...pending[code] };
+          }
+          return next;
+        });
+      });
+    }
 
     function buildUrl(): string {
       const token = getApiToken();
@@ -134,6 +214,16 @@ export function useTickStream(): UseTickStreamResult {
             receivedAt: Date.now(),
           };
           setTicks((prev) => ({ ...prev, [tick.code]: tick }));
+        } else if (isRawBarUpdateMessage(data)) {
+          const bar = parseLiveBar(data.bar);
+          if (bar) {
+            if (!pendingLiveBars) pendingLiveBars = {};
+            pendingLiveBars[data.code] = {
+              ...pendingLiveBars[data.code],
+              [data.tf]: bar,
+            };
+            scheduleLiveBarsFlush();
+          }
         } else if (data.type === "status") {
           setKisConnected(Boolean(data.kis_connected));
         }
@@ -177,6 +267,9 @@ export function useTickStream(): UseTickStreamResult {
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }
+      if (flushRafId !== null) {
+        window.cancelAnimationFrame(flushRafId);
+      }
       if (socket) {
         socket.onopen = null;
         socket.onmessage = null;
@@ -187,5 +280,5 @@ export function useTickStream(): UseTickStreamResult {
     };
   }, []);
 
-  return { ticks, connected, kisConnected };
+  return { ticks, liveBars, connected, kisConnected };
 }

@@ -4,6 +4,7 @@ import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
+import { LiveReferenceStrip } from "../components/LiveReferenceStrip";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
@@ -48,6 +49,8 @@ export default function StockDetailPage() {
   const view = tab === "short" ? (item?.short_view ?? null) : (item?.long_view ?? null);
   const otherView = tab === "short" ? (item?.long_view ?? null) : (item?.short_view ?? null);
   const threshold = TAB_THRESHOLD[tab];
+  const liveKind = tab === "short" ? "단기" : "장기";
+  const wsConnected = tickStream.connected && tickStream.kisConnected;
 
   const factorRows = useMemo(
     () => (item?.factors ? buildFactorRows(item.factors, tab) : null),
@@ -112,7 +115,7 @@ export default function StockDetailPage() {
           <h1 className="detail-header__name">{name}</h1>
           <span className="detail-header__meta">{code} KRX</span>
         </div>
-        <RealtimeBadge live={tickStream.connected && tickStream.kisConnected} />
+        <RealtimeBadge live={wsConnected} />
       </header>
 
       <main className="dash-main detail-main">
@@ -180,6 +183,15 @@ export default function StockDetailPage() {
               score={score}
               threshold={threshold}
               relativeTime={relativeUpdatedAt || "방금"}
+              liveStrip={
+                <LiveReferenceStrip
+                  variant="full"
+                  kind={liveKind}
+                  live={item?.live ?? null}
+                  confirmedView={view}
+                  wsConnected={wsConnected}
+                />
+              }
             />
           </div>
           <div className="detail-grid__factors">
@@ -194,7 +206,11 @@ export default function StockDetailPage() {
             />
           </div>
           <div className="detail-grid__chart">
-            <CandleChart code={code} />
+            <CandleChart
+              code={code}
+              liveBars={tickStream.liveBars[code]}
+              wsConnected={wsConnected}
+            />
           </div>
         </div>
       </main>

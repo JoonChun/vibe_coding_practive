@@ -1,0 +1,4 @@
+# 개발/테스트 전용 의존성 — 프로덕션 requirements.txt·Docker 이미지에는 포함하지 않는다.
+# 로컬에서: .venv/bin/python -m pip install -r requirements-dev.txt
+pytest>=8.0.0
+pytest-asyncio>=0.24.0

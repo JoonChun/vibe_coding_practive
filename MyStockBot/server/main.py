@@ -28,7 +28,7 @@ import stock_master
 
 from .auth import auth_middleware, is_auth_enabled
 from .routers import stream, watchlist, snapshot, stocks
-from .services import collector, kis_ws, scheduler
+from .services import collector, kis_ws, scheduler, tick_aggregator
 
 
 def _refresh_stock_master_in_background() -> None:
@@ -61,6 +61,13 @@ async def lifespan(app: FastAPI):
         await kis_ws.start()
     except Exception as e:
         print(f"[startup] KIS 실시간 WS 시작 실패(틱 스트림 비활성, 나머지 기능은 정상 동작): {e}")
+    try:
+        # tick_aggregator 는 자체 큐로 kis_ws.add_listener 를 등록한다 — kis_ws.start()
+        # 이후에 기동해야 하는 순서 의존성이 있다(리스너 등록 자체는 kis_ws 연결 여부와
+        # 무관하게 항상 성공하지만, 등록 시점 원칙을 지킨다).
+        await tick_aggregator.start()
+    except Exception as e:
+        print(f"[startup] 틱 합성기 시작 실패(실시간 참고 판정 비활성, 나머지 기능은 정상 동작): {e}")
     if is_auth_enabled():
         print("API 토큰 인증 활성")
     else:
@@ -68,6 +75,10 @@ async def lifespan(app: FastAPI):
     yield
     collector.stop()
     scheduler.shutdown()
+    try:
+        await tick_aggregator.stop()
+    except Exception as e:
+        print(f"[shutdown] 틱 합성기 정지 중 예외: {e}")
     try:
         await kis_ws.stop()
     except Exception as e:

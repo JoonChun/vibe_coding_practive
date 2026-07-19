@@ -62,6 +62,18 @@ export interface SnapshotFactors {
   long_score: number | null; // 장기 스코어 합 (임계 ±3)
 }
 
+/** WS bar_update로 계속 갱신되는 실시간 참고 판정 — 확정 판정(short_view/long_view)과는 별개.
+ * updated_at은 short/long 공통 1개(둘 다 같은 순간 재계산됨). null이면 아직 이 종목의 참고 판정이
+ * 계산되지 않은 것(워밍업)이며, 오류와 구분할 근거 데이터가 없어 프론트에서 heuristic으로 판정한다
+ * (docs/wireframes/phase2v2-live-ui.md §2 참조). */
+export interface LiveJudgment {
+  short_view_live: SignalView | null;
+  short_score_live: number | null;
+  long_view_live: SignalView | null;
+  long_score_live: number | null;
+  updated_at: string | null;
+}
+
 export interface SnapshotItem {
   code: string;
   name: string;
@@ -73,6 +85,8 @@ export interface SnapshotItem {
   source: SnapshotSource | null;
   error: string | null;
   factors: SnapshotFactors | null;
+  /** additive 신규 필드(Phase 2 v2) — 백엔드가 아직 안 내려주면 undefined일 수 있음 */
+  live?: LiveJudgment | null;
 }
 
 export interface SnapshotResponse {
@@ -112,4 +126,15 @@ export interface CandlesResponse {
   tf: Timeframe;
   source: SnapshotSource | null;
   items: CandleItem[];
+}
+
+/** WS `bar_update`가 실어나르는 진행중(미마감) 봉 1개 — CandleItem과 달리 결측 없이 항상 값이 채워진다.
+ * tf ∈ {1m,5m,15m,30m,60m,120m,240m,1d} (1w/1M/1y는 이 메시지에 오지 않음). */
+export interface LiveBar {
+  t: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
