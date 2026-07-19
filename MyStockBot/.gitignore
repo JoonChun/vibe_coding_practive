@@ -1,6 +1,12 @@
 # Google Service Account Key
 *.json
 !package.json
+!vercel.json
+!tsconfig*.json
+!manifest.json
+
+# 루트 .gitignore의 docs/ 규칙이 설계 문서까지 가리므로 로컬 재포함
+!docs/
 
 # Environment variables
 .env
