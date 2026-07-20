@@ -1,5 +1,6 @@
 import type {
   CandlesResponse,
+  IndicesResponse,
   SnapshotResponse,
   StockSearchResponse,
   Timeframe,
@@ -120,6 +121,11 @@ export function deleteWatchlistItem(code: string): Promise<void> {
 
 export function getSnapshot(): Promise<SnapshotResponse> {
   return request<SnapshotResponse>("/api/snapshot");
+}
+
+/** 코스피·코스닥 시장 지수 조회 (메인 대시보드용). */
+export function getIndices(): Promise<IndicesResponse> {
+  return request<IndicesResponse>("/api/indices");
 }
 
 /** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */

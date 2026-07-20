@@ -69,6 +69,10 @@ CORS_ALLOWED_ORIGINS = [
 COLLECTOR_INTERVAL_MARKET = 30   # 장중(평일 09:00~15:40 Asia/Seoul)
 COLLECTOR_INTERVAL_IDLE = 600    # 그 외 시간대
 
+# 시장 지수(server/services/indices.py) read-through 캐시 TTL(초).
+# 지수는 개별 종목보다 갱신 빈도가 낮아도 되므로 넉넉히 둔다.
+INDICES_CACHE_TTL_SECONDS = int(os.environ.get("INDICES_CACHE_TTL_SECONDS", "60"))
+
 # 종목마스터(전 종목 검색용) 관련 설정
 # 다운로드 URL은 KIS 공식 예제(open-trading-api/stocks_info/kis_*_code_mst.py)와 동일.
 # 인증 불필요(공개 정적 파일), 대신 해당 서버가 자체서명/구식 인증서라 SSL 검증을 끈다

@@ -55,6 +55,22 @@ class SnapshotResponse(BaseModel):
     items: list[SnapshotItem]
 
 
+class IndexItem(BaseModel):
+    code: str  # "KOSPI" | "KOSDAQ"
+    name: str
+    value: float | None = None      # 현재 지수
+    change: float | None = None     # 전일 대비 등락폭
+    change_pct: float | None = None # 등락률 %
+    source: str | None = None       # "yfinance" | None(조회 실패)
+    error: str | None = None
+
+
+class IndicesResponse(BaseModel):
+    generated_at: str
+    cache_hit: bool
+    items: list[IndexItem]
+
+
 class SearchItem(BaseModel):
     code: str
     name: str

@@ -34,6 +34,23 @@ export interface WatchlistItemInput {
   name: string;
 }
 
+/** GET /api/indices 결과 항목 — 코스피/코스닥 지수 카드용 */
+export interface IndexItem {
+  code: string; // "KOSPI" | "KOSDAQ"
+  name: string;
+  value: number | null;
+  change: number | null;
+  change_pct: number | null;
+  source: SnapshotSource | null;
+  error: string | null;
+}
+
+export interface IndicesResponse {
+  generated_at: string;
+  cache_hit: boolean;
+  items: IndexItem[];
+}
+
 /** GET /api/stocks/search 결과 항목 — 자동완성 드롭다운용 */
 export interface SearchItem {
   code: string;
