@@ -78,6 +78,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    // ngrok 무료 플랜은 브라우저 요청에 경고 interstitial(HTML)을 끼워넣어 JSON 응답을
+    // 가로챈다. 이 헤더가 있으면 곧바로 백엔드로 통과된다. 다른 백엔드는 무시하므로 무해.
+    "ngrok-skip-browser-warning": "true",
     ...(init?.headers as Record<string, string> | undefined),
   };
   const token = getApiToken();
