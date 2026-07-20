@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 
   /* Analytical Fidelity 디자인 토큰
      (docs/stitch_mystockbot/stitch_mystockbot/analytical_fidelity/DESIGN.md) */
@@ -2609,4 +2609,133 @@ select:focus-visible {
   font-size: 0.85rem;
   line-height: 1.6;
   color: var(--on-surface-variant);
+}
+
+/* ============================================================
+   다크 테마 — prefers-color-scheme: dark
+   토큰 재정의로 대부분 커버하고, 하드코딩된 pale 시맨틱 배경은
+   개별 셀렉터로 다크 변형을 덮어쓴다. 상승=빨강/하락=파랑 관례 유지.
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* 표면 — 청색 편향 딥잉크(앱의 네이비 primary와 조화) */
+    --surface: #0c1016;
+    --surface-dim: #080b10;
+    --surface-bright: #171d26;
+    --surface-container-lowest: #0a0e13;
+    --surface-container-low: #10151c;
+    --surface-container: #151b23;
+    --surface-container-high: #1b222c;
+    --surface-container-highest: #222a35;
+    --on-surface: #e6edf3;
+    --on-surface-variant: #9aa4b2;
+    --outline: #6e7886;
+    --outline-variant: #2a313c;
+    --primary: #cdd9f0;          /* 제목·활성 탭 텍스트(밝게) */
+    --on-primary: #0c1016;
+    --primary-container: #3457c7; /* 버튼 배경·포커스 아웃라인(흰 글자 대비 OK) */
+    --on-primary-container: #aebbd6;
+    --secondary: #9aa4b2;
+    --secondary-container: #22303f;
+    --on-secondary-container: #c3ccd9;
+    --color-danger: #f87171;
+    --color-danger-bg: #2a1614;
+    --color-danger-border: #5b2a26;
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  /* 경고 배너(앰버) */
+  .banner--warning {
+    background-color: #2a2110;
+    color: #f0c674;
+    border-color: #4a3a12;
+  }
+
+  /* 실시간 배지(초록) */
+  .realtime-badge {
+    background-color: #12261a;
+    border-color: #1f3d2a;
+    color: #4ade80;
+  }
+
+  /* 마켓 배지 */
+  .market-badge--kospi {
+    background-color: #12203a;
+    color: #6ea8ff;
+    border-color: #1e3a5f;
+  }
+  .market-badge--kosdaq {
+    background-color: #12261a;
+    color: #4ade80;
+    border-color: #1f3d2a;
+  }
+
+  /* 출처 배지 */
+  .source-badge--kis {
+    background-color: #12261a;
+    color: #4ade80;
+    border-color: #1f3d2a;
+  }
+  .source-badge--yfinance {
+    background-color: #2a2110;
+    color: #f0c674;
+    border-color: #4a3a12;
+  }
+  .source-badge {
+    color: #9aa4b2;
+  }
+
+  .stock-card:hover {
+    border-color: var(--outline);
+  }
+
+  /* 상승 빨강 / 하락 파랑 — 다크에서 가독 위해 밝은 톤으로 */
+  .stock-card__change--up,
+  .index-card__chg--up {
+    color: #ff6b6b;
+  }
+  .stock-card__change--down,
+  .index-card__chg--down {
+    color: #6ea8ff;
+  }
+
+  .price-section__change--up {
+    background-color: #2a1614;
+    color: #ff6b6b;
+    border-color: #5b2a26;
+  }
+  .price-section__change--down {
+    background-color: #12203a;
+    color: #6ea8ff;
+    border-color: #1e3a5f;
+  }
+
+  .paper-trade__side--buy {
+    color: #ff6b6b;
+    background: #2a1614;
+  }
+  .paper-trade__side--sell {
+    color: #6ea8ff;
+    background: #12203a;
+  }
+
+  /* 매수/매도 버튼은 다크에서도 흰 글자 대비 확보 위해 톤 유지·소폭 상향 */
+  .paper-btn--buy {
+    background: #dc2626;
+  }
+  .paper-btn--sell {
+    background: #2563eb;
+  }
+
+  /* 틱 플래시 키프레임(다크 톤) — 라이트의 tick-flash-up/down 을 덮어씀 */
+  @keyframes tick-flash-up {
+    0% {
+      background-color: #2a1614;
+    }
+  }
+  @keyframes tick-flash-down {
+    0% {
+      background-color: #12203a;
+    }
+  }
 }
