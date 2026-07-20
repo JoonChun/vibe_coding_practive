@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, deleteWatchlistItem, getWatchlist } from "../api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ApiError,
+  addWatchlistItem,
+  deleteWatchlistItem,
+  getWatchlist,
+} from "../api";
 import { AddStockForm } from "../components/AddStockForm";
 import { DistributionStrip } from "../components/DistributionStrip";
 import { RealtimeBadge } from "../components/RealtimeBadge";
@@ -35,6 +40,9 @@ export default function DashboardPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("decision");
+  // 삭제 실행취소용 — 방금 삭제한 종목(토스트). 타이머로 자동 소멸.
+  const [undoItem, setUndoItem] = useState<{ code: string; name: string } | null>(null);
+  const undoTimer = useRef<number | null>(null);
 
   const snapshot = useSnapshot();
   const relativeUpdatedAt = useRelativeTime(snapshot.lastUpdatedAt);
@@ -129,15 +137,59 @@ export default function DashboardPage() {
     return sorted;
   }, [rows, query, sortKey]);
 
+  // 언마운트 시 실행취소 타이머 정리(메모리 누수·잘못된 setState 방지)
+  useEffect(() => {
+    return () => {
+      if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
+    };
+  }, []);
+
+  function clearUndoTimer() {
+    if (undoTimer.current !== null) {
+      window.clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+    }
+  }
+
+  // 낙관적 삭제: 즉시 목록에서 제거하고 '실행 취소' 토스트를 띄운다.
   async function handleDelete(code: string) {
     setDeleteError(null);
+    const removed = watchlist.find((it) => it.code === code);
+    // 낙관적 반영 — 화면에서 즉시 사라짐
+    setWatchlist((prev) => prev.filter((it) => it.code !== code));
+    if (removed) {
+      clearUndoTimer();
+      setUndoItem({ code: removed.code, name: removed.name });
+      undoTimer.current = window.setTimeout(() => setUndoItem(null), 6000);
+    }
     try {
       await deleteWatchlistItem(code);
     } catch (err) {
-      // 404(이미 삭제됨)는 무시하고 목록만 재조회
       if (!(err instanceof ApiError && err.status === 404)) {
+        // 실패 시 롤백: 삭제를 되돌리고 오류 표시
         setDeleteError(
           err instanceof ApiError ? err.message : "종목 삭제에 실패했습니다."
+        );
+        clearUndoTimer();
+        setUndoItem(null);
+        await fetchWatchlist();
+      }
+    }
+  }
+
+  // 실행 취소: 방금 삭제한 종목을 다시 등록.
+  async function handleUndo() {
+    if (!undoItem) return;
+    const { code, name } = undoItem;
+    clearUndoTimer();
+    setUndoItem(null);
+    try {
+      await addWatchlistItem({ code, name });
+    } catch (err) {
+      // 409(이미 존재)는 무시 — 어느 쪽이든 재조회로 정합성 확보
+      if (!(err instanceof ApiError && err.status === 409)) {
+        setDeleteError(
+          err instanceof ApiError ? err.message : "실행 취소에 실패했습니다."
         );
       }
     } finally {
@@ -231,17 +283,34 @@ export default function DashboardPage() {
           </label>
         </div>
 
+        {query.trim() && rows.length > 0 ? (
+          <button
+            type="button"
+            className="filter-chip"
+            onClick={() => setQuery("")}
+            aria-label={`'${query.trim()}' 필터 지우기`}
+          >
+            필터: “{query.trim()}” <span aria-hidden="true">✕</span>
+          </button>
+        ) : null}
+
         {deleteError ? (
           <p className="panel__error" role="alert">
             {deleteError}
           </p>
         ) : null}
 
-        {visibleRows.length === 0 ? (
+        {snapshot.loading && rows.length === 0 && !watchlistError ? (
+          <ul className="stock-card-grid" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="stock-card stock-card--skeleton" />
+            ))}
+          </ul>
+        ) : visibleRows.length === 0 ? (
           <p className="watchlist-empty">
             {rows.length === 0
               ? "등록된 관심종목이 없습니다. 위에서 종목을 검색해 추가해주세요."
-              : "검색 결과가 없습니다."}
+              : `‘${query.trim()}’ 필터에 맞는 관심종목이 없습니다. 새 종목이면 위에서 추가하세요.`}
           </p>
         ) : (
           <ul className="stock-card-grid">
@@ -256,6 +325,15 @@ export default function DashboardPage() {
           </ul>
         )}
       </main>
+
+      {undoItem ? (
+        <div className="undo-toast" role="status">
+          <span className="undo-toast__msg">{undoItem.name} 삭제됨</span>
+          <button type="button" className="undo-toast__btn" onClick={() => void handleUndo()}>
+            실행 취소
+          </button>
+        </div>
+      ) : null}
 
       <footer className="app-footer">
         ⓘ 기계적 참고 지표 · 투자 권유 아님 · 최종 판단은 본인에게 있습니다
