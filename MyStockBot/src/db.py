@@ -117,6 +117,46 @@ def init_db() -> None:
             )
             """
         )
+        # ── 모의투자(Paper Trading) ── 개인용 단일 계좌(id=1 싱글턴)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_account (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                cash REAL NOT NULL,
+                seed REAL NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_holdings (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                qty INTEGER NOT NULL,
+                avg_cost REAL NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL DEFAULT (datetime('now')),
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+                qty INTEGER NOT NULL,
+                price REAL NOT NULL,
+                amount REAL NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_trades_ts ON paper_trades(ts DESC)"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -408,5 +448,172 @@ def get_candles_age_seconds(code: str, tf: str) -> float | None:
         except ValueError:
             return None
         return (datetime.now(timezone.utc) - fetched_dt).total_seconds()
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
+# 모의투자(Paper Trading) — 개인용 단일 계좌(id=1)
+# ────────────────────────────────────────────
+
+class InvalidOrderError(Exception):
+    """수량·가격이 유효하지 않은 주문."""
+
+
+class InsufficientFundsError(Exception):
+    """현금 잔액 부족(매수) 또는 보유 수량 부족(매도)."""
+
+
+def _ensure_account(conn: sqlite3.Connection, seed: float) -> None:
+    """계좌가 없으면 시드머니로 생성(멱등). 호출부에서 트랜잭션/커밋 관리."""
+    conn.execute(
+        "INSERT OR IGNORE INTO paper_account (id, cash, seed) VALUES (1, ?, ?)",
+        (seed, seed),
+    )
+
+
+def _account_snapshot(conn: sqlite3.Connection) -> dict:
+    acct = conn.execute(
+        "SELECT cash, seed FROM paper_account WHERE id = 1"
+    ).fetchone()
+    holdings = conn.execute(
+        "SELECT code, name, qty, avg_cost FROM paper_holdings WHERE qty > 0 ORDER BY code"
+    ).fetchall()
+    return {
+        "cash": acct["cash"] if acct else 0.0,
+        "seed": acct["seed"] if acct else 0.0,
+        "holdings": [dict(h) for h in holdings],
+    }
+
+
+def get_paper_account(seed_default: float) -> dict:
+    """가상 계좌 스냅샷(현금·시드·보유목록). 없으면 시드로 생성."""
+    conn = get_connection()
+    try:
+        _ensure_account(conn, seed_default)
+        conn.commit()
+        return _account_snapshot(conn)
+    finally:
+        conn.close()
+
+
+def get_paper_trades(limit: int = 100) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 500))
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, ts, code, name, side, qty, price, amount "
+            "FROM paper_trades ORDER BY id DESC LIMIT ?",
+            (safe_limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def execute_paper_order(
+    code, name: str, side: str, qty: int, price: float, seed_default: float
+) -> dict:
+    """시장가 즉시 체결 시뮬레이션. 잔액/보유 검증부터 갱신까지 단일 IMMEDIATE
+    트랜잭션으로 원자화해 동시 주문 TOCTOU(초과매수·음수잔액·초과매도)를 방지한다.
+    체결 성공 시 갱신된 계좌 스냅샷 반환.
+    """
+    normalized = _normalize_code(code)
+    if side not in ("buy", "sell"):
+        raise InvalidOrderError(f"잘못된 주문 유형: {side}")
+    if not isinstance(qty, int) or qty <= 0:
+        raise InvalidOrderError("수량은 1 이상의 정수여야 합니다.")
+    price_f = float(price)
+    if price_f <= 0:
+        raise InvalidOrderError("체결 가격이 유효하지 않습니다.")
+
+    amount = round(price_f * qty, 2)
+
+    conn = get_connection()
+    try:
+        # BEGIN IMMEDIATE: 쓰기 락을 즉시 잡아 read-modify-write 를 직렬화
+        conn.execute("BEGIN IMMEDIATE")
+        _ensure_account(conn, seed_default)
+
+        acct = conn.execute("SELECT cash FROM paper_account WHERE id = 1").fetchone()
+        cash = acct["cash"]
+        holding = conn.execute(
+            "SELECT qty, avg_cost FROM paper_holdings WHERE code = ?", (normalized,)
+        ).fetchone()
+
+        if side == "buy":
+            if amount > cash:
+                raise InsufficientFundsError(
+                    f"현금 잔액 부족: 필요 {amount:,.0f}원 / 보유 {cash:,.0f}원"
+                )
+            new_cash = cash - amount
+            if holding is None:
+                new_qty, new_avg = qty, price_f
+            else:
+                total_qty = holding["qty"] + qty
+                new_avg = (holding["avg_cost"] * holding["qty"] + amount) / total_qty
+                new_qty = total_qty
+            conn.execute(
+                "INSERT INTO paper_holdings (code, name, qty, avg_cost, updated_at) "
+                "VALUES (?, ?, ?, ?, datetime('now')) "
+                "ON CONFLICT(code) DO UPDATE SET qty = ?, avg_cost = ?, name = ?, "
+                "updated_at = datetime('now')",
+                (normalized, name, new_qty, new_avg, new_qty, new_avg, name),
+            )
+        else:  # sell
+            held = holding["qty"] if holding else 0
+            if qty > held:
+                raise InsufficientFundsError(
+                    f"보유 수량 부족: 매도 {qty}주 / 보유 {held}주"
+                )
+            new_cash = cash + amount
+            remaining = held - qty
+            if remaining > 0:
+                conn.execute(
+                    "UPDATE paper_holdings SET qty = ?, updated_at = datetime('now') "
+                    "WHERE code = ?",
+                    (remaining, normalized),
+                )
+            else:
+                conn.execute("DELETE FROM paper_holdings WHERE code = ?", (normalized,))
+
+        conn.execute(
+            "UPDATE paper_account SET cash = ?, updated_at = datetime('now') WHERE id = 1",
+            (new_cash,),
+        )
+        conn.execute(
+            "INSERT INTO paper_trades (code, name, side, qty, price, amount) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (normalized, name, side, qty, price_f, amount),
+        )
+        snapshot = _account_snapshot(conn)
+        conn.commit()
+        return snapshot
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def reset_paper_account(seed: float) -> dict:
+    """가상 계좌 초기화 — 보유·거래내역 삭제 후 현금을 시드로 리셋."""
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM paper_holdings")
+        conn.execute("DELETE FROM paper_trades")
+        conn.execute(
+            "INSERT INTO paper_account (id, cash, seed, updated_at) "
+            "VALUES (1, ?, ?, datetime('now')) "
+            "ON CONFLICT(id) DO UPDATE SET cash = ?, seed = ?, updated_at = datetime('now')",
+            (seed, seed, seed, seed),
+        )
+        snapshot = _account_snapshot(conn)
+        conn.commit()
+        return snapshot
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()

@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,12 +18,17 @@ from config import (
 )
 
 _TOKEN_CACHE = {"access_token": None, "expires_at": None}
+# 토큰/approval_key 발급 구간 보호용 락. 부팅·만료 직후 콜드미스 시 여러 스레드
+# (candles 요청·kis_ws·collector·크론)가 동시에 발급 요청을 쏘면 KIS 발급 rate-limit
+# (EGW00133)에 걸린다 → double-checked locking 으로 발급을 단일화한다.
+_TOKEN_LOCK = threading.Lock()
 
 # WebSocket 접속키(approval_key) 전용 캐시 — REST 접근토큰(get_token/_TOKEN_CACHE)과는
 # 발급 절차·유효기간이 달라 별도 캐시로 분리한다(공식 유효기간 24시간, 여유를 두고 23시간
 # 캐시). kis_ws.py(server/services)가 재연결 시마다 이 함수를 호출하므로 캐시가 필수.
 _APPROVAL_KEY_CACHE = {"approval_key": None, "expires_at": None}
 _APPROVAL_KEY_TTL_HOURS = 23
+_APPROVAL_KEY_LOCK = threading.Lock()
 
 
 def _load_cache() -> str | None:
@@ -71,26 +77,33 @@ def get_token() -> str:
     if cached:
         return cached
 
-    app_key = os.environ.get(KIS_APP_KEY_ENV)
-    app_secret = os.environ.get(KIS_APP_SECRET_ENV)
+    # 락 밖에서 1차 확인(위)해 hot-path 경합을 피하고, 콜드미스일 때만 락 진입.
+    with _TOKEN_LOCK:
+        # 락 대기 중 다른 스레드가 이미 발급했을 수 있으므로 재확인(double-checked).
+        cached = _load_cache()
+        if cached:
+            return cached
 
-    if not app_key or not app_secret:
-        raise RuntimeError("KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다.")
+        app_key = os.environ.get(KIS_APP_KEY_ENV)
+        app_secret = os.environ.get(KIS_APP_SECRET_ENV)
 
-    payload = {
-        "grant_type": "client_credentials",
-        "appkey": app_key,
-        "appsecret": app_secret,
-    }
+        if not app_key or not app_secret:
+            raise RuntimeError("KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다.")
 
-    data = _request_token(payload)
-    token = data.get("access_token")
-    if not token:
-        raise RuntimeError(f"access_token 없음. 응답: {data}")
+        payload = {
+            "grant_type": "client_credentials",
+            "appkey": app_key,
+            "appsecret": app_secret,
+        }
 
-    expires_in = int(data.get("expires_in", 86400))
-    _save_cache(token, expires_in)
-    return token
+        data = _request_token(payload)
+        token = data.get("access_token")
+        if not token:
+            raise RuntimeError(f"access_token 없음. 응답: {data}")
+
+        expires_in = int(data.get("expires_in", 86400))
+        _save_cache(token, expires_in)
+        return token
 
 
 # ────────────────────────────────────────────
@@ -155,22 +168,28 @@ def get_approval_key() -> str:
     if cached:
         return cached
 
-    app_key = os.environ.get(KIS_APP_KEY_ENV)
-    app_secret = os.environ.get(KIS_APP_SECRET_ENV)
+    with _APPROVAL_KEY_LOCK:
+        # double-checked: 락 대기 중 다른 스레드가 이미 발급했을 수 있음.
+        cached = _load_approval_key_cache()
+        if cached:
+            return cached
 
-    if not app_key or not app_secret:
-        raise RuntimeError("KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다.")
+        app_key = os.environ.get(KIS_APP_KEY_ENV)
+        app_secret = os.environ.get(KIS_APP_SECRET_ENV)
 
-    payload = {
-        "grant_type": "client_credentials",
-        "appkey": app_key,
-        "secretkey": app_secret,
-    }
+        if not app_key or not app_secret:
+            raise RuntimeError("KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다.")
 
-    data = _request_approval(payload)
-    approval_key = data.get("approval_key")
-    if not approval_key:
-        raise RuntimeError(f"approval_key 없음. 응답: {data}")
+        payload = {
+            "grant_type": "client_credentials",
+            "appkey": app_key,
+            "secretkey": app_secret,
+        }
 
-    _save_approval_key_cache(approval_key)
-    return approval_key
+        data = _request_approval(payload)
+        approval_key = data.get("approval_key")
+        if not approval_key:
+            raise RuntimeError(f"approval_key 없음. 응답: {data}")
+
+        _save_approval_key_cache(approval_key)
+        return approval_key

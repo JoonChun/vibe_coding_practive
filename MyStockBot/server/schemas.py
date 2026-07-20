@@ -55,6 +55,64 @@ class SnapshotResponse(BaseModel):
     items: list[SnapshotItem]
 
 
+class IndexItem(BaseModel):
+    code: str  # "KOSPI" | "KOSDAQ"
+    name: str
+    value: float | None = None      # 현재 지수
+    change: float | None = None     # 전일 대비 등락폭
+    change_pct: float | None = None # 등락률 %
+    source: str | None = None       # "yfinance" | None(조회 실패)
+    error: str | None = None
+
+
+class IndicesResponse(BaseModel):
+    generated_at: str
+    cache_hit: bool
+    items: list[IndexItem]
+
+
+class PaperHolding(BaseModel):
+    code: str
+    name: str
+    qty: int
+    avg_cost: float
+    price: float | None = None        # 현재가(스냅샷)
+    eval_amount: float | None = None  # 평가금액 = price * qty
+    pnl: float | None = None          # 평가손익
+    pnl_pct: float | None = None      # 수익률 %
+
+
+class PaperAccountResponse(BaseModel):
+    cash: float                # 현금 잔액
+    seed: float                # 초기 시드머니
+    holdings_value: float      # 주식 평가금액 합
+    total_value: float         # 총 평가자산 = cash + holdings_value
+    total_pnl: float           # 총 평가손익 = total_value - seed
+    total_pnl_pct: float
+    holdings: list[PaperHolding]
+
+
+class PaperTrade(BaseModel):
+    id: int
+    ts: str
+    code: str
+    name: str
+    side: str  # "buy" | "sell"
+    qty: int
+    price: float
+    amount: float
+
+
+class PaperTradesResponse(BaseModel):
+    items: list[PaperTrade]
+
+
+class PaperOrderRequest(BaseModel):
+    code: str
+    side: str  # "buy" | "sell"
+    qty: int
+
+
 class SearchItem(BaseModel):
     code: str
     name: str
@@ -63,6 +121,55 @@ class SearchItem(BaseModel):
 
 class SearchResponse(BaseModel):
     items: list[SearchItem]
+
+
+class BacktestSide(BaseModel):
+    signals: int
+    hit_rate: float | None = None       # 매수: 상승 비율 / 매도: 하락 비율 (%)
+    avg_forward_pct: float | None = None  # 판정 후 N일 평균 수익률 %
+
+
+class BacktestPoint(BaseModel):
+    t: int
+    strategy: float   # 판정 따라가기 누적수익률 %
+    buyhold: float    # 단순 보유 누적수익률 %
+
+
+class BacktestResponse(BaseModel):
+    code: str
+    horizon_days: int
+    evaluated_days: int
+    start_date: str | None = None
+    end_date: str | None = None
+    buy: BacktestSide
+    sell: BacktestSide
+    strategy_return_pct: float
+    buy_hold_return_pct: float
+    curve: list[BacktestPoint]
+
+
+class DcaPoint(BaseModel):
+    t: int
+    principal: float  # 누적 투자원금
+    value: float      # 그 시점 평가금액
+
+
+class DcaResponse(BaseModel):
+    code: str
+    mode: str          # "qty" | "amount"
+    per: float         # 매월 매수 주수 또는 금액
+    buys: int          # 매수 횟수(개월)
+    total_shares: float
+    avg_price: float | None = None
+    current_price: float
+    principal: float   # 총 투자원금
+    eval_value: float  # 현재 평가금액
+    profit: float
+    return_pct: float
+    start_date: str | None = None
+    end_date: str | None = None
+    source: str | None = None
+    curve: list[DcaPoint]
 
 
 class CandleItem(BaseModel):

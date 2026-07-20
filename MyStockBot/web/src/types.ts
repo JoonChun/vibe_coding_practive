@@ -34,6 +34,117 @@ export interface WatchlistItemInput {
   name: string;
 }
 
+/** GET /api/indices 결과 항목 — 코스피/코스닥 지수 카드용 */
+export interface IndexItem {
+  code: string; // "KOSPI" | "KOSDAQ"
+  name: string;
+  value: number | null;
+  change: number | null;
+  change_pct: number | null;
+  source: SnapshotSource | null;
+  error: string | null;
+}
+
+export interface IndicesResponse {
+  generated_at: string;
+  cache_hit: boolean;
+  items: IndexItem[];
+}
+
+/** 판정 백테스트 (GET /api/stocks/{code}/backtest) */
+export interface BacktestSide {
+  signals: number;
+  hit_rate: number | null;
+  avg_forward_pct: number | null;
+}
+
+export interface BacktestPoint {
+  t: number;
+  strategy: number;
+  buyhold: number;
+}
+
+export interface BacktestResponse {
+  code: string;
+  horizon_days: number;
+  evaluated_days: number;
+  start_date: string | null;
+  end_date: string | null;
+  buy: BacktestSide;
+  sell: BacktestSide;
+  strategy_return_pct: number;
+  buy_hold_return_pct: number;
+  curve: BacktestPoint[];
+}
+
+/** 적립식 백테스트 (GET /api/stocks/{code}/dca) */
+export interface DcaPoint {
+  t: number;
+  principal: number;
+  value: number;
+}
+
+export interface DcaResponse {
+  code: string;
+  mode: "qty" | "amount";
+  per: number;
+  buys: number;
+  total_shares: number;
+  avg_price: number | null;
+  current_price: number;
+  principal: number;
+  eval_value: number;
+  profit: number;
+  return_pct: number;
+  start_date: string | null;
+  end_date: string | null;
+  source: SnapshotSource | null;
+  curve: DcaPoint[];
+}
+
+/** 모의투자 보유 종목 (GET /api/paper/account) */
+export interface PaperHolding {
+  code: string;
+  name: string;
+  qty: number;
+  avg_cost: number;
+  price: number | null;
+  eval_amount: number | null;
+  pnl: number | null;
+  pnl_pct: number | null;
+}
+
+export interface PaperAccount {
+  cash: number;
+  seed: number;
+  holdings_value: number;
+  total_value: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  holdings: PaperHolding[];
+}
+
+export interface PaperTrade {
+  id: number;
+  ts: string;
+  code: string;
+  name: string;
+  side: "buy" | "sell";
+  qty: number;
+  price: number;
+  amount: number;
+}
+
+export interface PaperTradesResponse {
+  items: PaperTrade[];
+}
+
+export interface PaperOrderInput {
+  code: string;
+  side: "buy" | "sell";
+  qty: number;
+}
+
 /** GET /api/stocks/search 결과 항목 — 자동완성 드롭다운용 */
 export interface SearchItem {
   code: string;

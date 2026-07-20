@@ -7,7 +7,7 @@ interface DistributionStripProps {
 
 const SEGMENTS: { key: DecisionView; label: string; color: string }[] = [
   { key: "강력매수", label: "강력매수", color: "#15803d" },
-  { key: "매수", label: "매수", color: "#65a30d" },
+  { key: "매수", label: "매수", color: "#4d7c0f" },
   { key: "관망", label: "관망", color: "#6b7280" },
   { key: "매도", label: "매도", color: "#dc2626" },
   { key: "강력매도", label: "강력매도", color: "#7f1d1d" },

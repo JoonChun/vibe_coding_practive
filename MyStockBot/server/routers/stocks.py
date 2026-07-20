@@ -5,8 +5,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 import db
 
-from ..schemas import CandlesResponse, SearchResponse
-from ..services import candles
+from ..schemas import BacktestResponse, CandlesResponse, DcaResponse, SearchResponse
+from ..services import backtest, candles, dca
 
 router = APIRouter(prefix="/api")
 
@@ -46,3 +46,38 @@ async def get_stock_candles(
     # KIS/yfinance 네트워크 호출은 블로킹이므로 스레드로 넘겨 이벤트루프를 막지 않는다.
     result = await asyncio.to_thread(candles.get_candles, normalized_code, tf, count)
     return result
+
+
+@router.get("/stocks/{code}/backtest", response_model=BacktestResponse)
+async def get_stock_backtest(
+    code: str,
+    horizon: int = Query(default=20, ge=5, le=120),
+):
+    try:
+        normalized_code = db.normalize_code(code)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        # 지표 재계산(CPU) + 데이터 로드(블로킹)를 스레드로 오프로드
+        return await asyncio.to_thread(backtest.signal_backtest, normalized_code, horizon)
+    except backtest.InsufficientHistoryError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.get("/stocks/{code}/dca", response_model=DcaResponse)
+async def get_stock_dca(
+    code: str,
+    mode: Literal["qty", "amount"] = Query(default="qty"),
+    per: float = Query(default=1, gt=0),
+    months: int = Query(default=120, ge=6, le=240),
+):
+    try:
+        normalized_code = db.normalize_code(code)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        return await asyncio.to_thread(dca.dca_backtest, normalized_code, mode, per, months)
+    except dca.InsufficientHistoryError as e:
+        raise HTTPException(status_code=409, detail=str(e))

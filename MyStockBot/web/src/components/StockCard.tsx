@@ -68,11 +68,7 @@ export function StockCard({ row, onDelete, tick }: StockCardProps) {
   async function handleDeleteClick(e: MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
     e.stopPropagation();
-    const confirmed = window.confirm(
-      `${name} (${code}) 종목을 관심종목에서 삭제할까요?`
-    );
-    if (!confirmed) return;
-
+    // 네이티브 confirm 대신 낙관적 삭제 + '실행 취소' 토스트(부모에서 처리)
     setPending(true);
     try {
       await onDelete(code);

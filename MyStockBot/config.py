@@ -28,6 +28,9 @@ KIS_WS_URL = "ws://ops.koreainvestment.com:21000"
 KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
 KIS_FINANCIAL_RATIO_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
 KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-statement"
+# 국내업종 일자별 지수 시세(코스피/코스닥 지수): inquire-daily-indexchartprice / FHKUP03500100
+# (server/services/indices.py 가 사용 — 실패 시 yfinance 폴백)
+KIS_INDEX_CHART_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice"
 
 # KIS 환경변수 키
 KIS_APP_KEY_ENV = "KIS_APP_KEY"
@@ -68,6 +71,13 @@ CORS_ALLOWED_ORIGINS = [
 # 수집 루프(server/services/collector.py) 사이클 간격(초)
 COLLECTOR_INTERVAL_MARKET = 30   # 장중(평일 09:00~15:40 Asia/Seoul)
 COLLECTOR_INTERVAL_IDLE = 600    # 그 외 시간대
+
+# 시장 지수(server/services/indices.py) read-through 캐시 TTL(초).
+# 지수는 개별 종목보다 갱신 빈도가 낮아도 되므로 넉넉히 둔다.
+INDICES_CACHE_TTL_SECONDS = int(os.environ.get("INDICES_CACHE_TTL_SECONDS", "60"))
+
+# 모의투자(server/services/paper.py) 초기 가상 시드머니(원). 개인용 단일 계좌.
+PAPER_SEED_DEFAULT = int(os.environ.get("PAPER_SEED_DEFAULT", "10000000"))
 
 # 종목마스터(전 종목 검색용) 관련 설정
 # 다운로드 URL은 KIS 공식 예제(open-trading-api/stocks_info/kis_*_code_mst.py)와 동일.

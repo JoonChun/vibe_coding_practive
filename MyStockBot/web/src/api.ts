@@ -1,5 +1,11 @@
 import type {
+  BacktestResponse,
   CandlesResponse,
+  DcaResponse,
+  IndicesResponse,
+  PaperAccount,
+  PaperOrderInput,
+  PaperTradesResponse,
   SnapshotResponse,
   StockSearchResponse,
   Timeframe,
@@ -122,6 +128,34 @@ export function getSnapshot(): Promise<SnapshotResponse> {
   return request<SnapshotResponse>("/api/snapshot");
 }
 
+/** 코스피·코스닥 시장 지수 조회 (메인 대시보드용). */
+export function getIndices(): Promise<IndicesResponse> {
+  return request<IndicesResponse>("/api/indices");
+}
+
+/** 모의투자 가상 계좌(현금·평가손익·보유목록) 조회. */
+export function getPaperAccount(): Promise<PaperAccount> {
+  return request<PaperAccount>("/api/paper/account");
+}
+
+/** 모의투자 거래 내역 조회. */
+export function getPaperTrades(limit = 100): Promise<PaperTradesResponse> {
+  return request<PaperTradesResponse>(`/api/paper/trades?limit=${limit}`);
+}
+
+/** 모의투자 매수/매도 주문(현재가 기준 즉시 체결). 갱신된 계좌 반환. */
+export function placePaperOrder(order: PaperOrderInput): Promise<PaperAccount> {
+  return request<PaperAccount>("/api/paper/orders", {
+    method: "POST",
+    body: JSON.stringify(order),
+  });
+}
+
+/** 모의투자 계좌 초기화. */
+export function resetPaperAccount(): Promise<PaperAccount> {
+  return request<PaperAccount>("/api/paper/reset", { method: "POST" });
+}
+
 /** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */
 export function searchStocks(
   q: string,
@@ -129,6 +163,32 @@ export function searchStocks(
 ): Promise<StockSearchResponse> {
   const params = new URLSearchParams({ q, limit: String(limit) });
   return request<StockSearchResponse>(`/api/stocks/search?${params.toString()}`);
+}
+
+/** 판정 백테스트 조회 — 과거 판정 재적용 적중률·가상수익률. horizon 기본 20거래일. */
+export function getBacktest(
+  code: string,
+  horizon = 20
+): Promise<BacktestResponse> {
+  return request<BacktestResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/backtest?horizon=${horizon}`
+  );
+}
+
+/** 적립식 백테스트 — 매월 정기 매수 시뮬레이션. mode qty(주수)/amount(금액). */
+export function getDca(
+  code: string,
+  opts: { mode?: "qty" | "amount"; per?: number; months?: number } = {}
+): Promise<DcaResponse> {
+  const { mode = "qty", per = 1, months = 120 } = opts;
+  const params = new URLSearchParams({
+    mode,
+    per: String(per),
+    months: String(months),
+  });
+  return request<DcaResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/dca?${params.toString()}`
+  );
 }
 
 /** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150·최대 300(마지막 N개). */
