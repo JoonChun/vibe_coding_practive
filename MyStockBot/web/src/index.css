@@ -2571,3 +2571,42 @@ select:focus-visible {
     animation: none;
   }
 }
+
+/* 관심종목 목록 필터(검색-추가와 분리) */
+.watchlist-toolbar__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.list-filter input {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  max-width: 9rem;
+}
+
+.list-filter input:focus-visible {
+  outline: 2px solid var(--primary-container);
+  outline-offset: 1px;
+}
+
+/* 상세 페이지: 미등록 종목 안내 카드(빈 분석 카드 대체) */
+.detail-grid__cta {
+  grid-column: 1 / -1;
+  padding: 1rem 1.1rem;
+  background: var(--surface-container);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+.detail-grid__cta p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--on-surface-variant);
+}

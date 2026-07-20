@@ -38,7 +38,8 @@ export default function DashboardPage() {
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
   const [watchlistErrorStatus, setWatchlistErrorStatus] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  // 관심종목 목록 필터(검색-추가 입력과 분리된 별도 상태)
+  const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("decision");
   // 삭제 실행취소용 — 방금 삭제한 종목(토스트). 타이머로 자동 소멸.
   const [undoItem, setUndoItem] = useState<{ code: string; name: string } | null>(null);
@@ -113,7 +114,7 @@ export default function DashboardPage() {
   }, [rows]);
 
   const visibleRows = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = filter.trim().toLowerCase();
     const filtered =
       q.length === 0
         ? rows
@@ -135,7 +136,7 @@ export default function DashboardPage() {
       sorted.sort((a, b) => a.name.localeCompare(b.name, "ko"));
     }
     return sorted;
-  }, [rows, query, sortKey]);
+  }, [rows, filter, sortKey]);
 
   // 언마운트 시 실행취소 타이머 정리(메모리 누수·잘못된 setState 방지)
   useEffect(() => {
@@ -236,8 +237,6 @@ export default function DashboardPage() {
 
       <main className="dash-main">
         <AddStockForm
-          query={query}
-          onQueryChange={setQuery}
           existingCodes={existingCodes}
           onAdded={() => void fetchWatchlist()}
         />
@@ -269,28 +268,40 @@ export default function DashboardPage() {
               ) : null}
             </p>
           </div>
-          <label className="sort-select">
-            <span className="sort-select__label">정렬</span>
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              aria-label="관심종목 정렬 기준"
-            >
-              <option value="decision">판정순</option>
-              <option value="change">등락률순</option>
-              <option value="name">이름순</option>
-            </select>
-          </label>
+          <div className="watchlist-toolbar__controls">
+            <label className="list-filter">
+              <span className="sr-only">관심종목 필터</span>
+              <input
+                type="text"
+                placeholder="목록에서 찾기"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                aria-label="관심종목 목록 필터"
+              />
+            </label>
+            <label className="sort-select">
+              <span className="sort-select__label">정렬</span>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                aria-label="관심종목 정렬 기준"
+              >
+                <option value="decision">판정순</option>
+                <option value="change">등락률순</option>
+                <option value="name">이름순</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        {query.trim() && rows.length > 0 ? (
+        {filter.trim() && rows.length > 0 ? (
           <button
             type="button"
             className="filter-chip"
-            onClick={() => setQuery("")}
-            aria-label={`'${query.trim()}' 필터 지우기`}
+            onClick={() => setFilter("")}
+            aria-label={`'${filter.trim()}' 필터 지우기`}
           >
-            필터: “{query.trim()}” <span aria-hidden="true">✕</span>
+            필터: “{filter.trim()}” <span aria-hidden="true">✕</span>
           </button>
         ) : null}
 
@@ -310,7 +321,7 @@ export default function DashboardPage() {
           <p className="watchlist-empty">
             {rows.length === 0
               ? "등록된 관심종목이 없습니다. 위에서 종목을 검색해 추가해주세요."
-              : `‘${query.trim()}’ 필터에 맞는 관심종목이 없습니다. 새 종목이면 위에서 추가하세요.`}
+              : `‘${filter.trim()}’ 필터에 맞는 관심종목이 없습니다. 새 종목이면 위에서 추가하세요.`}
           </p>
         ) : (
           <ul className="stock-card-grid">

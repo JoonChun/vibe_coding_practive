@@ -176,25 +176,37 @@ export default function StockDetailPage() {
         </section>
 
         <div className="detail-grid">
-          <div className="detail-grid__gauge">
-            <DecisionGauge
-              view={view}
-              score={score}
-              threshold={threshold}
-              relativeTime={relativeUpdatedAt || "방금"}
-            />
-          </div>
-          <div className="detail-grid__factors">
-            <FactorBreakdown rows={factorRows} />
-          </div>
-          <div className="detail-grid__bollinger">
-            <BollingerTrack
-              upper={item?.factors?.bb_upper ?? null}
-              mid={item?.factors?.bb_mid ?? null}
-              lower={item?.factors?.bb_lower ?? null}
-              price={close}
-            />
-          </div>
+          {item ? (
+            <>
+              <div className="detail-grid__gauge">
+                <DecisionGauge
+                  view={view}
+                  score={score}
+                  threshold={threshold}
+                  relativeTime={relativeUpdatedAt || "방금"}
+                />
+              </div>
+              <div className="detail-grid__factors">
+                <FactorBreakdown rows={factorRows} />
+              </div>
+              <div className="detail-grid__bollinger">
+                <BollingerTrack
+                  upper={item?.factors?.bb_upper ?? null}
+                  mid={item?.factors?.bb_mid ?? null}
+                  lower={item?.factors?.bb_lower ?? null}
+                  price={close}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="detail-grid__cta">
+              <p>
+                이 종목은 아직 관심종목이 아니라 판정·팩터 분석 데이터가 없습니다.
+                관심종목에 추가하면 매수/매도 판정과 기여요인을 볼 수 있어요.
+                아래 차트와 백테스트는 지금도 확인할 수 있습니다.
+              </p>
+            </div>
+          )}
           <div className="detail-grid__chart">
             <CandleChart code={code} />
           </div>

@@ -10,9 +10,6 @@ import { addWatchlistItem, ApiError, searchStocks } from "../api";
 import type { SearchItem } from "../types";
 
 interface AddStockFormProps {
-  /** 검색어 — 아래 Watchlist 카드 목록 필터링에도 사용 */
-  query: string;
-  onQueryChange: (value: string) => void;
   /** 이미 등록된 종목코드 목록 — 6자리 코드 입력 시 신규 등록 가능 여부 판단 */
   existingCodes: ReadonlySet<string>;
   /** 등록 성공 시 관심종목 재조회를 위해 호출 */
@@ -27,12 +24,9 @@ const MARKET_BADGE_CLASS: Record<SearchItem["market"], string> = {
   KOSDAQ: "market-badge market-badge--kosdaq",
 };
 
-export function AddStockForm({
-  query,
-  onQueryChange,
-  existingCodes,
-  onAdded,
-}: AddStockFormProps) {
+export function AddStockForm({ existingCodes, onAdded }: AddStockFormProps) {
+  // 검색어는 이 컴포넌트가 자체 소유한다(관심종목 목록 필터와 분리).
+  const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +103,7 @@ export function AddStockForm({
     setSubmitting(true);
     try {
       await addWatchlistItem({ code: item.code, name: item.name });
-      onQueryChange("");
+      setQuery("");
       onAdded();
     } catch (err) {
       setError(
@@ -154,7 +148,7 @@ export function AddStockForm({
     try {
       await addWatchlistItem({ code: trimmedQuery, name: trimmedName });
       setName("");
-      onQueryChange("");
+      setQuery("");
       onAdded();
     } catch (err) {
       setError(
@@ -203,7 +197,7 @@ export function AddStockForm({
             placeholder="종목명 또는 코드 검색"
             value={query}
             onChange={(e) => {
-              onQueryChange(e.target.value);
+              setQuery(e.target.value);
               setError(null);
             }}
             onFocus={() => {
