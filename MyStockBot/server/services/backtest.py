@@ -28,13 +28,60 @@ _MIN_BARS = 35
 _MAX_BARS = 400
 
 
-def _daily_view(sub: pd.DataFrame) -> str:
-    """일봉 슬라이스의 기술적 장기 판정(재무 제외). '데이터부족'/5단계 중 하나."""
-    import indicators  # 지연 import — 모듈 로드 시 ta 의존을 강제하지 않음
+def _build_view_at(df: pd.DataFrame):
+    """MACD/RSI 를 전체 시계열에 대해 1회만 계산하고, 인덱스 i(=[:i+1] 슬라이스 끝)의
+    기술적 장기 판정을 O(1) 로 돌려주는 함수를 만든다.
 
-    macd = indicators.macd_cross_signal(sub)
-    rsi = indicators.rsi_zone_signal(sub)
-    return indicators.long_term_view(macd, rsi, None, None, None)
+    MACD(EMA)·RSI(Wilder)는 인과적(recursive)이라 index i 의 값은 prefix[:i+1] 로
+    계산한 값과 동일하다 → 매 시점 슬라이스 재계산(O(n²)) 대신 1회 계산으로 대체.
+    라벨 문자열은 indicators.macd_cross_signal/rsi_zone_signal 과 동일 규칙을 따른다.
+    """
+    import ta.momentum
+    import ta.trend
+
+    import indicators
+    from config import (
+        MACD_FAST, MACD_SIGNAL, MACD_SLOW,
+        RSI_OVERBOUGHT, RSI_OVERSOLD, RSI_PERIOD,
+    )
+
+    close = df["close"].astype(float)
+    macd_obj = ta.trend.MACD(
+        close=close, window_fast=MACD_FAST, window_slow=MACD_SLOW, window_sign=MACD_SIGNAL
+    )
+    macd_line = macd_obj.macd().tolist()
+    signal_line = macd_obj.macd_signal().tolist()
+    rsi = ta.momentum.RSIIndicator(close=close, window=RSI_PERIOD).rsi().tolist()
+
+    def _nan(v) -> bool:
+        return v is None or v != v  # NaN != NaN
+
+    def _macd_label(i: int) -> str:
+        if i < 1:
+            return "데이터부족"
+        pm, cm, ps, cs = macd_line[i - 1], macd_line[i], signal_line[i - 1], signal_line[i]
+        if any(_nan(v) for v in (pm, cm, ps, cs)):
+            return "데이터부족"
+        if pm <= ps and cm > cs:
+            return "골든크로스(진입)"
+        if pm >= ps and cm < cs:
+            return "데드크로스(매도)"
+        return "진입구간" if cm > cs else "매도구간"
+
+    def _rsi_label(i: int) -> str:
+        v = rsi[i]
+        if _nan(v):
+            return "데이터부족"
+        if v <= RSI_OVERSOLD:
+            return "과매도(진입)"
+        if v >= RSI_OVERBOUGHT:
+            return "과매수(매도)"
+        return "중립"
+
+    def view_at(i: int) -> str:
+        return indicators.long_term_view(_macd_label(i), _rsi_label(i), None, None, None)
+
+    return view_at
 
 
 def _epoch_to_date(t) -> str | None:
@@ -57,6 +104,9 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     n = len(closes)
     has_t = "t" in df.columns
 
+    # 지표 1회 계산 → 인덱스별 판정 O(1) (기존 슬라이스 재계산 O(n²) 대체)
+    view_at = _build_view_at(df)
+
     buy_fwd: list[float] = []
     sell_fwd: list[float] = []
 
@@ -67,7 +117,7 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
         entry = closes[t]
         if entry <= 0:
             continue
-        view = _daily_view(df.iloc[: t + 1])
+        view = view_at(t)
         if view == "데이터부족":
             continue
         fwd = (closes[t + horizon] - entry) / entry * 100
@@ -97,7 +147,7 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
         if t > start and position == 1:
             r = closes[t] / closes[t - 1] - 1
             equity *= 1 + r
-        view = _daily_view(df.iloc[: t + 1])
+        view = view_at(t)
         position = 1 if view in _BUY_VIEWS else 0
         bh = closes[t] / closes[start] - 1
         curve.append({

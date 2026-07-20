@@ -104,6 +104,10 @@ def _fetch_kis_index(iscd: str) -> tuple[float, float | None, float | None]:
     rows = [(d, c) for d, c in rows if c is not None]
     if not rows:
         raise RuntimeError("KIS 지수 종가 파싱 실패")
+    # 날짜 필드명이 응답과 다르면 정렬 기준이 사라져(전부 "") 최신 대신 가장 오래된
+    # 봉을 집을 수 있다. 신뢰 가능한 8자리 날짜가 없으면 정렬을 포기하고 폴백을 유도한다.
+    if not all(len(d) == 8 and d.isdigit() for d, _ in rows):
+        raise RuntimeError("KIS 지수 날짜 파싱 실패(정렬 불가) — yfinance 폴백")
     rows.sort(key=lambda x: x[0])  # 날짜 오름차순
     value = rows[-1][1]
     prev = rows[-2][1] if len(rows) >= 2 else None
