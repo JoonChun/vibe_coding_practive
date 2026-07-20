@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { BacktestCard } from "../components/BacktestCard";
 import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
@@ -197,6 +198,8 @@ export default function StockDetailPage() {
             <CandleChart code={code} />
           </div>
         </div>
+
+        <BacktestCard code={code} />
       </main>
 
       <footer className="app-footer">

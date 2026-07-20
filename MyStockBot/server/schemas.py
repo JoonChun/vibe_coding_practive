@@ -123,6 +123,31 @@ class SearchResponse(BaseModel):
     items: list[SearchItem]
 
 
+class BacktestSide(BaseModel):
+    signals: int
+    hit_rate: float | None = None       # 매수: 상승 비율 / 매도: 하락 비율 (%)
+    avg_forward_pct: float | None = None  # 판정 후 N일 평균 수익률 %
+
+
+class BacktestPoint(BaseModel):
+    t: int
+    strategy: float   # 판정 따라가기 누적수익률 %
+    buyhold: float    # 단순 보유 누적수익률 %
+
+
+class BacktestResponse(BaseModel):
+    code: str
+    horizon_days: int
+    evaluated_days: int
+    start_date: str | None = None
+    end_date: str | None = None
+    buy: BacktestSide
+    sell: BacktestSide
+    strategy_return_pct: float
+    buy_hold_return_pct: float
+    curve: list[BacktestPoint]
+
+
 class CandleItem(BaseModel):
     t: int  # Unix epoch 초(UTC). 일봉+ 는 KST 자정 기준, 분봉은 실제 캔들 시각.
     open: float | None = None

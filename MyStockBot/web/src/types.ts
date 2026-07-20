@@ -51,6 +51,32 @@ export interface IndicesResponse {
   items: IndexItem[];
 }
 
+/** 판정 백테스트 (GET /api/stocks/{code}/backtest) */
+export interface BacktestSide {
+  signals: number;
+  hit_rate: number | null;
+  avg_forward_pct: number | null;
+}
+
+export interface BacktestPoint {
+  t: number;
+  strategy: number;
+  buyhold: number;
+}
+
+export interface BacktestResponse {
+  code: string;
+  horizon_days: number;
+  evaluated_days: number;
+  start_date: string | null;
+  end_date: string | null;
+  buy: BacktestSide;
+  sell: BacktestSide;
+  strategy_return_pct: number;
+  buy_hold_return_pct: number;
+  curve: BacktestPoint[];
+}
+
 /** 모의투자 보유 종목 (GET /api/paper/account) */
 export interface PaperHolding {
   code: string;

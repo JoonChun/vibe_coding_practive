@@ -1,4 +1,5 @@
 import type {
+  BacktestResponse,
   CandlesResponse,
   IndicesResponse,
   PaperAccount,
@@ -161,6 +162,16 @@ export function searchStocks(
 ): Promise<StockSearchResponse> {
   const params = new URLSearchParams({ q, limit: String(limit) });
   return request<StockSearchResponse>(`/api/stocks/search?${params.toString()}`);
+}
+
+/** 판정 백테스트 조회 — 과거 판정 재적용 적중률·가상수익률. horizon 기본 20거래일. */
+export function getBacktest(
+  code: string,
+  horizon = 20
+): Promise<BacktestResponse> {
+  return request<BacktestResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/backtest?horizon=${horizon}`
+  );
 }
 
 /** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150·최대 300(마지막 N개). */
