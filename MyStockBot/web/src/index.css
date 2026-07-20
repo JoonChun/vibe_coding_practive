@@ -2306,11 +2306,79 @@ select:focus-visible {
 /* ── 적립식 백테스트(DCA) ── */
 .dca-controls {
   display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.dca-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.6rem;
-  margin-bottom: 0.75rem;
+}
+
+.dca-seg {
+  display: flex;
+  background: var(--surface-container-high);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+
+.dca-seg__btn {
+  flex: 1;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+}
+
+.dca-seg__btn--on {
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.dca-select select {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.dca-reinvest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--on-surface);
+  cursor: pointer;
+}
+
+.dca-reinvest input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--v-buy, #4d7c0f);
+  cursor: pointer;
+}
+
+.dca-notes {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
 }
 
 .dca-qty {
