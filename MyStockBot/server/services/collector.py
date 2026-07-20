@@ -79,7 +79,10 @@ _stop_event = threading.Event()
 # ────────────────────────────────────────────
 
 def _is_market_hours(now: datetime) -> bool:
-    return now.weekday() < 5 and _MARKET_OPEN <= now.time() <= _MARKET_CLOSE
+    # 평일·시간뿐 아니라 KRX 휴장일(설/추석·대체공휴일·노동절 등)도 인지한다.
+    import market_calendar
+
+    return market_calendar.is_trading_day(now) and _MARKET_OPEN <= now.time() <= _MARKET_CLOSE
 
 
 def _cycle_interval_seconds() -> int:

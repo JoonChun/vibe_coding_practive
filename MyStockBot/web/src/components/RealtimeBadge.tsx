@@ -11,7 +11,7 @@ export function RealtimeBadge({ live }: RealtimeBadgeProps) {
       role="status"
     >
       <span className="realtime-badge__dot" aria-hidden="true" />
-      <span>{live ? "Real-time" : "지연"}</span>
+      <span>{live ? "실시간" : "지연"}</span>
     </span>
   );
 }

@@ -81,6 +81,33 @@ def _build_view_at(df: pd.DataFrame):
     return view_at
 
 
+def _sanitize_closes(raw: list) -> list[float]:
+    """0·음수·NaN·None 종가를 직전 유효값으로 forward-fill(선행 결측은 back-fill).
+
+    거래정지 봉(KIS stck_clpr="0")·결측이 섞이면 뒤 계산의 ZeroDivision/NaN 오염을
+    유발하므로, 계산 전에 항상 양(+)의 연속 시계열로 정제한다. 유효값이 하나도 없으면
+    ValueError.
+    """
+    def _valid(c):
+        try:
+            f = float(c)
+        except (TypeError, ValueError):
+            return None
+        return f if (f == f and f > 0) else None  # NaN != NaN
+
+    filled: list[float | None] = []
+    last: float | None = None
+    for c in raw:
+        v = _valid(c)
+        if v is not None:
+            last = v
+        filled.append(last)
+    first_valid = next((c for c in filled if c is not None), None)
+    if first_valid is None:
+        raise ValueError("유효한 종가가 없습니다(전부 0/결측).")
+    return [c if c is not None else first_valid for c in filled]
+
+
 def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     """df: 오름차순 일봉('close' 필수, 't' 있으면 날짜 표기). 순수 계산."""
     if df is None or "close" not in df.columns:
@@ -90,8 +117,15 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     else:
         df = df.reset_index(drop=True)
 
-    closes = [float(c) for c in df["close"].tolist()]
+    # 0/NaN 종가로 인한 ZeroDivision·NaN 오염 방지(계약을 순수함수에서도 자체 방어)
+    closes = _sanitize_closes(df["close"].tolist())
     n = len(closes)
+    if n < _MIN_BARS + horizon:
+        raise ValueError(
+            f"백테스트에 최소 {_MIN_BARS + horizon}봉이 필요합니다(현재 {n}봉)."
+        )
+    df = df.copy()
+    df["close"] = closes  # 정제된 종가로 지표도 계산되도록 동기화
     has_t = "t" in df.columns
 
     # 지표 1회 계산 → 인덱스별 판정 O(1) (기존 슬라이스 재계산 O(n²) 대체)
@@ -195,12 +229,22 @@ def _load_daily(code: str) -> pd.DataFrame | None:
 def signal_backtest(code: str, horizon: int = 20) -> dict:
     import db
 
+    from .timeseries import PriceDataError, detect_split_anomaly
+
     normalized = db.normalize_code(code)
     df = _load_daily(normalized)
     if df is None or "close" not in df.columns or len(df) < _MIN_BARS + horizon:
         raise InsufficientHistoryError(
             "백테스트에 필요한 일봉 이력이 부족합니다. 관심종목으로 등록되면 "
-            "매 수집 사이클마다 이력이 축적됩니다."
+            "매 수집 사이클마다 이력이 축적됩니다. (데이터 소스 일시 오류일 수도 있으니 "
+            "잠시 후 다시 시도해 주세요.)"
+        )
+    # 수정주가 미조정/소스 혼용으로 인접 봉이 비정상 점프하면 수익률이 폭발한다 →
+    # 잘못된 숫자를 보여주느니 계산을 중단하고 재수집을 유도.
+    if detect_split_anomaly(df["close"].tolist()) is not None:
+        raise PriceDataError(
+            "가격 데이터에 이상(액면분할 미조정 추정)이 감지되어 백테스트를 중단했습니다. "
+            "잠시 후 다시 시도하면 재수집된 데이터로 계산됩니다."
         )
     result = run_signal_backtest(df, horizon)
     result["code"] = normalized

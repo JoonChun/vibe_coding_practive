@@ -5,6 +5,8 @@
 !web/tsconfig.json
 !web/tsconfig.app.json
 !web/tsconfig.node.json
+# 락파일도 커밋 필요(CI 의 npm ci 재현성) — *.json 규칙에서 예외
+!web/package-lock.json
 
 # Environment variables
 .env

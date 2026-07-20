@@ -105,7 +105,7 @@ export default function PaperTradingPage() {
       <div className="app">
         <TokenBanner onSaved={() => void loadAll()} />
         <header className="dash-header">
-          <span className="dash-header__title">모의투자</span>
+          <h1 className="dash-header__title">모의투자</h1>
         </header>
       </div>
     );

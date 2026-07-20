@@ -54,11 +54,32 @@ export function useSnapshot(): UseSnapshotResult {
   }, []);
 
   useEffect(() => {
+    let id = 0;
+    const start = () => {
+      if (!id) id = window.setInterval(() => void fetchSnapshot(), POLL_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (id) {
+        window.clearInterval(id);
+        id = 0;
+      }
+    };
+    // 숨은 탭에서는 폴링을 멈춰 불필요한 네트워크/배터리 소모를 막고, 다시 보일 때 즉시 갱신.
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void fetchSnapshot();
+        start();
+      }
+    };
     void fetchSnapshot();
-    const id = window.setInterval(() => {
-      void fetchSnapshot();
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [fetchSnapshot]);
 
   const refresh = useCallback(() => {

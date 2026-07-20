@@ -1,0 +1,15 @@
+# MyStockBot 도구 설정 — 린트(ruff) + 테스트(pytest).
+# 의도적으로 최소 규칙만 켜서 CI가 레거시 코드에 발목잡히지 않게 한다
+# (E9=구문/런타임 오류, F=pyflakes: 미정의 이름·미사용 임포트).
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = ["web", "data", "**/__pycache__"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

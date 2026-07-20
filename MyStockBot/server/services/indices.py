@@ -78,6 +78,7 @@ def _fetch_kis_index(iscd: str) -> tuple[float, float | None, float | None]:
         "FID_INPUT_DATE_2": today.strftime("%Y%m%d"),
         "FID_PERIOD_DIV_CODE": "D",
     }
+    kis_auth.kis_throttle()
     resp = requests.get(KIS_INDEX_CHART_URL, headers=headers, params=params, timeout=10)
     resp.raise_for_status()
     data = resp.json()

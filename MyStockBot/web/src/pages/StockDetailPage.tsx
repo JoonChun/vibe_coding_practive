@@ -187,7 +187,7 @@ export default function StockDetailPage() {
                 />
               </div>
               <div className="detail-grid__factors">
-                <FactorBreakdown rows={factorRows} />
+                <FactorBreakdown rows={factorRows} threshold={threshold} />
               </div>
               <div className="detail-grid__bollinger">
                 <BollingerTrack

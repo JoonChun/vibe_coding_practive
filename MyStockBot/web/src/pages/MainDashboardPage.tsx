@@ -94,7 +94,7 @@ export default function MainDashboardPage() {
       ) : null}
 
       <header className="dash-header">
-        <span className="dash-header__title">MyStockBot</span>
+        <h1 className="dash-header__title">MyStockBot</h1>
         <RealtimeBadge live={tickStream.connected && tickStream.kisConnected} />
       </header>
 

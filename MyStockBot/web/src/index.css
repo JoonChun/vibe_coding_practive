@@ -179,6 +179,7 @@ select:focus-visible {
 }
 
 .dash-header__title {
+  margin: 0; /* h1 기본 마진 리셋 */
   font-family: var(--font-inter);
   font-size: 24px;
   line-height: 32px;
@@ -656,6 +657,19 @@ select:focus-visible {
 .stock-card__delete:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 터치 타깃 확대(a11y ~44px) — 시각 크기는 28px 유지하고 히트영역만 넓힌다 */
+.stock-card__delete::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+/* 정렬·필터 컨트롤도 최소 터치 높이 확보 */
+.sort-select select,
+.list-filter input {
+  min-height: 40px;
 }
 
 .stock-card__link {
@@ -1265,7 +1279,27 @@ select:focus-visible {
 .factor-row {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
+}
+
+.factor-row__rule {
+  font-size: 0.72rem;
+  color: var(--on-surface-variant);
+  line-height: 1.4;
+}
+
+.factor-card__summary {
+  margin: 1.1rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--outline-variant);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+.factor-card__summary b {
+  color: var(--on-surface);
+  font-weight: 700;
 }
 
 .factor-row__top {
@@ -2306,11 +2340,79 @@ select:focus-visible {
 /* ── 적립식 백테스트(DCA) ── */
 .dca-controls {
   display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.dca-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.6rem;
-  margin-bottom: 0.75rem;
+}
+
+.dca-seg {
+  display: flex;
+  background: var(--surface-container-high);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+
+.dca-seg__btn {
+  flex: 1;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+}
+
+.dca-seg__btn--on {
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.dca-select select {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.dca-reinvest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--on-surface);
+  cursor: pointer;
+}
+
+.dca-reinvest input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--v-buy, #4d7c0f);
+  cursor: pointer;
+}
+
+.dca-notes {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
 }
 
 .dca-qty {

@@ -58,6 +58,34 @@ export interface FactorRow {
   score: number;
   /** 기여 바 폭 계산용 — 해당 지표가 가질 수 있는 점수 절대값의 최댓값 */
   maxAbs: number;
+  /** 이 점수가 왜 나왔는지 사람말 설명 — 예: "골든크로스 — 강한 진입(+2)" */
+  rule: string;
+}
+
+/** 지표별 점수 산정 규칙을 사람이 읽는 한 줄로. indicators.py 규칙과 동일 기준. */
+export function ruleText(key: string, score: number): string {
+  switch (key) {
+    case "macd":
+      return score === 2
+        ? "골든크로스 — 강한 진입 (+2)"
+        : score === 1
+          ? "MACD > 시그널 — 진입구간 (+1)"
+          : score === -1
+            ? "MACD < 시그널 — 매도구간 (−1)"
+            : score === -2
+              ? "데드크로스 — 강한 매도 (−2)"
+              : "판정 불가 (0)";
+    case "rsi":
+      return score > 0 ? "과매도 — 반등 기대 (+1)" : score < 0 ? "과매수 — 조정 주의 (−1)" : "30~70 중립 (0)";
+    case "per":
+      return score > 0 ? "PER < 10 — 저평가 (+1)" : score < 0 ? "PER ≥ 30·적자 — 부담 (−1)" : "보통 (0)";
+    case "pbr":
+      return score > 0 ? "PBR < 1 — 자산 저평가 (+1)" : score < 0 ? "PBR ≥ 3 — 고평가 (−1)" : "보통 (0)";
+    case "roe":
+      return score > 0 ? "ROE ≥ 15% — 고수익성 (+1)" : score < 0 ? "ROE < 0 — 적자 (−1)" : "보통 (0)";
+    default:
+      return "";
+  }
 }
 
 function formatNumber(value: number | null, digits: number, suffix = ""): string {
@@ -77,12 +105,14 @@ function buildShortRows(factors: SnapshotFactors): FactorRow[] {
       label: `MACD ${macdLabel}`,
       score: macdScore(factors.macd_60m),
       maxAbs: 2,
+      rule: ruleText("macd", macdScore(factors.macd_60m)),
     },
     {
       key: "rsi",
       label: `RSI ${rsiZone}${rsiValueText}`,
       score: rsiScore(factors.rsi_60m),
       maxAbs: 1,
+      rule: ruleText("rsi", rsiScore(factors.rsi_60m)),
     },
   ];
 }
@@ -100,30 +130,35 @@ function buildLongRows(factors: SnapshotFactors): FactorRow[] {
       label: `MACD ${macdLabel}`,
       score: macdScore(factors.macd_1d),
       maxAbs: 2,
+      rule: ruleText("macd", macdScore(factors.macd_1d)),
     },
     {
       key: "rsi",
       label: `RSI ${rsiZone}${rsiValueText}`,
       score: rsiScore(factors.rsi_1d),
       maxAbs: 1,
+      rule: ruleText("rsi", rsiScore(factors.rsi_1d)),
     },
     {
       key: "per",
       label: `PER ${formatNumber(factors.per, 1, "배")}`,
       score: perScore(factors.per),
       maxAbs: 1,
+      rule: ruleText("per", perScore(factors.per)),
     },
     {
       key: "pbr",
       label: `PBR ${formatNumber(factors.pbr, 2, "배")}`,
       score: pbrScore(factors.pbr),
       maxAbs: 1,
+      rule: ruleText("pbr", pbrScore(factors.pbr)),
     },
     {
       key: "roe",
       label: `ROE ${formatNumber(factors.roe, 1, "%")}`,
       score: roeScore(factors.roe),
       maxAbs: 1,
+      rule: ruleText("roe", roeScore(factors.roe)),
     },
   ];
 }

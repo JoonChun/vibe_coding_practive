@@ -92,7 +92,25 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    """liveness('status') + readiness(마지막 스냅샷 신선도). 첫 수집 사이클 전이면 ready=false."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from config import TIMEZONE
+
+    from .services import collector
+
+    state = collector.get_state()
+    snapshot = None
+    if state and state.get("generated_at"):
+        snapshot = {"generated_at": state["generated_at"], "items": len(state.get("items", []))}
+        try:
+            gen = datetime.fromisoformat(state["generated_at"])
+            now = datetime.now(gen.tzinfo or ZoneInfo(TIMEZONE))
+            snapshot["age_seconds"] = round((now - gen).total_seconds(), 1)
+        except (ValueError, TypeError):
+            pass
+    return {"status": "ok", "ready": snapshot is not None, "snapshot": snapshot}
 
 
 app.include_router(watchlist.router)

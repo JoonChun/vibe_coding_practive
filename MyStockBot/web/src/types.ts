@@ -96,6 +96,9 @@ export interface DcaResponse {
   eval_value: number;
   profit: number;
   return_pct: number;
+  freq: "weekly" | "monthly" | "quarterly";
+  reinvest: boolean;
+  notes: string[];
   start_date: string | null;
   end_date: string | null;
   source: SnapshotSource | null;

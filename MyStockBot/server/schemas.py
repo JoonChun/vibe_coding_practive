@@ -89,6 +89,7 @@ class PaperAccountResponse(BaseModel):
     total_value: float         # 총 평가자산 = cash + holdings_value
     total_pnl: float           # 총 평가손익 = total_value - seed
     total_pnl_pct: float
+    priced_incomplete: bool = False  # 일부 보유의 현재가 부재 → 평가금액은 장부가로 대체됨
     holdings: list[PaperHolding]
 
 
@@ -157,8 +158,8 @@ class DcaPoint(BaseModel):
 class DcaResponse(BaseModel):
     code: str
     mode: str          # "qty" | "amount"
-    per: float         # 매월 매수 주수 또는 금액
-    buys: int          # 매수 횟수(개월)
+    per: float         # 회당 매수 주수 또는 금액
+    buys: int          # 매수 횟수
     total_shares: float
     avg_price: float | None = None
     current_price: float
@@ -166,6 +167,9 @@ class DcaResponse(BaseModel):
     eval_value: float  # 현재 평가금액
     profit: float
     return_pct: float
+    freq: str = "monthly"       # "weekly" | "monthly" | "quarterly"
+    reinvest: bool = False      # 배당 재투자 실제 반영 여부(현재 미지원 → 항상 False)
+    notes: list[str] = []       # 가정·한계·잘림 경고
     start_date: str | None = None
     end_date: str | None = None
     source: str | None = None

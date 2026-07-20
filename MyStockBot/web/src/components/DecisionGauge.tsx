@@ -115,7 +115,7 @@ export function DecisionGauge({ view, score, threshold, relativeTime }: Decision
             판정 갱신 · {relativeTime}
             <br />
             스코어 {score! > 0 ? "+" : ""}
-            {score} (임계 ±{threshold})
+            {score} · 합계 +{threshold} 이상이면 매수, −{threshold} 이하면 매도
           </p>
         </div>
       )}
