@@ -1010,4 +1010,44 @@ MyStockBot_PRD.md 항목을 표시하는 중입니다.
 5. **[기능]** 모의투자 라우터(원자적 트랜잭션, §12·§16.2)
 6. **[차별화]** ⭐ 판정 백테스트(§15.2) — 시그니처, 신규 데이터 소스 0
 7. **[UX P1]** 판정 근거 설명·삭제 UX·재시도·스켈레톤
+
+# [구현 현황] v3 로드맵 반영 상태 (PR #15 기준, 2026-07)
+
+> 본 절은 v2/v3 명세 대비 **실제 구현된 범위**를 기록한다. `[x]` 완료 · `[~]` 부분 · `[ ]` 미착수. 근거는 브랜치 `claude/mystockbot-feature-spec-c0l3pb` 커밋.
+
+## 19. 구현된 항목
+
+### 19.1 구조·페이지
+* `[x]` **3-페이지 + 하단 탭 셸** (§9·§17.2·§18-3) — `web/src/App.tsx` 라우트(`/`=메인·`/watchlist`=Sub1·`/paper`=Sub2·`/stocks/:code`), `TabBar.tsx`·`TabLayout.tsx`.
+* `[x]` **메인 대시보드** (§10) — `MainDashboardPage.tsx` + `useIndices.ts` (지수 카드·상승/하락 색상 규칙).
+* `[x]` **Sub2 모의투자 페이지** (§12) — `PaperTradingPage.tsx` (실주문·보유·거래내역·초기화).
+
+### 19.2 차별화 기능
+* `[x]` **⭐ 판정 백테스트** (§15.2·§18-6) — `server/services/backtest.py` + `GET /api/stocks/{code}/backtest`, `BacktestCard.tsx`. 기술적 판정(MACD+RSI)만, 재무 None. 지표 1회 계산(리뷰 M2).
+* `[x]` **🚀 적립식 백테스트(DCA)** (§15.2c) — `server/services/dca.py` + `GET .../dca`, `DcaCard.tsx` (정량/정액 모드).
+
+### 19.3 기술 보완
+* `[x]` **KIS 토큰/approval_key 동시성 락 (P0)** (§16.1) — `src/kis_auth.py` double-checked locking.
+* `[x]` **지수 전용 캐시 + `GET /api/indices` (P1)** (§16.2) — `server/services/indices.py` (KIS FHKUP03500100 1차 → yfinance 폴백, read-through 캐시, 날짜 파싱 방어=리뷰 M1).
+* `[x]` **모의투자 원자적 트랜잭션 (P1)** (§16.2) — `db.execute_paper_order` `BEGIN IMMEDIATE`, 서버측 영속(SQLite).
+
+### 19.4 UX
+* `[x]` **토큰 배너 온보딩 (P0)** (§17.1) — `TokenBanner.tsx` 발급 안내·형식·show/hide 토글.
+* `[x]` **PWA manifest/SW (P0)** (§17.1) — `web/vite.config.ts` `VitePWA`(빌드 시 생성).
+* `[x]` **삭제 UX — 낙관적 제거 + 실행취소 토스트** (§17.2) — `DashboardPage.tsx`.
+* `[x]` **로딩 스켈레톤** (§17.2) · `[x]` **연결 실패 재시도 버튼** (§17.2).
+* `[x]` **검색/필터 의도 분리** (§17.2) — `AddStockForm.tsx` 자체 검색 상태 + 목록 `filter` 분리 + 필터 칩.
+* `[x]` **색 대비(a11y) 매수칩** (§17.2) — `#65a30d→#4d7c0f`.
+* `[x]` **상세 페이지 빈 카드 정리 + CTA** (§17.3) — `StockDetailPage.tsx`.
+* `[x]` **다크 테마** (§17.3) — `index.css` `prefers-color-scheme` 토큰 세트.
+
+## 20. 미착수·후속 항목 (다음 PR 후보)
+* `[ ]` **`bar_history` 死코드 정리/연결 (P0)** (§16.1) — 미착수.
+* `[ ]` **WebSocket read 워치독 (P1)** (§16.2) — `kis_ws.py` `wait_for` 미도입.
+* `[~]` **테스트·린트·CI (P1)** (§16.2) — 개발 중 로컬 검증만 수행, 저장소 CI 잡·테스트 미커밋.
+* `[ ]` **P2 기술** (§16.3) — 휴장일 인지·rate-limit 전역 조율·관측성·배포 하드닝.
+* `[ ]` **판정 근거 자연어 설명·툴팁 (P1)** (§17.2·§15.3) — `DecisionGauge`/`FactorBreakdown` 미변경.
+* `[ ]` **P2 UX** (§17.3) — heading 계층·터치 타깃 44px·카피 통일·백그라운드 폴링 정지.
+
+> **E2E 검증 한계:** 프록시가 Yahoo(403) 차단 + KIS 자격증명 부재 → 지수는 failsafe로 200(에러 필드 포함) 응답 확인. 백테스트·DCA·모의투자는 시드 DB로 검증 완료.
 8. **[품질]** 테스트/CI·WS 워치독·a11y 대비
