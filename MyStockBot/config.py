@@ -28,6 +28,9 @@ KIS_WS_URL = "ws://ops.koreainvestment.com:21000"
 KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
 KIS_FINANCIAL_RATIO_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
 KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-statement"
+# 국내업종 일자별 지수 시세(코스피/코스닥 지수): inquire-daily-indexchartprice / FHKUP03500100
+# (server/services/indices.py 가 사용 — 실패 시 yfinance 폴백)
+KIS_INDEX_CHART_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice"
 
 # KIS 환경변수 키
 KIS_APP_KEY_ENV = "KIS_APP_KEY"
