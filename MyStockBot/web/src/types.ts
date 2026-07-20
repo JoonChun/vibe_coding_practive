@@ -77,6 +77,31 @@ export interface BacktestResponse {
   curve: BacktestPoint[];
 }
 
+/** 적립식 백테스트 (GET /api/stocks/{code}/dca) */
+export interface DcaPoint {
+  t: number;
+  principal: number;
+  value: number;
+}
+
+export interface DcaResponse {
+  code: string;
+  mode: "qty" | "amount";
+  per: number;
+  buys: number;
+  total_shares: number;
+  avg_price: number | null;
+  current_price: number;
+  principal: number;
+  eval_value: number;
+  profit: number;
+  return_pct: number;
+  start_date: string | null;
+  end_date: string | null;
+  source: SnapshotSource | null;
+  curve: DcaPoint[];
+}
+
 /** 모의투자 보유 종목 (GET /api/paper/account) */
 export interface PaperHolding {
   code: string;

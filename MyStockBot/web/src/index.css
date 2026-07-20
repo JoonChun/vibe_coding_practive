@@ -2302,3 +2302,107 @@ select:focus-visible {
 .bt-legend__swatch--buyhold {
   background: var(--outline);
 }
+
+/* ── 적립식 백테스트(DCA) ── */
+.dca-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.dca-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.dca-qty input {
+  width: 3.2rem;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.dca-years {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.dca-year {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  background: var(--surface-container);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+.dca-year--on {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.dca-year:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dca-result {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.dca-result__pct {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.dca-result__lab {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.dca-stats {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.dca-curve {
+  width: 100%;
+  height: 90px;
+  display: block;
+}
+
+.dca-curve__fill {
+  fill: rgba(180, 83, 9, 0.16);
+}
+
+.dca-curve__value {
+  stroke: #b45309;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.dca-curve__principal {
+  stroke: var(--outline);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  stroke-linejoin: round;
+}

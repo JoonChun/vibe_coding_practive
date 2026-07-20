@@ -148,6 +148,30 @@ class BacktestResponse(BaseModel):
     curve: list[BacktestPoint]
 
 
+class DcaPoint(BaseModel):
+    t: int
+    principal: float  # 누적 투자원금
+    value: float      # 그 시점 평가금액
+
+
+class DcaResponse(BaseModel):
+    code: str
+    mode: str          # "qty" | "amount"
+    per: float         # 매월 매수 주수 또는 금액
+    buys: int          # 매수 횟수(개월)
+    total_shares: float
+    avg_price: float | None = None
+    current_price: float
+    principal: float   # 총 투자원금
+    eval_value: float  # 현재 평가금액
+    profit: float
+    return_pct: float
+    start_date: str | None = None
+    end_date: str | None = None
+    source: str | None = None
+    curve: list[DcaPoint]
+
+
 class CandleItem(BaseModel):
     t: int  # Unix epoch 초(UTC). 일봉+ 는 KST 자정 기준, 분봉은 실제 캔들 시각.
     open: float | None = None

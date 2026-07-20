@@ -1,6 +1,7 @@
 import type {
   BacktestResponse,
   CandlesResponse,
+  DcaResponse,
   IndicesResponse,
   PaperAccount,
   PaperOrderInput,
@@ -171,6 +172,22 @@ export function getBacktest(
 ): Promise<BacktestResponse> {
   return request<BacktestResponse>(
     `/api/stocks/${encodeURIComponent(code)}/backtest?horizon=${horizon}`
+  );
+}
+
+/** 적립식 백테스트 — 매월 정기 매수 시뮬레이션. mode qty(주수)/amount(금액). */
+export function getDca(
+  code: string,
+  opts: { mode?: "qty" | "amount"; per?: number; months?: number } = {}
+): Promise<DcaResponse> {
+  const { mode = "qty", per = 1, months = 120 } = opts;
+  const params = new URLSearchParams({
+    mode,
+    per: String(per),
+    months: String(months),
+  });
+  return request<DcaResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/dca?${params.toString()}`
   );
 }
 
