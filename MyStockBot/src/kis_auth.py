@@ -13,11 +13,29 @@ import requests
 from config import (
     DB_PATH,
     KIS_APPROVAL_URL,
+    KIS_RATE_LIMIT_DELAY,
     KIS_TOKEN_URL,
     KIS_APP_KEY_ENV,
     KIS_APP_SECRET_ENV,
     TIMEZONE,
 )
+
+# ── KIS 호출 전역 rate-limit ──
+# collector 는 ThreadPoolExecutor(max_workers=4) 로 병렬 호출하고 sleep 은 스레드-로컬이라
+# 실제 초당 버스트가 의도의 수 배가 된다. 모든 KIS REST 호출 직전에 kis_throttle() 를 통과시켜
+# 프로세스 전역으로 최소 간격을 보장한다(락을 잡고 대기 → 호출 간격이 직렬화됨).
+_KIS_CALL_LOCK = threading.Lock()
+_kis_last_call = [0.0]  # monotonic 초 (리스트로 감싸 클로저 재할당 회피)
+
+
+def kis_throttle() -> None:
+    with _KIS_CALL_LOCK:
+        now = time.monotonic()
+        wait = KIS_RATE_LIMIT_DELAY - (now - _kis_last_call[0])
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+        _kis_last_call[0] = now
 
 _TOKEN_CACHE = {"access_token": None, "expires_at": None}
 # 토큰을 파일에도 영속화한다 — in-memory 캐시만 쓰면 서버 재시작(크래시 루프 포함)마다

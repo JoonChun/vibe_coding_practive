@@ -108,6 +108,7 @@ def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> p
         "FID_ORG_ADJ_PRC": "0",
     }
     try:
+        kis_auth.kis_throttle()
         resp = requests.get(KIS_DAILY_PRICE_URL, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
@@ -156,6 +157,7 @@ def _kis_financial_ratio(code: str, token: str) -> dict:
         "fid_cond_mrkt_div_code": "J",
     }
     try:
+        kis_auth.kis_throttle()
         resp = requests.get(KIS_FINANCIAL_RATIO_URL, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
@@ -184,6 +186,7 @@ def _kis_income_statement(code: str, token: str) -> dict:
         "fid_cond_mrkt_div_code": "J",
     }
     try:
+        kis_auth.kis_throttle()
         resp = requests.get(KIS_INCOME_STMT_URL, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
