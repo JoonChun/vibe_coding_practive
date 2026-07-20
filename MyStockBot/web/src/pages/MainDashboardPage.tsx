@@ -7,15 +7,8 @@ import { TokenBanner } from "../components/TokenBanner";
 import { useIndices } from "../hooks/useIndices";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickStream } from "../hooks/useTickStream";
-import type { DecisionView, IndexItem, SnapshotItem } from "../types";
-
-const EMPTY_DECISION_COUNTS: Record<DecisionView, number> = {
-  강력매수: 0,
-  매수: 0,
-  관망: 0,
-  매도: 0,
-  강력매도: 0,
-};
+import type { IndexItem, SnapshotItem } from "../types";
+import { countDecisions } from "../utils/decision";
 
 function changeClass(pct: number | null): string {
   if (pct === null) return "index-card__chg--flat";
@@ -33,12 +26,14 @@ function formatIndexValue(value: number | null): string {
 }
 
 function IndexCard({ item }: { item: IndexItem }) {
-  const up = item.change_pct !== null && item.change_pct > 0;
-  const down = item.change_pct !== null && item.change_pct < 0;
-  const chgText =
-    item.change_pct === null
-      ? "—"
-      : `${up ? "▲" : down ? "▼" : ""} ${item.change !== null ? Math.abs(item.change).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"} (${item.change_pct > 0 ? "+" : ""}${item.change_pct.toFixed(2)}%)`;
+  // 등락폭·등락률은 함께 있어야 의미가 있다. 하나만 있는 부분데이터는 "—"로 처리해
+  // "▲ — (+1.2%)" 같은 어정쩡한 표기를 막는다.
+  const hasChange = item.change !== null && item.change_pct !== null;
+  const up = hasChange && item.change_pct! > 0;
+  const down = hasChange && item.change_pct! < 0;
+  const chgText = !hasChange
+    ? "—"
+    : `${up ? "▲" : down ? "▼" : ""} ${Math.abs(item.change!).toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${item.change_pct! > 0 ? "+" : ""}${item.change_pct!.toFixed(2)}%)`;
 
   return (
     <div className="index-card">
@@ -47,7 +42,7 @@ function IndexCard({ item }: { item: IndexItem }) {
       {item.error ? (
         <span className="index-card__chg index-card__chg--flat">데이터 없음</span>
       ) : (
-        <span className={`index-card__chg ${changeClass(item.change_pct)}`}>
+        <span className={`index-card__chg ${changeClass(hasChange ? item.change_pct : null)}`}>
           {chgText}
         </span>
       )}
@@ -73,18 +68,10 @@ export default function MainDashboardPage() {
     [snapshot.data]
   );
 
-  const distribution = useMemo(() => {
-    const counts: Record<DecisionView, number> = { ...EMPTY_DECISION_COUNTS };
-    let total = 0;
-    for (const item of items) {
-      const v = item.short_view;
-      if (v && v in counts) {
-        counts[v as DecisionView] += 1;
-        total += 1;
-      }
-    }
-    return { counts, total };
-  }, [items]);
+  const distribution = useMemo(
+    () => countDecisions(items.map((item) => item.short_view)),
+    [items]
+  );
 
   const topMovers = useMemo(() => {
     return items

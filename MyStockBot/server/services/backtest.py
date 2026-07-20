@@ -11,12 +11,9 @@
 
 순수 계산부(run_signal_backtest)는 외부 의존 없이 df만 받으므로 단위테스트가 쉽다.
 """
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 import pandas as pd
 
-from config import TIMEZONE
+from .timeseries import downsample, epoch_to_date
 
 _BUY_VIEWS = {"매수", "강력매수"}
 _SELL_VIEWS = {"매도", "강력매도"}
@@ -82,13 +79,6 @@ def _build_view_at(df: pd.DataFrame):
         return indicators.long_term_view(_macd_label(i), _rsi_label(i), None, None, None)
 
     return view_at
-
-
-def _epoch_to_date(t) -> str | None:
-    try:
-        return datetime.fromtimestamp(int(t), ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
-    except (TypeError, ValueError, OSError):
-        return None
 
 
 def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
@@ -160,12 +150,10 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     buy_hold_return = round((closes[-1] / closes[start] - 1) * 100, 2) if closes[start] > 0 else 0.0
 
     # 곡선 다운샘플(최대 ~80점)
-    if len(curve) > 80:
-        step = len(curve) // 80 + 1
-        curve = curve[::step] + [curve[-1]]
+    curve = downsample(curve)
 
-    start_date = _epoch_to_date(df.iloc[start]["t"]) if has_t else None
-    end_date = _epoch_to_date(df.iloc[-1]["t"]) if has_t else None
+    start_date = epoch_to_date(df.iloc[start]["t"]) if has_t else None
+    end_date = epoch_to_date(df.iloc[-1]["t"]) if has_t else None
 
     return {
         "horizon_days": horizon,

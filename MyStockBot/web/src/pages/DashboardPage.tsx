@@ -14,24 +14,9 @@ import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickStream } from "../hooks/useTickStream";
 import type { DecisionView, SnapshotItem, WatchlistItem } from "../types";
+import { DECISION_RANK, countDecisions } from "../utils/decision";
 
 type SortKey = "decision" | "change" | "name";
-
-const DECISION_RANK: Record<DecisionView, number> = {
-  강력매수: 0,
-  매수: 1,
-  관망: 2,
-  매도: 3,
-  강력매도: 4,
-};
-
-const EMPTY_DECISION_COUNTS: Record<DecisionView, number> = {
-  강력매수: 0,
-  매수: 0,
-  관망: 0,
-  매도: 0,
-  강력매도: 0,
-};
 
 export default function DashboardPage() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -101,17 +86,10 @@ export default function DashboardPage() {
     [watchlist]
   );
 
-  const distributionCounts = useMemo(() => {
-    const counts: Record<DecisionView, number> = { ...EMPTY_DECISION_COUNTS };
-    let total = 0;
-    for (const row of rows) {
-      if (row.shortView && row.shortView in counts) {
-        counts[row.shortView as DecisionView] += 1;
-        total += 1;
-      }
-    }
-    return { counts, total };
-  }, [rows]);
+  const distributionCounts = useMemo(
+    () => countDecisions(rows.map((row) => row.shortView)),
+    [rows]
+  );
 
   const visibleRows = useMemo(() => {
     const q = filter.trim().toLowerCase();
