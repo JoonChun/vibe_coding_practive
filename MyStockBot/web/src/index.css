@@ -179,6 +179,7 @@ select:focus-visible {
 }
 
 .dash-header__title {
+  margin: 0; /* h1 기본 마진 리셋 */
   font-family: var(--font-inter);
   font-size: 24px;
   line-height: 32px;
@@ -656,6 +657,19 @@ select:focus-visible {
 .stock-card__delete:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 터치 타깃 확대(a11y ~44px) — 시각 크기는 28px 유지하고 히트영역만 넓힌다 */
+.stock-card__delete::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+/* 정렬·필터 컨트롤도 최소 터치 높이 확보 */
+.sort-select select,
+.list-filter input {
+  min-height: 40px;
 }
 
 .stock-card__link {

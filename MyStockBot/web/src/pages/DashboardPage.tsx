@@ -209,7 +209,7 @@ export default function DashboardPage() {
       ) : null}
 
       <header className="dash-header">
-        <span className="dash-header__title">MyStockBot</span>
+        <h1 className="dash-header__title">MyStockBot</h1>
         <RealtimeBadge live={tickStream.connected && tickStream.kisConnected} />
       </header>
 
@@ -231,7 +231,7 @@ export default function DashboardPage() {
 
         <div className="watchlist-toolbar">
           <div>
-            <h2 className="watchlist-toolbar__title">Watchlist</h2>
+            <h2 className="watchlist-toolbar__title">관심종목</h2>
             <p className="watchlist-toolbar__updated">
               {snapshot.loading && !snapshot.data
                 ? "불러오는 중…"
