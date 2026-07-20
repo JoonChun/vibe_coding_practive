@@ -15,7 +15,8 @@ interface ChipStyle {
 
 const CHIP_STYLES: Record<SignalView, ChipStyle> = {
   강력매수: { bg: "#15803d", fg: "#ffffff", border: "#15803d", outline: false },
-  매수: { bg: "#65a30d", fg: "#ffffff", border: "#65a30d", outline: false },
+  // 매수: 라임(#65a30d)은 흰 글자 대비 AA 미달 → 더 진한 올리브그린(#4d7c0f, ~5:1)
+  매수: { bg: "#4d7c0f", fg: "#ffffff", border: "#4d7c0f", outline: false },
   관망: { bg: "#6b7280", fg: "#ffffff", border: "#6b7280", outline: false },
   매도: { bg: "#dc2626", fg: "#ffffff", border: "#dc2626", outline: false },
   강력매도: { bg: "#7f1d1d", fg: "#ffffff", border: "#7f1d1d", outline: false },

@@ -2406,3 +2406,78 @@ select:focus-visible {
   stroke-dasharray: 4 3;
   stroke-linejoin: round;
 }
+
+/* ── UX 개선: 연결 재시도 · 토큰 온보딩 ── */
+.banner--error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.banner__retry {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.banner__retry:hover {
+  border-color: var(--outline);
+}
+
+.index-grid__error {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.token-banner__help {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+.token-banner__help code {
+  font-size: 0.72rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+}
+
+.token-banner__input-wrap {
+  display: flex;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.token-banner__input-wrap input {
+  flex: 1 1 auto;
+}
+
+.token-banner__toggle {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  background: var(--surface-container);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0 0.6rem;
+  cursor: pointer;
+}

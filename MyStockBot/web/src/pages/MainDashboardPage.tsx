@@ -123,7 +123,16 @@ export default function MainDashboardPage() {
               <div className="index-card index-card--skeleton" aria-hidden="true" />
             </>
           ) : (
-            <p className="index-grid__error">지수를 불러오지 못했습니다.</p>
+            <div className="index-grid__error">
+              <span>지수를 불러오지 못했습니다.</span>
+              <button
+                type="button"
+                className="banner__retry"
+                onClick={() => indices.refresh()}
+              >
+                다시 시도
+              </button>
+            </div>
           )}
         </section>
 

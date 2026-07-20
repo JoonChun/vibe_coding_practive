@@ -163,7 +163,17 @@ export default function DashboardPage() {
         />
       ) : showConnectionBanner ? (
         <div className="banner banner--error" role="alert">
-          서버에 연결할 수 없습니다
+          <span>서버에 연결할 수 없습니다</span>
+          <button
+            type="button"
+            className="banner__retry"
+            onClick={() => {
+              void fetchWatchlist();
+              snapshot.refresh();
+            }}
+          >
+            다시 시도
+          </button>
         </div>
       ) : null}
 
