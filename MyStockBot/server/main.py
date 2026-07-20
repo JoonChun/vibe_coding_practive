@@ -27,7 +27,7 @@ import db
 import stock_master
 
 from .auth import auth_middleware, is_auth_enabled
-from .routers import indices, stream, watchlist, snapshot, stocks
+from .routers import indices, paper, stream, watchlist, snapshot, stocks
 from .services import collector, kis_ws, scheduler
 
 
@@ -99,4 +99,5 @@ app.include_router(watchlist.router)
 app.include_router(snapshot.router)
 app.include_router(stocks.router)
 app.include_router(indices.router)
+app.include_router(paper.router)
 app.include_router(stream.router)

@@ -51,6 +51,49 @@ export interface IndicesResponse {
   items: IndexItem[];
 }
 
+/** 모의투자 보유 종목 (GET /api/paper/account) */
+export interface PaperHolding {
+  code: string;
+  name: string;
+  qty: number;
+  avg_cost: number;
+  price: number | null;
+  eval_amount: number | null;
+  pnl: number | null;
+  pnl_pct: number | null;
+}
+
+export interface PaperAccount {
+  cash: number;
+  seed: number;
+  holdings_value: number;
+  total_value: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  holdings: PaperHolding[];
+}
+
+export interface PaperTrade {
+  id: number;
+  ts: string;
+  code: string;
+  name: string;
+  side: "buy" | "sell";
+  qty: number;
+  price: number;
+  amount: number;
+}
+
+export interface PaperTradesResponse {
+  items: PaperTrade[];
+}
+
+export interface PaperOrderInput {
+  code: string;
+  side: "buy" | "sell";
+  qty: number;
+}
+
 /** GET /api/stocks/search 결과 항목 — 자동완성 드롭다운용 */
 export interface SearchItem {
   code: string;

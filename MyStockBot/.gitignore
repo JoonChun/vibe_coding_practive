@@ -1,6 +1,10 @@
 # Google Service Account Key
 *.json
 !package.json
+# 프론트엔드 TS 설정은 커밋 필요(빌드에 필수) — 위 *.json 규칙의 광범위 매칭 예외
+!web/tsconfig.json
+!web/tsconfig.app.json
+!web/tsconfig.node.json
 
 # Environment variables
 .env

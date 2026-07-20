@@ -71,6 +71,48 @@ class IndicesResponse(BaseModel):
     items: list[IndexItem]
 
 
+class PaperHolding(BaseModel):
+    code: str
+    name: str
+    qty: int
+    avg_cost: float
+    price: float | None = None        # 현재가(스냅샷)
+    eval_amount: float | None = None  # 평가금액 = price * qty
+    pnl: float | None = None          # 평가손익
+    pnl_pct: float | None = None      # 수익률 %
+
+
+class PaperAccountResponse(BaseModel):
+    cash: float                # 현금 잔액
+    seed: float                # 초기 시드머니
+    holdings_value: float      # 주식 평가금액 합
+    total_value: float         # 총 평가자산 = cash + holdings_value
+    total_pnl: float           # 총 평가손익 = total_value - seed
+    total_pnl_pct: float
+    holdings: list[PaperHolding]
+
+
+class PaperTrade(BaseModel):
+    id: int
+    ts: str
+    code: str
+    name: str
+    side: str  # "buy" | "sell"
+    qty: int
+    price: float
+    amount: float
+
+
+class PaperTradesResponse(BaseModel):
+    items: list[PaperTrade]
+
+
+class PaperOrderRequest(BaseModel):
+    code: str
+    side: str  # "buy" | "sell"
+    qty: int
+
+
 class SearchItem(BaseModel):
     code: str
     name: str

@@ -1,6 +1,9 @@
 import type {
   CandlesResponse,
   IndicesResponse,
+  PaperAccount,
+  PaperOrderInput,
+  PaperTradesResponse,
   SnapshotResponse,
   StockSearchResponse,
   Timeframe,
@@ -126,6 +129,29 @@ export function getSnapshot(): Promise<SnapshotResponse> {
 /** 코스피·코스닥 시장 지수 조회 (메인 대시보드용). */
 export function getIndices(): Promise<IndicesResponse> {
   return request<IndicesResponse>("/api/indices");
+}
+
+/** 모의투자 가상 계좌(현금·평가손익·보유목록) 조회. */
+export function getPaperAccount(): Promise<PaperAccount> {
+  return request<PaperAccount>("/api/paper/account");
+}
+
+/** 모의투자 거래 내역 조회. */
+export function getPaperTrades(limit = 100): Promise<PaperTradesResponse> {
+  return request<PaperTradesResponse>(`/api/paper/trades?limit=${limit}`);
+}
+
+/** 모의투자 매수/매도 주문(현재가 기준 즉시 체결). 갱신된 계좌 반환. */
+export function placePaperOrder(order: PaperOrderInput): Promise<PaperAccount> {
+  return request<PaperAccount>("/api/paper/orders", {
+    method: "POST",
+    body: JSON.stringify(order),
+  });
+}
+
+/** 모의투자 계좌 초기화. */
+export function resetPaperAccount(): Promise<PaperAccount> {
+  return request<PaperAccount>("/api/paper/reset", { method: "POST" });
 }
 
 /** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */
