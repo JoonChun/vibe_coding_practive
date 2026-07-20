@@ -11,16 +11,6 @@ from config import DB_PATH
 # db 에 저장되는 fetched_at 등 UTC naive 타임스탬프 포맷 — SQLite datetime('now')와 동일 형식.
 _UTC_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-# bar_history 에 저장되는 스냅샷 컬럼 (date, code 제외 — 별도 인자로 받음)
-_BAR_ITEM_COLUMNS = [
-    "name", "open", "close", "low", "high", "volume",
-    "macd_1d", "rsi_1d", "macd_60m", "rsi_60m",
-    "short_view", "long_view",
-    "bb_upper", "bb_mid", "bb_lower",
-    "per", "pbr", "roe", "revenue", "net_income",
-    "source", "source_60m",
-]
-
 
 class DuplicateError(Exception):
     """이미 활성 상태인 관심종목을 다시 추가하려 할 때 발생."""
@@ -51,42 +41,6 @@ def init_db() -> None:
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
             """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS bar_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL,
-                code TEXT NOT NULL,
-                name TEXT,
-                open REAL,
-                close REAL,
-                low REAL,
-                high REAL,
-                volume INTEGER,
-                macd_1d TEXT,
-                rsi_1d TEXT,
-                macd_60m TEXT,
-                rsi_60m TEXT,
-                short_view TEXT,
-                long_view TEXT,
-                bb_upper REAL,
-                bb_mid REAL,
-                bb_lower REAL,
-                per REAL,
-                pbr REAL,
-                roe REAL,
-                revenue INTEGER,
-                net_income INTEGER,
-                source TEXT,
-                source_60m TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                UNIQUE(date, code)
-            )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_bar_history_code ON bar_history(code, date DESC)"
         )
         conn.execute(
             """
@@ -250,27 +204,6 @@ def remove_watchlist_item(code) -> bool:
         conn.close()
 
 
-def get_bar_history(code, limit: int = 30) -> list[dict]:
-    """종목의 bar_history 최근 limit건을 날짜 오름차순으로 반환.
-
-    상세 판정 화면의 캔들 차트용. 데이터가 없으면 빈 리스트(404 아님).
-    limit 은 1~120 사이로 강제한다. code 형식이 틀리면 ValueError.
-    """
-    normalized_code = _normalize_code(code)
-    safe_limit = max(1, min(int(limit), 120))
-
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            "SELECT date, open, high, low, close, volume FROM bar_history "
-            "WHERE code = ? ORDER BY date DESC LIMIT ?",
-            (normalized_code, safe_limit),
-        ).fetchall()
-        return [dict(row) for row in reversed(rows)]
-    finally:
-        conn.close()
-
-
 def upsert_stock_master(rows: list[dict]) -> int:
     """[{code, name, market}, ...] 를 stock_master 에 upsert.
 
@@ -355,29 +288,6 @@ def search_stocks(q: str, limit: int = 10) -> list[dict]:
             },
         ).fetchall()
         return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
-def save_daily_bars(date_str: str, items: list[dict]) -> int:
-    if not items:
-        return 0
-
-    conn = get_connection()
-    try:
-        inserted = 0
-        columns = ["date", "code"] + _BAR_ITEM_COLUMNS
-        placeholders = ", ".join(["?"] * len(columns))
-        sql = (
-            f"INSERT OR IGNORE INTO bar_history ({', '.join(columns)}) "
-            f"VALUES ({placeholders})"
-        )
-        for item in items:
-            values = [date_str, item.get("code")] + [item.get(key) for key in _BAR_ITEM_COLUMNS]
-            cursor = conn.execute(sql, values)
-            inserted += cursor.rowcount
-        conn.commit()
-        return inserted
     finally:
         conn.close()
 
