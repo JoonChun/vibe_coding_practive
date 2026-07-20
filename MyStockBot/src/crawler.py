@@ -1,6 +1,7 @@
 import math
 import os
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -294,12 +295,25 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
 # Yahoo Finance 폴백
 # ────────────────────────────────────────────
 
+# code → 확정된 접미사(".KS"/".KQ") 캐시. 한 번 해석하면 이후 프로브를 생략해
+# Yahoo 왕복 횟수(및 429 스로틀)를 줄인다.
+_YF_SUFFIX_CACHE: dict[str, str] = {}
+_YF_SUFFIX_LOCK = threading.Lock()
+
+
 def _yf_ticker(code: str) -> yf.Ticker | None:
-    """코스피(.KS) 먼저 시도, 실패하면 코스닥(.KQ)."""
+    """코스피(.KS) 먼저 시도, 실패하면 코스닥(.KQ). 확정 접미사는 캐싱해 재프로브 회피."""
+    with _YF_SUFFIX_LOCK:
+        cached = _YF_SUFFIX_CACHE.get(code)
+    if cached is not None:
+        return yf.Ticker(f"{code}{cached}")
+
     for suffix in [".KS", ".KQ"]:
         ticker = yf.Ticker(f"{code}{suffix}")
         hist = ticker.history(period="5d")
         if not hist.empty:
+            with _YF_SUFFIX_LOCK:
+                _YF_SUFFIX_CACHE[code] = suffix
             return ticker
     return None
 
@@ -317,7 +331,9 @@ def fetch_yf_ohlcv(code: str, interval: str, period: str) -> pd.DataFrame | None
         ticker = _yf_ticker(code)
         if ticker is None:
             return None
-        hist = ticker.history(period=period, interval=interval)
+        # auto_adjust=True 를 명시해 분할·배당 조정 종가로 통일한다(yfinance 버전별
+        # 기본값 차이로 KIS 경로와 조정 기준이 어긋나 수익률이 달라지는 것을 방지).
+        hist = ticker.history(period=period, interval=interval, auto_adjust=True)
         if hist is None or hist.empty:
             return None
         hist = hist.dropna(subset=["Open", "High", "Low", "Close", "Volume"])

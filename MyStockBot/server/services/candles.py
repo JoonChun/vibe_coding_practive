@@ -230,13 +230,19 @@ def _fetch(code: str, tf: str) -> tuple[list[dict], str | None]:
     return items, (source if items else None)
 
 
-def _build_response(code: str, tf: str, source: str | None, items: list[dict], count: int) -> dict:
+def _build_response(
+    code: str, tf: str, source: str | None, items: list[dict], count: int,
+    fetch_error: bool = False,
+) -> dict:
     sliced = items[-count:] if items else []
     return {
         "code": code,
         "tf": tf,
         "source": source if sliced else None,
         "items": sliced,
+        # 내부 소비자(dca/backtest)가 "소스 장애"와 "진짜 이력 없음"을 구분하기 위한 신호.
+        # CandlesResponse 스키마엔 없는 키라 HTTP 응답에는 노출되지 않는다(response_model 필터).
+        "fetch_error": fetch_error,
     }
 
 
@@ -256,11 +262,13 @@ def get_candles(code: str, tf: str, count: int = _DEFAULT_COUNT) -> dict:
         stored = db.get_candles_store(code, tf, safe_count)
         return _build_response(code, tf, _remembered_source(code, tf), stored, safe_count)
 
+    fetch_error = False
     try:
         items, source = _fetch(code, tf)
     except Exception as e:
         print(f"[candles] 수집 실패 ({code}, {tf}): {e}")
         items, source = [], None
+        fetch_error = True
 
     if items:
         db.upsert_candles(code, tf, items)
@@ -274,4 +282,5 @@ def get_candles(code: str, tf: str, count: int = _DEFAULT_COUNT) -> dict:
         print(f"[candles] 최신 수집 실패 — 저장소의 낡은 데이터로 서빙 ({code}, {tf})")
         return _build_response(code, tf, _remembered_source(code, tf), stored, safe_count)
 
-    return _build_response(code, tf, None, [], safe_count)
+    # 데이터가 아예 없음: fetch 예외였는지(소스 장애) 빈 응답이었는지 구분해 전달.
+    return _build_response(code, tf, None, [], safe_count, fetch_error=fetch_error)

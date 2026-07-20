@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import threading
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests
 from config import (
+    DB_PATH,
     KIS_APPROVAL_URL,
     KIS_TOKEN_URL,
     KIS_APP_KEY_ENV,
@@ -18,6 +20,10 @@ from config import (
 )
 
 _TOKEN_CACHE = {"access_token": None, "expires_at": None}
+# 토큰을 파일에도 영속화한다 — in-memory 캐시만 쓰면 서버 재시작(크래시 루프 포함)마다
+# 재발급을 시도해 KIS 발급 rate-limit(EGW00133, "1분당 1회")에 걸린다. 파일 캐시가
+# 유효하면 재시작 후에도 재발급 없이 재사용한다.
+_TOKEN_FILE = os.path.join(os.path.dirname(DB_PATH) or ".", ".kis_token.json")
 # 토큰/approval_key 발급 구간 보호용 락. 부팅·만료 직후 콜드미스 시 여러 스레드
 # (candles 요청·kis_ws·collector·크론)가 동시에 발급 요청을 쏘면 KIS 발급 rate-limit
 # (EGW00133)에 걸린다 → double-checked locking 으로 발급을 단일화한다.
@@ -32,15 +38,25 @@ _APPROVAL_KEY_LOCK = threading.Lock()
 
 
 def _load_cache() -> str | None:
+    now = datetime.now(ZoneInfo(TIMEZONE))
     try:
         expires_at = _TOKEN_CACHE.get("expires_at")
         access_token = _TOKEN_CACHE.get("access_token")
-        if expires_at is None or access_token is None:
-            return None
-        now = datetime.now(ZoneInfo(TIMEZONE))
-        if now < expires_at:
+        if access_token is not None and expires_at is not None and now < expires_at:
             return access_token
     except Exception:
+        pass
+    # in-memory 미스/만료 — 파일 캐시(재시작 이전 발급분)를 확인
+    try:
+        with open(_TOKEN_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        token = data.get("access_token")
+        expires_at = datetime.fromisoformat(data["expires_at"])
+        if token and now < expires_at:
+            _TOKEN_CACHE["access_token"] = token
+            _TOKEN_CACHE["expires_at"] = expires_at
+            return token
+    except (FileNotFoundError, KeyError, ValueError, OSError):
         pass
     return None
 
@@ -51,6 +67,16 @@ def _save_cache(token: str, expires_in: int) -> None:
         _TOKEN_CACHE["access_token"] = token
         _TOKEN_CACHE["expires_at"] = expires_at
     except Exception:
+        return
+    # 파일에도 저장(재시작 후 재사용). 실패는 무시(in-memory 로 계속 동작).
+    try:
+        os.makedirs(os.path.dirname(_TOKEN_FILE) or ".", exist_ok=True)
+        tmp = _TOKEN_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"access_token": token, "expires_at": expires_at.isoformat()}, f)
+        os.replace(tmp, _TOKEN_FILE)
+        os.chmod(_TOKEN_FILE, 0o600)
+    except OSError:
         pass
 
 
@@ -99,7 +125,14 @@ def get_token() -> str:
         data = _request_token(payload)
         token = data.get("access_token")
         if not token:
-            raise RuntimeError(f"access_token 없음. 응답: {data}")
+            code = str(data.get("error_code") or data.get("msg_cd") or "")
+            msg = str(data.get("error_description") or data.get("msg1") or data.get("msg") or "")
+            if "EGW00133" in code or "EGW00133" in msg or "1분" in msg:
+                raise RuntimeError(
+                    "KIS 토큰 발급 rate-limit(EGW00133: 1분당 1회 초과). 잠시 후 다시 시도하세요."
+                )
+            # 응답 전체를 로그에 남기지 않도록 코드/메시지만 노출.
+            raise RuntimeError(f"KIS access_token 발급 실패(error_code={code}, msg={msg}).")
 
         expires_in = int(data.get("expires_in", 86400))
         _save_cache(token, expires_in)
