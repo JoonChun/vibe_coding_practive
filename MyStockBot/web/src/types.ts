@@ -177,6 +177,37 @@ export interface StockSearchResponse {
   items: SearchItem[];
 }
 
+/**
+ * 판정 기여요인 1행 — **백엔드가 계산해 내려준다.**
+ *
+ * 예전에는 web/src/utils/factorScoring.ts 가 점수표·임계값·설명문을 TS 로 복제해 화면에서
+ * 다시 계산했고, 그 파일 주석이 "백엔드 점수와 불일치할 수 있으므로 화면은 프론트 합계를
+ * 우선한다"고 못박아 두어 화면 숫자와 실제 판정 근거가 갈라질 수 있었다. 지금은 계산 지점이
+ * src/decision_rules.py + src/indicators.py 한 곳뿐이고 화면은 그리기만 한다.
+ */
+export interface FactorRow {
+  key: "macd" | "rsi" | "per" | "pbr" | "roe";
+  /** 표시 문구 — 예: "MACD 골든크로스(진입)", "RSI 중립 · RSI 52.4" */
+  label: string;
+  score: number;
+  /** 기여 바 폭 계산용 — 이 팩터가 가질 수 있는 점수 절대값의 최댓값 */
+  max_abs: number;
+  /** 이 점수가 나온 이유 — 예: "골든크로스 — 강한 진입 (+2)" */
+  rule: string;
+}
+
+/** 판정 임계값 — 화면이 규칙을 하드코딩하지 않도록 스냅샷 응답에 함께 실려 온다. */
+export interface DecisionRules {
+  /** |합계| 이상이면 매수/매도 */
+  weak: number;
+  /** 단기 강력 등급 경계 */
+  short_strong: number;
+  /** 장기 강력 등급 경계 */
+  long_strong: number;
+  /** 장기 강력 등급에 기술 지표의 같은 방향 확증을 요구하는지 */
+  long_strong_requires_tech_confirm: boolean;
+}
+
 export interface SnapshotFactors {
   macd_1d: string | null;
   rsi_1d: string | null;
@@ -190,8 +221,14 @@ export interface SnapshotFactors {
   per: number | null;
   pbr: number | null;
   roe: number | null;
-  short_score: number | null; // 단기 스코어 합 (임계 ±2)
-  long_score: number | null; // 장기 스코어 합 (임계 ±3)
+  /** 단기 스코어 합 — 임계값은 응답의 rules 참조 */
+  short_score: number | null;
+  /** 장기 스코어 합 — 임계값은 응답의 rules 참조 */
+  long_score: number | null;
+  /** 단기(60분봉) 기여요인 — MACD·RSI */
+  breakdown_short: FactorRow[];
+  /** 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE */
+  breakdown_long: FactorRow[];
 }
 
 export interface SnapshotItem {
@@ -211,6 +248,8 @@ export interface SnapshotResponse {
   generated_at: string;
   cache_hit: boolean;
   items: SnapshotItem[];
+  /** 판정 임계값. 구버전 백엔드 호환을 위해 optional. */
+  rules?: DecisionRules | null;
 }
 
 

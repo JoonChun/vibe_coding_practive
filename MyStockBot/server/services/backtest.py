@@ -20,8 +20,21 @@ from .timeseries import downsample, epoch_to_date
 
 logger = logging.getLogger(__name__)
 
-_BUY_VIEWS = {"매수", "강력매수"}
-_SELL_VIEWS = {"매도", "강력매도"}
+
+def _view_sets() -> tuple[set[str], set[str]]:
+    """판정 라벨 집합을 단일 소스(decision_rules)에서 가져온다.
+
+    예전에는 문자열을 여기 하드코딩해 두어, 라벨을 개명하면 매칭이 전부 실패해 조용히
+    "전 구간 현금 보유"(전략수익률 0%)가 되는 구조였다. 지연 import 는 이 모듈이
+    ta/config 없이도 임포트되게 유지하기 위함(순수 계산부 테스트 용이성).
+    """
+    import decision_rules as rules
+
+    return (
+        {rules.VIEW_BUY, rules.VIEW_STRONG_BUY},
+        {rules.VIEW_SELL, rules.VIEW_STRONG_SELL},
+    )
+
 
 # 적중률 신뢰구간 z값(95%).
 _Z_95 = 1.96
@@ -44,16 +57,17 @@ def _build_view_at(df: pd.DataFrame):
 
     MACD(EMA)·RSI(Wilder)는 인과적(recursive)이라 index i 의 값은 prefix[:i+1] 로
     계산한 값과 동일하다 → 매 시점 슬라이스 재계산(O(n²)) 대신 1회 계산으로 대체.
-    라벨 문자열은 indicators.macd_cross_signal/rsi_zone_signal 과 동일 규칙을 따른다.
+
+    라벨 생성은 indicators.macd_label_from_pair / rsi_label_from_value 를 **그대로 호출**한다.
+    예전에는 같은 규칙을 이 함수 안에 재구현해 두어, indicators 쪽 라벨을 바꾸면 여기가
+    낡은 문자열을 계속 만들어 점수 lookup 이 전부 0(=관망)으로 조용히 붕괴했다.
     """
     import ta.momentum
     import ta.trend
 
+    import decision_rules as rules
     import indicators
-    from config import (
-        MACD_FAST, MACD_SIGNAL, MACD_SLOW,
-        RSI_OVERBOUGHT, RSI_OVERSOLD, RSI_PERIOD,
-    )
+    from config import MACD_FAST, MACD_SIGNAL, MACD_SLOW, RSI_PERIOD
 
     close = df["close"].astype(float)
     macd_obj = ta.trend.MACD(
@@ -63,33 +77,19 @@ def _build_view_at(df: pd.DataFrame):
     signal_line = macd_obj.macd_signal().tolist()
     rsi = ta.momentum.RSIIndicator(close=close, window=RSI_PERIOD).rsi().tolist()
 
-    def _nan(v) -> bool:
-        return v is None or v != v  # NaN != NaN
-
     def _macd_label(i: int) -> str:
         if i < 1:
-            return "데이터부족"
-        pm, cm, ps, cs = macd_line[i - 1], macd_line[i], signal_line[i - 1], signal_line[i]
-        if any(_nan(v) for v in (pm, cm, ps, cs)):
-            return "데이터부족"
-        if pm <= ps and cm > cs:
-            return "골든크로스(진입)"
-        if pm >= ps and cm < cs:
-            return "데드크로스(매도)"
-        return "진입구간" if cm > cs else "매도구간"
-
-    def _rsi_label(i: int) -> str:
-        v = rsi[i]
-        if _nan(v):
-            return "데이터부족"
-        if v <= RSI_OVERSOLD:
-            return "과매도(진입)"
-        if v >= RSI_OVERBOUGHT:
-            return "과매수(매도)"
-        return "중립"
+            return rules.NO_DATA
+        return indicators.macd_label_from_pair(
+            macd_line[i - 1], macd_line[i], signal_line[i - 1], signal_line[i]
+        )
 
     def view_at(i: int) -> str:
-        return indicators.long_term_view(_macd_label(i), _rsi_label(i), None, None, None)
+        # 재무 과거값이 없어 per/pbr/roe 는 항상 None — 기술적 판정만 재적용한다
+        # (응답의 fundamentals_included=False, notes 로 고지).
+        return indicators.long_term_view(
+            _macd_label(i), indicators.rsi_label_from_value(rsi[i]), None, None, None
+        )
 
     return view_at
 
@@ -186,6 +186,10 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     # 지표 1회 계산 → 인덱스별 판정 O(1) (기존 슬라이스 재계산 O(n²) 대체)
     view_at = _build_view_at(df)
 
+    import decision_rules as rules
+
+    buy_views, sell_views = _view_sets()
+
     # (봉 인덱스, 선행수익률) — 인덱스는 겹침 보정 표본 계산에 쓴다.
     buy_fwd: list[tuple[int, float]] = []
     sell_fwd: list[tuple[int, float]] = []
@@ -198,12 +202,12 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
         if entry <= 0:
             continue
         view = view_at(t)
-        if view == "데이터부족":
+        if view == rules.NO_DATA:
             continue
         fwd = (closes[t + horizon] - entry) / entry * 100
-        if view in _BUY_VIEWS:
+        if view in buy_views:
             buy_fwd.append((t, fwd))
-        elif view in _SELL_VIEWS:
+        elif view in sell_views:
             sell_fwd.append((t, fwd))
         evaluated += 1
 
@@ -243,7 +247,7 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
             r = closes[t] / closes[t - 1] - 1
             equity *= 1 + r
         view = view_at(t)
-        position = 1 if view in _BUY_VIEWS else 0
+        position = 1 if view in buy_views else 0
         bh = closes[t] / closes[start] - 1
         curve.append({
             "t": int(df.iloc[t]["t"]) if has_t else t,

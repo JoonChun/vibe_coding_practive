@@ -28,6 +28,23 @@ class WatchlistSyncResponse(BaseModel):
     failed: int         # 추가 실패 건수
 
 
+class FactorRow(BaseModel):
+    """판정 기여요인 1행 — 백엔드가 계산해 내려주고 화면은 그리기만 한다."""
+    key: str            # "macd" | "rsi" | "per" | "pbr" | "roe"
+    label: str          # 표시 문구 (예: "MACD 골든크로스(진입)", "RSI 중립 · RSI 52.4")
+    score: int          # 이 팩터의 기여 점수
+    max_abs: int        # 기여 바 폭 계산용 — 이 팩터가 가질 수 있는 점수 절대값 최댓값
+    rule: str           # 이 점수가 나온 이유 (예: "골든크로스 — 강한 진입 (+2)")
+
+
+class DecisionRules(BaseModel):
+    """판정 임계값 — 화면이 규칙을 하드코딩하지 않도록 응답에 함께 싣는다."""
+    weak: int                                 # |합계| 이상이면 매수/매도
+    short_strong: int                         # 단기 강력 등급 경계
+    long_strong: int                          # 장기 강력 등급 경계
+    long_strong_requires_tech_confirm: bool   # 장기 강력 등급에 기술 지표 확증을 요구하는지
+
+
 class FactorDetail(BaseModel):
     macd_1d: str | None = None
     rsi_1d: str | None = None
@@ -43,6 +60,8 @@ class FactorDetail(BaseModel):
     roe: float | None = None
     short_score: int | None = None
     long_score: int | None = None
+    breakdown_short: list[FactorRow] = []   # 단기(60분봉) 기여요인 — MACD·RSI
+    breakdown_long: list[FactorRow] = []    # 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE
 
 
 class SnapshotItem(BaseModel):
@@ -62,6 +81,7 @@ class SnapshotResponse(BaseModel):
     generated_at: str
     cache_hit: bool
     items: list[SnapshotItem]
+    rules: DecisionRules | None = None  # 판정 임계값(화면 캡션·게이지 정규화에 사용)
 
 
 class IndexItem(BaseModel):

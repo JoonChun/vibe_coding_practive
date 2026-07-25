@@ -2,10 +2,12 @@ import type { SignalView } from "../types";
 
 interface DecisionGaugeProps {
   view: SignalView | null;
-  /** 프론트에서 재계산한 기여점수 합(합계 우선 표기 규칙 — utils/factorScoring 참조) */
+  /** 백엔드가 계산한 기여점수 합(factors.short_score / long_score) */
   score: number | null;
-  /** 임계값 — 단기 2, 장기 3 */
+  /** 강력 등급 경계 — 스냅샷 응답의 rules.short_strong / long_strong */
   threshold: number;
+  /** 매수/매도 경계 — 스냅샷 응답의 rules.weak */
+  weak: number;
   /** "방금" / "3초 전" 등 상대 시간 문자열 */
   relativeTime: string;
 }
@@ -51,7 +53,13 @@ const SEGMENTS = [0, 1, 2, 3, 4].map((i) => ({
  * AI 종합 분석 반원 게이지. 바늘 각도는 score를 [-threshold, +threshold]로 클램프한 뒤
  * 180˚(강력매도) ~ 0˚(강력매수) 범위로 선형 매핑한다.
  */
-export function DecisionGauge({ view, score, threshold, relativeTime }: DecisionGaugeProps) {
+export function DecisionGauge({
+  view,
+  score,
+  threshold,
+  weak,
+  relativeTime,
+}: DecisionGaugeProps) {
   const insufficient = view === null || view === "데이터부족" || score === null;
 
   const clampedScore = insufficient ? 0 : Math.max(-threshold, Math.min(threshold, score));
@@ -111,11 +119,13 @@ export function DecisionGauge({ view, score, threshold, relativeTime }: Decision
           <div className="gauge-card__label" style={{ color: labelColor }}>
             {view}
           </div>
+          {/* 캡션은 실제 규칙(±weak 매수·매도, ±threshold 강력)을 그대로 말해야 한다 —
+              예전에는 "+threshold 이상이면 매수"로 적어 규칙을 잘못 설명했다. */}
           <p className="gauge-card__caption">
             판정 갱신 · {relativeTime}
             <br />
             스코어 {score! > 0 ? "+" : ""}
-            {score} · 합계 +{threshold} 이상이면 매수, −{threshold} 이하면 매도
+            {score} · ±{weak} 매수/매도, ±{threshold} 강력
           </p>
         </div>
       )}

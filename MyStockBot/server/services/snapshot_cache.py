@@ -22,10 +22,22 @@ _FACTOR_KEYS = [
 
 
 def _to_factors(item: dict) -> dict | None:
-    """수집 실패(error 존재) 시 None, 아니면 상세 판정용 팩터 dict."""
+    """수집 실패(error 존재) 시 None, 아니면 상세 판정용 팩터 dict.
+
+    기여요인 분해(breakdown)를 여기서 함께 만들어 내려보낸다 — 예전에는 프론트가
+    점수표·임계값·설명문을 TS 로 복제해 스스로 계산했고(web/src/utils/factorScoring.ts),
+    그래서 화면에 보이는 합계가 실제 판정 근거와 어긋날 수 있었다. 이제 계산 지점은
+    indicators.factor_rows 한 곳뿐이고 화면은 그것을 그린다.
+    """
     if item.get("error") is not None:
         return None
-    return {key: item.get(key) for key in _FACTOR_KEYS}
+
+    import indicators
+
+    factors = {key: item.get(key) for key in _FACTOR_KEYS}
+    factors["breakdown_short"] = indicators.factor_rows(item, "short")
+    factors["breakdown_long"] = indicators.factor_rows(item, "long")
+    return factors
 
 
 def _to_snapshot_item(item: dict) -> dict:
@@ -43,16 +55,34 @@ def _to_snapshot_item(item: dict) -> dict:
     }
 
 
+def _rules_meta() -> dict:
+    """판정 임계값을 응답에 실어 보낸다(항목마다가 아니라 응답 1회).
+
+    프론트가 `TAB_THRESHOLD = {short: 2, long: 3}` 을 복제해 두고 "합계가 +3 이상이면 매수"
+    라는 틀린 설명을 렌더하던 문제를 없앤다 — 실제 규칙은 +1 이상 매수, +3 이상 강력매수다.
+    """
+    import indicators
+
+    return indicators.decision_thresholds()
+
+
 async def get_snapshot() -> dict:
     """collector 상태를 읽기만 한다 — 여기서 수집을 트리거하지 않는다."""
     state = collector.get_state()
+    rules_meta = _rules_meta()
     if state is None:
         now = datetime.now(ZoneInfo(TIMEZONE))
-        return {"generated_at": now.isoformat(), "cache_hit": False, "items": []}
+        return {
+            "generated_at": now.isoformat(),
+            "cache_hit": False,
+            "items": [],
+            "rules": rules_meta,
+        }
 
     items = [_to_snapshot_item(item) for item in state.get("items", [])]
     return {
         "generated_at": state.get("generated_at"),
         "cache_hit": True,
         "items": items,
+        "rules": rules_meta,
     }

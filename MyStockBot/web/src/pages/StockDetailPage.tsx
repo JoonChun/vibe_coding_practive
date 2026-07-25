@@ -12,7 +12,7 @@ import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import { useTickStream } from "../hooks/useTickStream";
-import { buildFactorRows, sumFactorScores } from "../utils/factorScoring";
+import type { DecisionRules } from "../types";
 
 type AnalysisTab = "short" | "long";
 
@@ -21,9 +21,16 @@ const TAB_LABEL: Record<AnalysisTab, string> = {
   long: "장기 · 일봉+재무",
 };
 
-const TAB_THRESHOLD: Record<AnalysisTab, number> = {
-  short: 2,
-  long: 3,
+/**
+ * 백엔드가 rules 를 내려주지 않을 때(구버전 서버)만 쓰는 폴백.
+ * 임계값을 프론트에 복제해 두면 백엔드 규칙이 바뀔 때 조용히 어긋나므로, 평소에는
+ * 응답의 rules 를 그대로 쓴다.
+ */
+const FALLBACK_RULES: DecisionRules = {
+  weak: 1,
+  short_strong: 2,
+  long_strong: 3,
+  long_strong_requires_tech_confirm: true,
 };
 
 /**
@@ -49,13 +56,21 @@ export default function StockDetailPage() {
 
   const view = tab === "short" ? (item?.short_view ?? null) : (item?.long_view ?? null);
   const otherView = tab === "short" ? (item?.long_view ?? null) : (item?.short_view ?? null);
-  const threshold = TAB_THRESHOLD[tab];
 
-  const factorRows = useMemo(
-    () => (item?.factors ? buildFactorRows(item.factors, tab) : null),
-    [item, tab]
-  );
-  const score = factorRows ? sumFactorScores(factorRows) : null;
+  // 판정 규칙·기여요인·점수 전부 백엔드 값을 그대로 쓴다(화면에서 재계산하지 않는다).
+  const rules = snapshot.data?.rules ?? FALLBACK_RULES;
+  const threshold = tab === "short" ? rules.short_strong : rules.long_strong;
+
+  const factorRows = useMemo(() => {
+    if (!item?.factors) return null;
+    return tab === "short"
+      ? item.factors.breakdown_short
+      : item.factors.breakdown_long;
+  }, [item, tab]);
+  const score =
+    tab === "short"
+      ? (item?.factors?.short_score ?? null)
+      : (item?.factors?.long_score ?? null);
 
   // 틱이 있으면 스냅샷 대신 실시간 값을 표시(무틱 시 기존 스냅샷 값 그대로)
   const close = tick ? tick.price : (item?.close ?? null);
@@ -183,11 +198,12 @@ export default function StockDetailPage() {
                   view={view}
                   score={score}
                   threshold={threshold}
+                  weak={rules.weak}
                   relativeTime={relativeUpdatedAt || "방금"}
                 />
               </div>
               <div className="detail-grid__factors">
-                <FactorBreakdown rows={factorRows} threshold={threshold} />
+                <FactorBreakdown rows={factorRows} rules={rules} view={tab} />
               </div>
               <div className="detail-grid__bollinger">
                 <BollingerTrack
