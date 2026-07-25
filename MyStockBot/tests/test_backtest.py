@@ -55,6 +55,15 @@ def test_wilson_interval_stays_in_bounds_at_extremes():
     assert backtest._wilson_interval(0, 0) is None
 
 
+def test_wilson_interval_clamps_out_of_range_hits():
+    """hits > n 이면 예전에는 math domain error 로 죽었다(표본 보정 시 실제로 발생).
+
+    스케일은 호출부 책임이지만, 여기서 불투명하게 크래시하는 것보다 클램프가 낫다.
+    """
+    assert backtest._wilson_interval(80, 8) == backtest._wilson_interval(8, 8)
+    assert backtest._wilson_interval(-5, 8) == backtest._wilson_interval(0, 8)
+
+
 def test_effective_sample_discounts_clustered_signals():
     # 연속 20일치 신호는 같은 구간을 보므로 독립 관측 1건.
     assert backtest._effective_sample(list(range(20)), 20) == 1

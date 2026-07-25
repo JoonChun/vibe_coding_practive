@@ -130,6 +130,10 @@ def _wilson_interval(hits: int, n: int) -> list[float] | None:
     """
     if n <= 0:
         return None
+    # hits 는 반드시 [0, n] 이어야 한다. 호출부가 표본 수를 보정(겹침·클러스터)하면서 hits 를
+    # 같이 스케일하지 않으면 p>1 이 되어 sqrt 가 math domain error 로 죽는다 — 불투명한
+    # 크래시보다 클램프가 낫다(스케일은 호출부 책임이고, 여기서는 방어만 한다).
+    hits = max(0, min(hits, n))
     p = hits / n
     denom = 1 + _Z_95**2 / n
     center = (p + _Z_95**2 / (2 * n)) / denom

@@ -30,6 +30,8 @@ import kis_auth
 from config import (
     COLLECTOR_INTERVAL_IDLE,
     COLLECTOR_INTERVAL_MARKET,
+    KIS_MINUTE_BACKFILL_DAYS,
+    KIS_MINUTE_ENABLED,
     TIMEZONE,
 )
 
@@ -289,10 +291,28 @@ def _get_daily_df(code: str, token: str | None) -> tuple[pd.DataFrame | None, st
     return (pd.DataFrame(stored) if stored else daily_df), source
 
 
-def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
+def _fetch_60m_from_kis(code: str, token: str | None) -> pd.DataFrame | None:
+    """KIS 1분봉(FHKST03010230) → 60분봉 리샘플. 비활성·자격증명 없음·실패 시 None.
+
+    단기 판정이 yfinance 하나에만 매달려 있던 문제(야후 지연·결측·429 → 단기 판정 소실)를
+    풀기 위한 1차 경로다. 호출량이 커서 기본 비활성이다(config.KIS_MINUTE_ENABLED 주석 참고).
+    """
+    if not KIS_MINUTE_ENABLED or token is None:
+        return None
+    try:
+        minutes = crawler.fetch_kis_minute_ohlcv(code, token, KIS_MINUTE_BACKFILL_DAYS)
+        if minutes is None or minutes.empty:
+            return None
+        return crawler.resample_minutes_to_60m(minutes)
+    except Exception as e:
+        logger.warning(f"[collector] KIS 60분봉 수집 실패 ({code}) — yfinance 폴백: {e}")
+        return None
+
+
+def _get_60m_df(code: str, token: str | None = None) -> tuple[pd.DataFrame | None, str | None]:
     """60분봉 신선도 게이트(5분). 신선하면 저장소에서 바로 서빙(외부 fetch 생략),
-    stale/없으면 기존과 동일하게 yfinance 재수집. fetch 실패 시 동작은 기존과 동일
-    (None 반환 → 호출부에서 macd_60m 등 None 유지, 스코프 확대 없음).
+    stale/없으면 KIS 분봉 1차 → yfinance 폴백으로 재수집. fetch 실패 시 (None, None)
+    → 호출부에서 macd_60m 등 None 유지(반환 규약 불변).
 
     60분봉은 시간당 1회 갱신이면 충분한 데이터라 분봉 일반 기준(60초)보다 여유 있는
     임계치를 둔다.
@@ -303,11 +323,16 @@ def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
         if stored:
             return pd.DataFrame(stored), _remembered_source(code, "60m")
 
-    try:
-        df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
-    except Exception as e:
-        logger.warning(f"[collector] 60분봉 수집 실패 ({code}): {e}")
-        df60 = None
+    source = "yfinance"
+    df60 = _fetch_60m_from_kis(code, token)
+    if df60 is not None and not df60.empty:
+        source = "kis"
+    else:
+        try:
+            df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
+        except Exception as e:
+            logger.warning(f"[collector] 60분봉 수집 실패 ({code}): {e}")
+            df60 = None
 
     if df60 is None or df60.empty:
         return None, None
@@ -315,9 +340,9 @@ def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
     items60 = _df_to_candle_items_minute(df60)
     if items60:
         db.upsert_candles(code, "60m", items60)
-    _remember_source(code, "60m", "yfinance")
+    _remember_source(code, "60m", source)
     stored = db.get_candles_store(code, "60m", 150)
-    return (pd.DataFrame(stored) if stored else df60), "yfinance"
+    return (pd.DataFrame(stored) if stored else df60), source
 
 
 def _collect_one(item: dict, token: str | None) -> dict:
@@ -345,7 +370,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
         bb_upper = bb_mid = bb_lower = None
 
     # ② 60분봉(신선도 게이트 — 5분 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
-    store60_df, source_60m = _get_60m_df(code)
+    store60_df, source_60m = _get_60m_df(code, token)
     macd_60m = rsi_60m = None
     rsi_value_60m = None
     if store60_df is not None and not store60_df.empty:
