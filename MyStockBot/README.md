@@ -1,199 +1,200 @@
 # MyStockBot
 
-한국투자증권(KIS) Open API로 국내 주식 데이터를 자동 수집해 Google Sheets에 누적 저장하는 자동화 봇입니다.
+국내 주식(KOSPI/KOSDAQ) 관심종목의 시세·기술지표를 수집해 **기계적 5단계 종합 판정**을 내리고,
+그 판정을 **과거 데이터로 되짚어 검증(백테스트)** 하는 개인용 웹앱입니다.
 
-## 개요
+> ⚠️ 모든 판정은 기계적 참고 지표이며 투자 권유가 아닙니다. 최종 판단은 사용자 본인에게 있습니다.
 
-MyStockBot은 GitHub Actions를 통해 평일 KST 16:00에 자동으로 실행되어, 설정된 종목들의 시세 데이터와 기술적 지표를 수집한 뒤 Google Sheets에 저장합니다. 별도의 서버 운영 없이 깃허브의 무료 자동화 기능만으로 동작합니다.
+## 구성 — 두 개의 실행 경로
+
+이 저장소는 **하나의 앱이지만 두 경로로 동작**합니다. 데이터 소유 경계를 아는 것이 중요합니다.
+
+| 경로 | 실행 주체 | 저장소 | 역할 |
+|------|-----------|--------|------|
+| **웹앱** | FastAPI 서버 + React PWA (상시 실행) | SQLite (`data/mystockbot.db`) | 실시간 대시보드·판정·백테스트·모의투자 |
+| **일일 배치** | GitHub Actions 크론 (평일 KST 16:00) | Google Sheets | 장 마감 후 일일 스냅샷 누적 + 이메일 리포트 |
+
+관심종목 목록은 **양방향 동기화**로 한 벌처럼 유지됩니다(아래 [관심종목 동기화](#관심종목-동기화) 참고).
 
 ## 주요 기능
 
-- **자동 데이터 수집**: KIS API를 통한 일일 주식 데이터 수집
-- **기술적 지표 계산**: RSI, MACD, 볼린저밴드 자동 계산
-- **Google Sheets 연동**: 수집 데이터 자동 누적
-- **HTML 이메일 알림**: 실행 결과 및 수집 현황 정기 보고
-- **주말 자동 건너뜀**: 평일만 실행 (테스트 시 강제 실행 옵션 제공)
+### 판정 엔진
+- **단기 판정**(60분봉 MACD+RSI)·**장기 판정**(일봉 MACD+RSI + PER/PBR/ROE)을
+  `강력매수 / 매수 / 관망 / 매도 / 강력매도` 5단계로 산출
+- **팩터별 점수 분해**: 어떤 지표가 몇 점을 기여했는지 근거를 노출 (`FactorBreakdown`)
 
-## 수집 데이터
+### 검증 (차별화 기능)
+- **판정 백테스트** — 과거 각 시점에 판정 로직을 재적용해 적중률·평균 선행수익률과
+  "판정 따라가기 vs 단순 보유" 누적수익률을 비교.
+  적중률에는 **95% 신뢰구간과 겹침 보정 독립 표본 수**를 함께 표시해 과신을 막습니다.
+- **적립식 백테스트(DCA)** — "매월 N주씩 사왔다면 지금 얼마?" 시뮬레이션 (정량/정액 모드)
 
-총 20개 컬럼을 Google Sheets의 StockData 탭에 누적 저장합니다.
+### 화면 (모바일 PWA 우선, 하단 3탭)
+| 경로 | 화면 | 내용 |
+|------|------|------|
+| `/` | 메인 | 코스피·코스닥 지수, 관심종목 판정 분포, Top Movers |
+| `/watchlist` | 관심종목 | 종목 검색·추가·삭제, 카드 목록, 정렬·필터, 실시간 틱 |
+| `/paper` | 모의투자 | 가상 시드머니로 매수·매도, 보유 평가손익, 거래내역 |
+| `/stocks/:code` | 상세 | 팩터 분해, 볼린저·RSI·MACD, 멀티 타임프레임 캔들차트, 백테스트·DCA |
 
-| 컬럼 | 설명 |
-|------|------|
-| 날짜 | 수집 일자 (YYYY-MM-DD) |
-| 종목코드 | 6자리 종목 코드 |
-| 종목명 | 종목 이름 |
-| 시가, 종가, 저가, 고가 | 일일 OHLC |
-| 거래량 | 거래량 |
-| RSI | 상대강도지수 (14일) |
-| MACD, MACD_Signal, MACD_Hist | MACD 지표 |
-| BB_Upper, BB_Mid, BB_Lower | 볼린저밴드 (20일, 2σ) |
-| PER, PBR, ROE | 밸류에이션 지표 |
-| 매출액, 순이익 | 재무 지표 |
-
-## 파일 구조
-
-```
-MyStockBot/
-├── .github/workflows/stock_collector.yml  # GitHub Actions 자동화 스케줄
-├── src/
-│   ├── main.py          # 엔트리포인트 (주 실행 흐름)
-│   ├── kis_auth.py      # KIS OAuth 토큰 발급 (파일 캐싱)
-│   ├── crawler.py       # KIS API 데이터 수집
-│   ├── indicators.py    # 기술적 지표 계산
-│   ├── sheets.py        # Google Sheets API 연동
-│   └── notifier.py      # Gmail HTML 이메일 알림
-├── config.py            # 전역 상수 및 설정
-├── requirements.txt     # Python 의존성
-└── .env                 # 로컬 개발용 환경변수 (git 제외)
-```
+### 데이터·인프라
+- **실시간 틱**: KIS WebSocket(H0STCNT0) 구독 → 브라우저 WS 중계 (무수신 워치독 내장)
+- **시세 소스**: KIS Open API 1차 → yfinance 폴백 (60분봉은 yfinance)
+- **캔들 영속화**: SQLite `candles` 테이블에 read-through 누적 (백테스트 재료)
+- **휴장일 인지**: KRX 휴장일 캘린더로 불필요한 조회·중복 기록 차단
 
 ## 기술 스택
 
-- **Python 3.11**
-- **KIS Open API** (한국투자증권 실시간 주식 데이터)
-- **Google Sheets API v4** (gspread)
-- **GitHub Actions** (자동화 스케줄링)
-- **라이브러리**: requests, gspread, google-auth, pandas, ta, python-dotenv, pytz
+**백엔드** Python 3.11 · FastAPI · uvicorn · APScheduler · SQLite · pandas · ta · websockets
+**프론트엔드** React 18 · TypeScript · Vite · lightweight-charts · vite-plugin-pwa
+**데이터** KIS Open API · yfinance · Google Sheets API (gspread)
+**품질** pytest · ruff · GitHub Actions CI
 
-## Google Sheets 구조
+## 디렉터리 구조
 
-### Dashboard 탭 (종목 등록)
-
-- **A열**: 종목코드 (일반 텍스트 형식, 앞자리 0 보존)
-- **B열**: 종목명 (KIS API 조회 결과 자동 입력)
-
-사용자가 A열에 종목코드를 입력하면 봇이 자동으로 종목명을 조회하여 B열에 저장합니다.
-
-### StockData 탭 (수집 데이터)
-
-20개 컬럼으로 일일 데이터를 누적 저장. 새 행이 자동 추가됩니다.
-
-## 환경변수 설정
-
-### GitHub Secrets 설정
-
-GitHub 저장소의 `Settings > Secrets and variables > Actions`에서 다음을 등록합니다:
-
-| 변수명 | 설명 |
-|--------|------|
-| `GOOGLE_CREDENTIALS_JSON` | Google 서비스 계정 JSON 전체 내용 |
-| `SPREADSHEET_ID` | 대상 Google Sheets ID |
-| `SENDER_EMAIL` | 발신 Gmail 주소 |
-| `NOTIFY_EMAIL` | 수신 이메일 주소 |
-| `GMAIL_APP_PASSWORD` | Gmail 앱 비밀번호 (2FA 활성 필수) |
-| `KIS_APP_KEY` | KIS Open API APP KEY |
-| `KIS_APP_SECRET` | KIS Open API APP SECRET |
-| `KIS_ACCOUNT_NO` | KIS 계좌번호 (선택, 거래 기능용) |
-
-### 로컬 .env 파일 (개발용)
-
-프로젝트 루트에 `.env` 파일을 작성합니다. (Git에 커밋하지 않음)
-
-```bash
-GOOGLE_CREDENTIALS_JSON='{"type":"service_account","project_id":"...","...}'
-SPREADSHEET_ID=YOUR_SPREADSHEET_ID
-SENDER_EMAIL=your-email@gmail.com
-NOTIFY_EMAIL=recipient@example.com
-GMAIL_APP_PASSWORD=your_app_password
-KIS_APP_KEY=YOUR_KIS_KEY
-KIS_APP_SECRET=YOUR_KIS_SECRET
-KIS_ACCOUNT_NO=YOUR_ACCOUNT_NUMBER
+```
+MyStockBot/
+├── server/                  # FastAPI 웹앱 (상시 실행)
+│   ├── main.py              #   앱 조립·lifespan(수집루프·WS·스케줄러 기동)
+│   ├── auth.py              #   Bearer 토큰 미들웨어
+│   ├── schemas.py           #   Pydantic 응답 계약
+│   ├── routers/             #   watchlist·snapshot·stocks·indices·paper·stream
+│   └── services/            #   collector(수집루프)·kis_ws·candles·backtest·dca·
+│                            #   indices·paper·scheduler·snapshot_cache·timeseries
+├── src/                     # 공용 모듈 + 일일 배치 경로
+│   ├── main.py              #   크론 엔트리포인트(시트 기록 + 이메일)
+│   ├── crawler.py           #   KIS/yfinance 시세·재무 조회
+│   ├── indicators.py        #   RSI·MACD·볼린저 + 5단계 판정 로직
+│   ├── kis_auth.py          #   토큰/approval_key 캐시 + 전역 rate-limit
+│   ├── db.py                #   SQLite 스키마·쿼리(관심종목·캔들·모의투자)
+│   ├── market_calendar.py   #   KRX 휴장일 캘린더
+│   ├── watchlist_sync.py    #   관심종목 시트↔SQLite 동기화
+│   ├── sheets.py            #   Google Sheets 연동
+│   ├── stock_master.py      #   전 종목 마스터 다운로드·파싱(검색용)
+│   ├── notifier.py          #   Gmail HTML 리포트
+│   └── pipeline.py          #   배치 수집 오케스트레이션
+├── web/                     # React PWA
+├── tests/                   # pytest
+├── scripts/                 # 수동 운영 스크립트
+├── config.py                # 전역 상수·환경변수 키
+├── prd.md                   # 제품 요구사항 + 구현 현황
+└── DEPLOY.md                # 배포 가이드
 ```
 
-## 로컬 설치 및 실행
+## 환경변수
 
-### 1. 의존성 설치
+`.env`(로컬·서버) 또는 GitHub Secrets(크론)에 설정합니다.
+
+| 변수 | 필요 경로 | 설명 |
+|------|-----------|------|
+| `KIS_APP_KEY` / `KIS_APP_SECRET` | 웹앱·크론 | KIS Open API 자격증명 |
+| `KIS_ACCOUNT_NO` | (선택) | KIS 계좌번호 |
+| `MYSTOCKBOT_API_TOKEN` | 웹앱 | API 인증 토큰. **미설정 시 인증 비활성** |
+| `CORS_ALLOWED_ORIGINS` | 웹앱 | 허용 오리진(쉼표 구분). 기본 `http://localhost:5173` |
+| `MYSTOCKBOT_DB_PATH` | 웹앱 | SQLite 경로. 기본 `data/mystockbot.db` |
+| `PAPER_SEED_DEFAULT` | 웹앱 | 모의투자 초기 시드머니(원). 기본 `10000000` |
+| `SPREADSHEET_ID` | 크론·동기화 | 대상 Google Sheets ID |
+| `GOOGLE_CREDENTIALS_JSON` | 크론·동기화 | 서비스 계정 JSON 전체 |
+| `SENDER_EMAIL` / `NOTIFY_EMAIL` / `GMAIL_APP_PASSWORD` | 크론 | Gmail 리포트 발송 (2FA 앱 비밀번호 필수) |
+| `VITE_API_BASE` | 프론트 | 백엔드 공개 URL(배포 시). 개발 중에는 비워 두면 Vite 프록시 사용 |
+
+## 로컬 실행
+
+### 백엔드
 
 ```bash
 pip install -r requirements.txt
+cd MyStockBot
+uvicorn server.main:app --reload      # http://localhost:8000
 ```
 
-### 2. 평일 정상 실행
+> `server.main` 의 `sys.path` 설정은 `MyStockBot/` 디렉터리에서 실행하는 것을 전제로 합니다.
+
+### 프론트엔드
 
 ```bash
-python3 src/main.py
+cd MyStockBot/web
+npm install
+npm run dev                            # http://localhost:5173
 ```
 
-실행 결과:
-- 성공하면 `exit(0)`
-- 실패하면 `exit(1)` (GitHub Actions에서 실패 플래그)
-
-### 3. 주말 강제 실행 (테스트용)
+### Docker
 
 ```bash
-FORCE_RUN=1 python3 src/main.py
+cd MyStockBot
+docker compose up -d --build
 ```
 
-`FORCE_RUN=1`을 설정하면 주말에도 실행됩니다.
+자세한 배포(홈PC + 터널, PWA 설치)는 [DEPLOY.md](./DEPLOY.md) 참고.
 
-## 동작 흐름
+### 일일 배치 수동 실행
 
-1. **실행 조건 확인**: 평일 여부 확인 (주말이면 건너뜀)
-2. **종목 목록 로드**: Dashboard 탭에서 종목코드 목록 조회
-3. **데이터 수집**: KIS API로 각 종목의 OHLC, 거래량, 재무 지표 조회
-4. **지표 계산**: RSI, MACD, 볼린저밴드 계산 (pandas + ta)
-5. **Sheets 저장**: 수집된 데이터를 StockData 탭에 행 추가
-6. **이메일 알림**: 실행 결과를 HTML 형식으로 발송
-
-실패 시 오류 정보도 함께 알림.
-
-## 주의사항
-
-### Google Sheets 설정
-
-- **Dashboard A열 서식**: 반드시 "일반 텍스트"로 설정하여 종목코드 앞 0 보존
-  - 예: `005930` (삼성전자)가 `5930`으로 인식되지 않도록
-- **종목 직접 입력**: A열에 입력할 때 앞에 작은따옴표 붙이기 → `'005930`
-
-### KIS API
-
-- **토큰 캐싱**: KIS API 토큰은 1일 1회 발급 제한 → `/tmp/kis_token_cache.json`에 자동 캐싱
-- **IP 제한 금지**: GitHub Actions는 Azure 해외 IP에서 실행 → KIS 포털의 IP 접근 제한 설정 금지
-
-### Gmail 설정
-
-- **2FA 필수**: Gmail 2단계 인증 활성화 필수
-- **앱 비밀번호**: Google 계정에서 "앱 비밀번호" 생성 후 사용 (일반 비밀번호 X)
-
-## 실행 스케줄
-
-GitHub Actions는 다음 일정에 자동 실행됩니다:
-
-```yaml
-cron: '0 7 * * 1-5'  # UTC 07:00, 월~금 (= KST 16:00)
+```bash
+cd MyStockBot
+python src/main.py            # 휴장일이면 아무것도 하지 않고 종료
+FORCE_RUN=1 python src/main.py  # 휴장일에도 강제 실행(테스트용)
 ```
 
-- **UTC 07:00** = KST **16:00** (한국 장 마감 후)
-- **월~금만** 실행
+## 테스트·린트
+
+```bash
+cd MyStockBot
+pytest                 # 순수 계산부·파서·동기화 규칙
+ruff check .
+cd web && npm run build  # tsc + vite build
+```
+
+PR·`develop`/`main` 푸시 시 GitHub Actions(`.github/workflows/ci.yml`)가 위를 모두 실행합니다.
+
+## 관심종목 동기화
+
+웹앱(SQLite)과 크론(Google Sheets `Dashboard` 탭)은 서로 다른 저장소를 쓰지만
+`src/watchlist_sync.py` 가 두 목록을 수렴시킵니다.
+
+| 방향 | 시점 | 동작 |
+|------|------|------|
+| 앱 → 시트 | 추가·삭제 즉시 | 추가 시 Dashboard 에 upsert / 삭제 시 **C열에 `해제` 표시** |
+| 시트 → 앱 | 부팅 시 + 평일 매시 :50 | Dashboard 에만 있는 코드를 앱에 **추가** |
+
+- 삭제는 시트 행을 **지우지 않습니다** — C열 표시만 남기므로 사용자가 직접 입력한 내용이
+  보존되고, 셀을 비우면 되돌릴 수 있습니다.
+- 시트에서 사라진 종목을 앱에서 **자동 삭제하지는 않습니다**. 시트 오독·권한 오류 한 번이
+  관심종목 전체를 날리는 위험이 더 크기 때문입니다(삭제는 앱에서 수행).
+- `GOOGLE_CREDENTIALS_JSON`·`SPREADSHEET_ID` 가 없으면 동기화는 **조용히 비활성**되고
+  웹앱은 그대로 동작합니다.
+- 즉시 수렴시키려면: `POST /api/watchlist/sync`
+
+## 데이터 무결성 규칙 (알고 있어야 할 것)
+
+- **시트 `날짜` 컬럼은 실행일이 아니라 거래일(`bar_date`)** 입니다. 휴장일에 크론이 돌아
+  직전 거래일 종가를 받아도 그 종가의 원래 날짜로 기록되고, `(날짜, 종목코드)` 중복 스킵이
+  걸려 같은 값이 여러 날짜로 쌓이지 않습니다.
+- **휴장일 캘린더는 매년 갱신이 필요합니다.** `src/market_calendar.py` 의 `TABLE_MAX_YEAR`
+  이후 연도는 고정 양력 공휴일만 인지하므로, 음력 연휴가 누락될 수 있습니다(위 `bar_date`
+  규칙이 2차 방어선). 표 범위를 벗어나면 크론 로그에 경고가 남습니다.
+- **백테스트는 기술적 판정만** 재적용합니다(재무지표 과거값 결측). 응답 `notes` 와 카드에
+  이 사실과 표본 한계가 명시됩니다.
+- **모의투자는 수수료·세금·슬리피지를 반영하지 않습니다.** 체결가는 수집 스냅샷의 최신
+  종가이며, 장 마감 후에는 종가로 체결됩니다.
 
 ## 문제 해결
 
-### 종목코드가 0으로 시작하면 인식 안 됨
+| 증상 | 원인·조치 |
+|------|-----------|
+| 종목코드 앞 `0` 이 사라짐 | Google Sheets A열 서식을 **일반 텍스트**로 변경 |
+| `401 Unauthorized` (앱) | `MYSTOCKBOT_API_TOKEN` 과 웹앱 입력 토큰 불일치 |
+| KIS `EGW00133` | 토큰 발급 rate-limit(1분당 1회). 잠시 후 재시도 — 토큰은 파일 캐시됨 |
+| 실시간 배지가 초록인데 틱이 없음 | 무수신 워치독(3분)이 자동 재연결. 지속되면 KIS 자격증명·장 시간 확인 |
+| 지수만 "데이터 없음" | KIS 지수 API 실패 후 yfinance 폴백까지 실패. 네트워크·프록시 확인 |
+| 크론이 아무것도 안 함 | 휴장일 스킵 로그 확인. 테스트는 `FORCE_RUN=1` |
+| 이메일 미수신 | Gmail 2FA + **앱 비밀번호** 사용 여부 확인 |
 
-→ Google Sheets에서 해당 셀을 선택 → 우클릭 → "숫자 형식" → "일반 텍스트" 변경
+## 알려진 한계
 
-### KIS API 오류
-
-- `401 Unauthorized`: 토큰 만료 또는 잘못된 APP KEY/SECRET
-- `429 Too Many Requests`: API 호출 제한 초과 → 대기 후 재시도
-
-### 이메일이 오지 않음
-
-- GMAIL_APP_PASSWORD가 올바른지 확인
-- Gmail에서 "보안 수준이 낮은 앱 허용" 설정 필요 (가능하면 2FA + 앱 비밀번호 권장)
-
-### GitHub Actions 실행 실패
-
-Repository → Actions 탭에서 workflow 로그 확인:
-- `SPREADSHEET_ID` 환경변수 누락
-- `GOOGLE_CREDENTIALS_JSON` JSON 형식 오류
-- 네트워크 오류 (Google/KIS API 접근 불가)
+현재 남아 있는 부족한 점과 로드맵은 [prd.md](./prd.md) §16~§20 에 정리되어 있습니다.
+요약하면: 판정 로직이 MACD+RSI 2개 지표에 의존, 메인 대시보드의 시장 폭·투자자 매매동향
+미구현, 단일 사용자·단일 토큰 구조, 판정 전환 알림 미구현, DCA 공유 카드·해외 종목 미지원.
 
 ## 라이선스
 
 MIT
-
-## 연락처
-
-이 프로젝트에 대한 문제나 제안은 GitHub Issues로 보고해주세요.

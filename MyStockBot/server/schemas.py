@@ -19,6 +19,15 @@ class WatchlistListResponse(BaseModel):
     items: list[WatchlistItemOut]
 
 
+class WatchlistSyncResponse(BaseModel):
+    """POST /api/watchlist/sync — 시트 Dashboard → 앱 임포트 결과."""
+    enabled: bool       # 자격증명·SPREADSHEET_ID 가 있어 동기화가 동작하는지
+    sheet_items: int    # 시트에서 읽은 수집 대상 종목 수('해제' 제외)
+    added: int          # 앱에 새로 추가된 종목 수
+    skipped: int        # 앱에 이미 있어 건너뛴 종목 수
+    failed: int         # 추가 실패 건수
+
+
 class FactorDetail(BaseModel):
     macd_1d: str | None = None
     rsi_1d: str | None = None
@@ -126,8 +135,11 @@ class SearchResponse(BaseModel):
 
 class BacktestSide(BaseModel):
     signals: int
+    effective_signals: int = 0          # 겹치는 선행구간을 보정한 독립 표본 근사(signals//horizon)
     hit_rate: float | None = None       # 매수: 상승 비율 / 매도: 하락 비율 (%)
+    hit_rate_ci: list[float] | None = None  # 적중률 95% 신뢰구간 [하한%, 상한%] (보정 표본 기준)
     avg_forward_pct: float | None = None  # 판정 후 N일 평균 수익률 %
+    low_confidence: bool = False        # 보정 표본이 너무 적어 적중률을 신뢰할 수 없음
 
 
 class BacktestPoint(BaseModel):
@@ -142,10 +154,16 @@ class BacktestResponse(BaseModel):
     evaluated_days: int
     start_date: str | None = None
     end_date: str | None = None
+    bars_used: int = 0             # 실제 계산에 쓴 일봉 수
+    bars_available: int = 0        # 보유 이력 전체 일봉 수(캡 적용 전)
+    max_bars: int = 0              # 계산 비용 상한(이보다 길면 최근분만 사용)
+    truncated: bool = False        # 위 상한으로 이력이 잘렸는지
+    fundamentals_included: bool = False  # 재무지표 반영 여부(현재 기술적 판정만 → 항상 False)
     buy: BacktestSide
     sell: BacktestSide
     strategy_return_pct: float
     buy_hold_return_pct: float
+    notes: list[str] = []          # 가정·한계·잘림 경고
     curve: list[BacktestPoint]
 
 

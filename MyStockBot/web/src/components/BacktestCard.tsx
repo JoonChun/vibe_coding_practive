@@ -86,8 +86,23 @@ export function BacktestCard({ code }: { code: string }) {
               <span className="bt-stat__k">매수 판정 적중률</span>
               <span className="bt-stat__v">
                 {data.buy.hit_rate === null ? "—" : `${data.buy.hit_rate.toFixed(1)}%`}
+                {data.buy.low_confidence ? (
+                  <span className="bt-stat__flag" title="독립 표본이 적어 신뢰하기 어려운 수치입니다">
+                    참고치
+                  </span>
+                ) : null}
               </span>
-              <span className="bt-stat__sub">{data.buy.signals}회 · {data.horizon_days}일 뒤 기준</span>
+              <span className="bt-stat__sub">
+                {data.buy.signals}회 · {data.horizon_days}일 뒤 기준
+              </span>
+              {/* 적중률 하나만 크게 보여주면 과신하게 된다 → 신뢰구간과 독립 표본 수를 병기. */}
+              {data.buy.hit_rate_ci ? (
+                <span className="bt-stat__sub">
+                  95% 신뢰구간 {data.buy.hit_rate_ci[0].toFixed(0)}~
+                  {data.buy.hit_rate_ci[1].toFixed(0)}% · 독립 표본 약{" "}
+                  {data.buy.effective_signals}건
+                </span>
+              ) : null}
             </div>
             <div className="bt-stat">
               <span className="bt-stat__k">매수 후 평균수익</span>
@@ -118,9 +133,18 @@ export function BacktestCard({ code }: { code: string }) {
             {data.start_date && data.end_date
               ? `${data.start_date} ~ ${data.end_date} · `
               : ""}
-            과거 성과는 미래를 보장하지 않으며 수수료·슬리피지 미반영, 기술적 판정만
-            사용합니다.
+            일봉 {data.bars_used}봉
+            {data.truncated ? ` (보유 ${data.bars_available}봉 중 최근분)` : ""} 기준 · 과거
+            성과는 미래를 보장하지 않습니다.
           </p>
+          {/* 서버가 실어 보낸 가정·한계를 그대로 노출한다(화면이 임의로 생략하지 않도록). */}
+          {data.notes.length > 0 ? (
+            <ul className="bt-card__notes">
+              {data.notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       )}
     </section>

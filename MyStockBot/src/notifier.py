@@ -1,3 +1,4 @@
+import logging
 import os
 import smtplib
 from datetime import datetime
@@ -12,6 +13,8 @@ from config import (
     SENDER_EMAIL_ENV_KEY,
     TIMEZONE,
 )
+
+logger = logging.getLogger(__name__)
 
 GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT = 465
@@ -43,10 +46,13 @@ def _build_summary_html(success_list: list[dict], failed_list: list[dict]) -> st
 def _build_success_table(success_list: list[dict]) -> str:
     if not success_list:
         return ""
+    # 기준일(bar_date) = 그 종가가 실제로 속한 거래일. 실행일과 다르면(휴장일 실행 등)
+    # 한눈에 보이도록 별도 컬럼으로 노출한다 — "오늘 종가"로 오해하지 않도록.
     rows = "".join(
         f"<tr>"
         f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{item.get('code', '')}</td>"
         f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{item.get('name', '')}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{item.get('bar_date') or '—'}</td>"
         f"<td style='padding:6px 12px;border:1px solid #e5e7eb;text-align:right;'>{item.get('close', '')}</td>"
         f"</tr>"
         for item in success_list
@@ -58,7 +64,8 @@ def _build_success_table(success_list: list[dict]) -> str:
         <tr style="background:#f0fdf4;">
           <th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:left;">종목코드</th>
           <th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:left;">종목명</th>
-          <th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:right;">당일종가</th>
+          <th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:left;">기준일</th>
+          <th style="padding:6px 12px;border:1px solid #e5e7eb;text-align:right;">종가</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
@@ -121,7 +128,7 @@ def send_report(success_list: list[dict], failed_list: list[dict], date_str: str
     recipients = [addr.strip() for addr in recipient_raw.split(",") if addr.strip()]
 
     if not sender or not password or not recipients:
-        print("[notifier] 이메일 환경변수 누락 — 알림 발송 건너뜀")
+        logger.warning("[notifier] 이메일 환경변수 누락 — 알림 발송 건너뜀")
         return
 
     subject = _build_subject(success_list, failed_list, date_str)
@@ -138,4 +145,4 @@ def send_report(success_list: list[dict], failed_list: list[dict], date_str: str
             smtp.login(sender, password)
             smtp.sendmail(sender, recipients, msg.as_string())
     except Exception as e:
-        print(f"[notifier] 이메일 발송 실패: {e}")
+        logger.warning(f"[notifier] 이메일 발송 실패: {e}")

@@ -11,18 +11,31 @@
 
 순수 계산부(run_signal_backtest)는 외부 의존 없이 df만 받으므로 단위테스트가 쉽다.
 """
+import logging
+import math
+
 import pandas as pd
 
 from .timeseries import downsample, epoch_to_date
 
+logger = logging.getLogger(__name__)
+
 _BUY_VIEWS = {"매수", "강력매수"}
 _SELL_VIEWS = {"매도", "강력매도"}
+
+# 적중률 신뢰구간 z값(95%).
+_Z_95 = 1.96
 
 # MACD(MACD_SLOW=26 + MACD_SIGNAL=9)에 필요한 최소 봉 수 — 이보다 앞선 구간은 판정 불가.
 # indicators._MIN_BARS_MACD 와 동일 값을 상수로 둔다(import 시점에 ta 의존 회피 → 테스트 용이).
 _MIN_BARS = 35
 # O(n²) 재계산 비용을 제한하기 위해 최근 N봉으로 캡.
+# 이 캡이 걸리면(=이력이 더 길면) 응답의 truncated/notes 로 반드시 알린다 — 조용히
+# 1.6년치만 계산해 놓고 "과거 성과"라고 보여주면 사용자가 기간을 오해한다.
 _MAX_BARS = 400
+
+# 겹침 보정 표본이 이보다 적으면 적중률을 신뢰할 수 없다고 표시한다(≈독립 관측 10건).
+_MIN_EFFECTIVE_SAMPLE = 10
 
 
 def _build_view_at(df: pd.DataFrame):
@@ -108,11 +121,53 @@ def _sanitize_closes(raw: list) -> list[float]:
     return [c if c is not None else first_valid for c in filled]
 
 
+def _wilson_interval(hits: int, n: int) -> list[float] | None:
+    """이항 비율의 Wilson score 95% 신뢰구간을 [하한%, 상한%] 로 반환. n<=0 이면 None.
+
+    표본이 적을 때 정규근사(Wald)는 구간이 [0,1] 밖으로 나가거나 지나치게 좁아지므로
+    Wilson 을 쓴다 — "적중률 70%"가 표본 10건이면 사실상 아무 말도 아니라는 점을
+    숫자로 드러내는 것이 목적이다.
+    """
+    if n <= 0:
+        return None
+    p = hits / n
+    denom = 1 + _Z_95**2 / n
+    center = (p + _Z_95**2 / (2 * n)) / denom
+    margin = _Z_95 * math.sqrt(p * (1 - p) / n + _Z_95**2 / (4 * n * n)) / denom
+    return [
+        round(max(0.0, center - margin) * 100, 1),
+        round(min(1.0, center + margin) * 100, 1),
+    ]
+
+
+def _effective_sample(indices: list[int], horizon: int) -> int:
+    """겹치는 선행구간을 보정한 '독립 표본 수'.
+
+    t 시점 판정의 성과를 t+horizon 으로 재기 때문에, horizon 안에 몰려 있는 판정들은
+    거의 같은 가격 움직임을 본다(예: horizon=20 이면 연속 20일치 매수 신호가 사실상
+    관측 1건). 신호 인덱스를 훑어 서로 horizon 이상 떨어진 것만 그리디로 세어, 실제
+    시간적 분포를 반영한 독립 관측 수를 구한다 — 신호가 흩어져 있으면 표본이 그만큼
+    많이 인정되고, 한 구간에 뭉쳐 있으면 1건으로 깎인다.
+    """
+    if not indices:
+        return 0
+    step = max(1, horizon)
+    count = 0
+    last_taken = None
+    for i in sorted(indices):
+        if last_taken is None or i - last_taken >= step:
+            count += 1
+            last_taken = i
+    return count
+
+
 def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     """df: 오름차순 일봉('close' 필수, 't' 있으면 날짜 표기). 순수 계산."""
     if df is None or "close" not in df.columns:
         raise ValueError("close 컬럼이 필요합니다.")
-    if len(df) > _MAX_BARS:
+    bars_available = len(df)
+    truncated = bars_available > _MAX_BARS
+    if truncated:
         df = df.iloc[-_MAX_BARS:].reset_index(drop=True)
     else:
         df = df.reset_index(drop=True)
@@ -131,8 +186,9 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     # 지표 1회 계산 → 인덱스별 판정 O(1) (기존 슬라이스 재계산 O(n²) 대체)
     view_at = _build_view_at(df)
 
-    buy_fwd: list[float] = []
-    sell_fwd: list[float] = []
+    # (봉 인덱스, 선행수익률) — 인덱스는 겹침 보정 표본 계산에 쓴다.
+    buy_fwd: list[tuple[int, float]] = []
+    sell_fwd: list[tuple[int, float]] = []
 
     # ── 선행수익률 적중률 (t 시점 판정 → t+horizon 수익률) ──
     last_eval = n - horizon  # exclusive
@@ -146,19 +202,34 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
             continue
         fwd = (closes[t + horizon] - entry) / entry * 100
         if view in _BUY_VIEWS:
-            buy_fwd.append(fwd)
+            buy_fwd.append((t, fwd))
         elif view in _SELL_VIEWS:
-            sell_fwd.append(fwd)
+            sell_fwd.append((t, fwd))
         evaluated += 1
 
-    def _side(fwds: list[float], win) -> dict:
-        if not fwds:
-            return {"signals": 0, "hit_rate": None, "avg_forward_pct": None}
+    def _side(samples: list[tuple[int, float]], win) -> dict:
+        if not samples:
+            return {
+                "signals": 0,
+                "effective_signals": 0,
+                "hit_rate": None,
+                "hit_rate_ci": None,
+                "avg_forward_pct": None,
+                "low_confidence": True,
+            }
+        fwds = [f for _, f in samples]
         hits = sum(1 for f in fwds if win(f))
+        total = len(fwds)
+        n_eff = _effective_sample([i for i, _ in samples], horizon)
+        # 신뢰구간은 원 표본이 아니라 겹침 보정 표본으로 계산한다(과신 방지).
+        hits_eff = round(hits / total * n_eff)
         return {
-            "signals": len(fwds),
-            "hit_rate": round(hits / len(fwds) * 100, 1),
-            "avg_forward_pct": round(sum(fwds) / len(fwds), 2),
+            "signals": total,
+            "effective_signals": n_eff,
+            "hit_rate": round(hits / total * 100, 1),
+            "hit_rate_ci": _wilson_interval(hits_eff, n_eff),
+            "avg_forward_pct": round(sum(fwds) / total, 2),
+            "low_confidence": n_eff < _MIN_EFFECTIVE_SAMPLE,
         }
 
     # ── "판정 따라가기" 가상 누적수익률 vs 단순 보유 ──
@@ -189,15 +260,38 @@ def run_signal_backtest(df: pd.DataFrame, horizon: int = 20) -> dict:
     start_date = epoch_to_date(df.iloc[start]["t"]) if has_t else None
     end_date = epoch_to_date(df.iloc[-1]["t"]) if has_t else None
 
+    buy = _side(buy_fwd, lambda f: f > 0)
+    sell = _side(sell_fwd, lambda f: f < 0)
+
+    # 가정·한계를 응답에 함께 실어 화면이 반드시 노출하게 한다(DCA notes 와 동일 관례).
+    notes = [
+        "수수료·세금·슬리피지 미반영",
+        "재무지표(PER/PBR/ROE) 미반영 — 기술적 판정(MACD+RSI)만 재적용",
+    ]
+    if truncated:
+        notes.append(
+            f"계산 비용 제한으로 최근 {_MAX_BARS}봉만 사용(보유 이력 {bars_available}봉)"
+        )
+    if buy["low_confidence"] or sell["low_confidence"]:
+        notes.append(
+            f"겹침 보정 표본이 {_MIN_EFFECTIVE_SAMPLE}건 미만 — 적중률은 참고치로만 보세요"
+        )
+
     return {
         "horizon_days": horizon,
         "evaluated_days": evaluated,
         "start_date": start_date,
         "end_date": end_date,
-        "buy": _side(buy_fwd, lambda f: f > 0),
-        "sell": _side(sell_fwd, lambda f: f < 0),
+        "bars_used": n,
+        "bars_available": bars_available,
+        "max_bars": _MAX_BARS,
+        "truncated": truncated,
+        "fundamentals_included": False,
+        "buy": buy,
+        "sell": sell,
         "strategy_return_pct": strategy_return,
         "buy_hold_return_pct": buy_hold_return,
+        "notes": notes,
         "curve": curve,
     }
 
@@ -221,7 +315,7 @@ def _load_daily(code: str) -> pd.DataFrame | None:
         if df is not None and not df.empty and "close" in df.columns:
             return df
     except Exception as e:
-        print(f"[backtest] yfinance 폴백 실패 ({code}): {e}")
+        logger.warning(f"[backtest] yfinance 폴백 실패 ({code}): {e}")
 
     return pd.DataFrame(stored) if stored else None
 

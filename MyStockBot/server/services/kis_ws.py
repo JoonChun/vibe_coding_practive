@@ -27,6 +27,9 @@
     3) 수신 프레임 파싱: 첫 글자가 '0'(평문) 또는 '1'(암호화, H0STCNT0 은 KIS 정책상
        평문만 사용되므로 이 모듈은 암호화 프레임은 무시·로그만 남김) → 데이터 프레임.
        그 외 → JSON 제어 메시지(PINGPONG 에코, 구독 등록 rt_cd 로그).
+    4) 무수신 워치독(_READ_IDLE_TIMEOUT_SECONDS): 일정 시간 어떤 프레임도(PINGPONG 포함)
+       오지 않으면 TCP half-open 으로 보고 연결을 끊어 재연결시킨다. 이게 없으면 소켓은
+       열려 있는데 데이터만 끊긴 "초록 배지 + 틱 0" 상태가 무한정 유지된다.
 
 장 외 시간(틱 없음)은 정상 상태다. 이 모듈 내부의 모든 예외는 여기서 격리·로그만
 남기고 절대 상위(FastAPI 앱 전체)로 전파하지 않는다 — KIS 쪽 장애가 서버 전체를
@@ -106,6 +109,18 @@ _SIGN_POLARITY = {"1": 1, "2": 1, "3": 0, "4": -1, "5": -1}
 _RECONNECT_BACKOFF_INITIAL_SECONDS = 1
 _RECONNECT_BACKOFF_MAX_SECONDS = 60
 _CONNECT_OPEN_TIMEOUT_SECONDS = 10
+
+# ── 무수신 워치독 ──
+# ping_interval=None 이라 websockets 라이브러리의 keepalive 가 꺼져 있다(KIS 는 프로토콜
+# 레벨 Ping/Pong 대신 JSON PINGPONG 을 쓴다). 이 상태에서 TCP half-open 이 되면 recv 가
+# 영원히 대기해 "배지는 초록인데 틱이 없는" 좀비 연결이 된다 — 소켓이 살아 있다고 보고하니
+# 재연결 로직도 돌지 않는다. 그래서 수신 자체에 타임아웃을 걸고, 아무 프레임도(틱뿐 아니라
+# PINGPONG 도) 이 시간 동안 오지 않으면 연결을 끊어 재연결 경로를 타게 한다.
+#
+# 장 외 시간에는 틱이 없는 것이 정상이지만 KIS 는 세션 유지용 PINGPONG 을 계속 보낸다
+# (관측 주기 30~60초). 오탐을 피하려고 그 주기의 몇 배로 넉넉히 잡는다 — 워치독이 헛돌면
+# 정상 세션을 끊고 재구독 비용만 발생하므로, 늦게라도 확실히 잡는 쪽이 낫다.
+_READ_IDLE_TIMEOUT_SECONDS = 180
 
 _SUBSCRIPTION_REFRESH_INTERVAL_SECONDS = 60
 _MAX_SUBSCRIPTIONS = 41
@@ -462,8 +477,24 @@ async def _subscription_refresh_loop() -> None:
 # 연결 유지 태스크 — 지수 백오프 재연결
 # ────────────────────────────────────────────
 
+class _ReadIdleTimeout(Exception):
+    """워치독: _READ_IDLE_TIMEOUT_SECONDS 동안 아무 프레임도 수신하지 못함(좀비 연결 추정)."""
+
+
 async def _read_loop(ws) -> None:
-    async for raw in ws:
+    """수신 루프. `async for` 대신 타임아웃이 걸린 recv 를 쓴다 — 무수신 감지를 위해.
+
+    무수신이 타임아웃에 걸리면 _ReadIdleTimeout 을 올려 호출부(_connection_loop)가
+    연결을 닫고 재연결하게 한다.
+    """
+    while True:
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=_READ_IDLE_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError as e:
+            raise _ReadIdleTimeout(
+                f"{_READ_IDLE_TIMEOUT_SECONDS}초간 프레임 미수신(PINGPONG 포함) — 재연결"
+            ) from e
+
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", errors="ignore")
         if not raw:
@@ -534,6 +565,9 @@ async def _connection_loop() -> None:
             await _read_loop(ws)
         except asyncio.CancelledError:
             raise
+        except _ReadIdleTimeout as e:
+            # 소켓은 열려 있다고 보고하지만 데이터가 끊긴 상태 — 재연결이 유일한 복구책.
+            logger.warning("[kis_ws] 무수신 워치독 발동: %s", e)
         except Exception as e:
             logger.warning("[kis_ws] KIS WebSocket 연결 끊김/오류: %s", e)
         finally:

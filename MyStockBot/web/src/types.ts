@@ -54,8 +54,14 @@ export interface IndicesResponse {
 /** 판정 백테스트 (GET /api/stocks/{code}/backtest) */
 export interface BacktestSide {
   signals: number;
+  /** 겹치는 선행구간을 보정한 독립 표본 근사(signals // horizon) */
+  effective_signals: number;
   hit_rate: number | null;
+  /** 적중률 95% 신뢰구간 [하한%, 상한%] — 보정 표본 기준 */
+  hit_rate_ci: [number, number] | null;
   avg_forward_pct: number | null;
+  /** 보정 표본이 너무 적어 적중률을 신뢰할 수 없음 */
+  low_confidence: boolean;
 }
 
 export interface BacktestPoint {
@@ -70,10 +76,22 @@ export interface BacktestResponse {
   evaluated_days: number;
   start_date: string | null;
   end_date: string | null;
+  /** 실제 계산에 쓴 일봉 수 */
+  bars_used: number;
+  /** 보유 이력 전체 일봉 수(캡 적용 전) */
+  bars_available: number;
+  /** 계산 비용 상한 */
+  max_bars: number;
+  /** 위 상한으로 이력이 잘렸는지 */
+  truncated: boolean;
+  /** 재무지표 반영 여부(현재 기술적 판정만 → 항상 false) */
+  fundamentals_included: boolean;
   buy: BacktestSide;
   sell: BacktestSide;
   strategy_return_pct: number;
   buy_hold_return_pct: number;
+  /** 가정·한계·잘림 경고 */
+  notes: string[];
   curve: BacktestPoint[];
 }
 

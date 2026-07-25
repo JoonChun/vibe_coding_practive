@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 import sys
@@ -24,6 +25,8 @@ from config import (
 )
 import indicators
 import kis_auth
+
+logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────
@@ -58,9 +61,26 @@ def _price_change(df: pd.DataFrame) -> dict:
     return {"change": change, "change_pct": change_pct}
 
 
+def _bar_date(df: pd.DataFrame) -> str | None:
+    """일봉 df 마지막 봉의 거래일을 'YYYY-MM-DD' 로 반환. 파싱 실패 시 None.
+
+    수집 실행일(오늘)이 아니라 **데이터가 실제로 속한 거래일**이다. 호출부(src/main.py)가
+    이 값을 시트 '날짜' 컬럼에 쓰기 때문에, 휴장일에 크론이 돌아 직전 거래일 종가를
+    받아와도 그 종가의 원래 날짜로 기록된다 → sheets.write_stock_data 의 (날짜,종목코드)
+    중복 스킵이 자연히 걸려 같은 종가가 다른 날짜로 두 번 쌓이지 않는다.
+    """
+    if df is None or len(df) == 0:
+        return None
+    raw = str(df.iloc[-1].get("date") or "")[:8]
+    if len(raw) != 8 or not raw.isdigit():
+        return None
+    return f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
+
+
 _EMPTY_RESULT = {
     "open": None, "close": None, "low": None, "high": None, "volume": None,
     "change": None, "change_pct": None,
+    "bar_date": None,
     "macd_1d": None, "rsi_1d": None, "macd_60m": None, "rsi_60m": None,
     "rsi_value_1d": None, "rsi_value_60m": None,
     "short_view": None, "long_view": None,
@@ -113,12 +133,12 @@ def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> p
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] OHLCV 요청 실패 ({code}, period={period}): {e}")
+        logger.warning(f"[KIS] OHLCV 요청 실패 ({code}, period={period}): {e}")
         return None
 
     output2 = data.get("output2")
     if not output2:
-        print(f"[KIS] OHLCV output2 없음 ({code}, period={period}): rt_cd={data.get('rt_cd')} msg={data.get('msg1')}")
+        logger.info(f"[KIS] OHLCV output2 없음 ({code}, period={period}): rt_cd={data.get('rt_cd')} msg={data.get('msg1')}")
         return None
 
     rows = []
@@ -162,7 +182,7 @@ def _kis_financial_ratio(code: str, token: str) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] 재무비율 요청 실패 ({code}): {e}")
+        logger.warning(f"[KIS] 재무비율 요청 실패 ({code}): {e}")
         return {"per": None, "pbr": None, "roe": None}
 
     output = data.get("output")
@@ -191,7 +211,7 @@ def _kis_income_statement(code: str, token: str) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] 손익계산서 요청 실패 ({code}): {e}")
+        logger.warning(f"[KIS] 손익계산서 요청 실패 ({code}): {e}")
         return {"revenue": None, "net_income": None}
 
     output = data.get("output")
@@ -233,6 +253,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         "low": int(latest["low"]),
         "high": int(latest["high"]),
         "volume": int(latest["volume"]),
+        "bar_date": _bar_date(df),
     }
     change_data = _price_change(df)
 
@@ -245,7 +266,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         bb_mid = bb.get("bb_mid")
         bb_lower = bb.get("bb_lower")
     except Exception as e:
-        print(f"[KIS] 1일봉 지표 계산 실패 ({code}): {e}")
+        logger.warning(f"[KIS] 1일봉 지표 계산 실패 ({code}): {e}")
         macd_1d = rsi_1d = None
         rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
@@ -257,7 +278,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
             rsi_60m = indicators.rsi_zone_signal(df60)
             rsi_value_60m = indicators.rsi_latest_value(df60)
         except Exception as e:
-            print(f"[KIS] 60분봉 지표 계산 실패 ({code}): {e}")
+            logger.warning(f"[KIS] 60분봉 지표 계산 실패 ({code}): {e}")
             macd_60m = rsi_60m = None
             rsi_value_60m = None
     else:
@@ -354,7 +375,7 @@ def fetch_yf_ohlcv(code: str, interval: str, period: str) -> pd.DataFrame | None
         df.index = hist.index
         return df
     except Exception as e:
-        print(f"[YF] OHLCV 수집 실패 ({code}, interval={interval}, period={period}): {e}")
+        logger.warning(f"[YF] OHLCV 수집 실패 ({code}, interval={interval}, period={period}): {e}")
         return None
 
 
@@ -368,11 +389,11 @@ def _yf_intraday_60m(code: str) -> pd.DataFrame | None:
 
 def _fetch_from_yfinance(code: str, name: str) -> dict | None:
     """Yahoo Finance로 OHLCV + 기술지표 + 일부 재무 수집. 실패 시 None 반환."""
-    print(f"[YF] 폴백 시도 ({code})")
+    logger.info(f"[YF] 폴백 시도 ({code})")
     try:
         ticker = _yf_ticker(code)
         if ticker is None:
-            print(f"[YF] ticker 없음 ({code})")
+            logger.info(f"[YF] ticker 없음 ({code})")
             return None
 
         hist = ticker.history(period="6mo")
@@ -398,6 +419,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             "low": int(latest["low"]),
             "high": int(latest["high"]),
             "volume": int(latest["volume"]),
+            "bar_date": _bar_date(df),
         }
         change_data = _price_change(df)
 
@@ -410,7 +432,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             bb_mid = bb.get("bb_mid")
             bb_lower = bb.get("bb_lower")
         except Exception as e:
-            print(f"[YF] 1일봉 지표 계산 실패 ({code}): {e}")
+            logger.warning(f"[YF] 1일봉 지표 계산 실패 ({code}): {e}")
             macd_1d = rsi_1d = None
             rsi_value_1d = None
             bb_upper = bb_mid = bb_lower = None
@@ -422,7 +444,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
                 rsi_60m = indicators.rsi_zone_signal(df60)
                 rsi_value_60m = indicators.rsi_latest_value(df60)
             except Exception as e:
-                print(f"[YF] 60분봉 지표 계산 실패 ({code}): {e}")
+                logger.warning(f"[YF] 60분봉 지표 계산 실패 ({code}): {e}")
                 macd_60m = rsi_60m = None
                 rsi_value_60m = None
         else:
@@ -459,14 +481,14 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             ),
         }
 
-        print(f"[YF] 수집 성공 ({code})")
+        logger.info(f"[YF] 수집 성공 ({code})")
         return {"code": code, "name": name, **price_data, **change_data, **indicator_data,
                 **view_data, **ratio_data, **income_data,
                 "source": "yfinance", "source_60m": ("yfinance" if df60 is not None else None),
                 "error": None}
 
     except Exception as e:
-        print(f"[YF] 수집 실패 ({code}): {e}")
+        logger.warning(f"[YF] 수집 실패 ({code}): {e}")
         return None
 
 
@@ -492,7 +514,7 @@ def fetch_all(stock_list: list[dict]) -> tuple[list[dict], list[dict]]:
     try:
         token = kis_auth.get_token()
     except Exception as e:
-        print(f"[crawler] KIS 토큰 발급 실패 — 전 종목 Yahoo 폴백으로 진행: {e}")
+        logger.warning(f"[crawler] KIS 토큰 발급 실패 — 전 종목 Yahoo 폴백으로 진행: {e}")
         token = None
 
     success_list = []

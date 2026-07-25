@@ -10,7 +10,11 @@ candles 서비스로 조회하고, KIS 100건 상한으로 장기 요청이 잘�
 
 순수 계산부(run_dca_backtest)는 items 리스트만 받아 단위테스트가 쉽다.
 """
+import logging
+
 from .timeseries import downsample, epoch_to_date
+
+logger = logging.getLogger(__name__)
 
 # 주기 → 연간 매수 횟수
 _PERIODS_PER_YEAR = {"weekly": 52, "monthly": 12, "quarterly": 4}
@@ -111,7 +115,7 @@ def _long_series(code: str, tf: str, want: int) -> tuple[list[dict], str | None,
                     if len(y) > len(items):
                         items, source, fetch_error = y, "yfinance", False
             except Exception as e:
-                print(f"[dca] yfinance 장기 보강 실패({code},{tf}): {e}")
+                logger.warning(f"[dca] yfinance 장기 보강 실패({code},{tf}): {e}")
     return items, source, fetch_error
 
 

@@ -8,12 +8,15 @@ KIS 경로가 어떤 이유(자격증명 없음·TR/필드 불일치·네트워�
 get_indices() 는 동기 함수다(내부에서 blocking HTTP 호출) — 라우터에서
 asyncio.to_thread 로 감싸 호출한다(routers/stocks.py candles 와 동일 패턴).
 """
+import logging
 import threading
 import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from config import INDICES_CACHE_TTL_SECONDS, TIMEZONE
+
+logger = logging.getLogger(__name__)
 
 # code → (표시명, KIS 업종 지수 코드, yfinance 심볼)
 #   KIS 업종코드: 코스피 종합 "0001", 코스닥 종합 "1001"
@@ -138,7 +141,7 @@ def _fetch_one(d: dict) -> tuple[float, float | None, float | None, str]:
         value, change, pct = _fetch_kis_index(d["iscd"])
         return value, change, pct, "kis"
     except Exception as e:
-        print(f"[indices] {d['code']} KIS 실패, yfinance 폴백: {e}")
+        logger.warning(f"[indices] {d['code']} KIS 실패, yfinance 폴백: {e}")
     value, change, pct = _fetch_yf_index(d["symbol"])
     return value, change, pct, "yfinance"
 
@@ -154,7 +157,7 @@ def _fetch_all() -> list[dict]:
                 "source": source, "error": None,
             })
         except Exception as e:  # 한 지수 실패가 다른 지수를 막지 않도록 개별 격리
-            print(f"[indices] {d['code']} 조회 실패: {e}")
+            logger.warning(f"[indices] {d['code']} 조회 실패: {e}")
             items.append({
                 "code": d["code"], "name": d["name"],
                 "value": None, "change": None, "change_pct": None,

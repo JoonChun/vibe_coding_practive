@@ -22,6 +22,12 @@ _KRX_HOLIDAYS: set[str] = {
     "2026-12-25", "2026-12-31",
 }
 
+# 큐레이션이 끝난 마지막 연도. 이 연도를 넘어가면 음력 연휴·대체공휴일을 알 수 없으므로
+# is_year_covered() 가 False 를 돌려주고, 호출부는 "달력만 믿지 말라"는 경고를 남긴다.
+# (여기에 검증되지 않은 미래 음력 날짜를 추측해 넣으면 실제 거래일을 휴장으로 오판해
+#  수집을 건너뛰는, 훨씬 나쁜 실패로 바뀐다 → 추측 대신 커버리지를 노출한다.)
+TABLE_MAX_YEAR = 2026
+
 # 표에 없는 미래 연도라도 인지 가능한 고정(양력) 공휴일 (MM-DD).
 _FIXED_MMDD: set[str] = {
     "01-01",  # 신정
@@ -47,6 +53,18 @@ def is_holiday(d) -> bool:
     """해당 날짜가 KRX 휴장일이면 True(주말은 별도 — is_trading_day 에서 처리)."""
     key = _key(d)
     return key in _KRX_HOLIDAYS or key[5:] in _FIXED_MMDD
+
+
+def is_year_covered(d) -> bool:
+    """해당 날짜의 연도가 큐레이션된 휴장일 표(_KRX_HOLIDAYS) 범위 안이면 True.
+
+    False 면 고정 양력 공휴일 + 주말만 인지 가능한 상태다 — 즉 설·추석·대체공휴일을
+    놓칠 수 있으므로, 달력 판정만으로 데이터 신선도를 단정하면 안 된다(호출부는 실제
+    데이터의 거래일(bar_date)로 교차 검증할 것).
+    """
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    return d.year <= TABLE_MAX_YEAR
 
 
 def is_trading_day(d) -> bool:

@@ -13,6 +13,7 @@ KIS 실시간 체결 데이터를 브라우저로 중계하는 창구다. 실제
 """
 import asyncio
 import contextlib
+import logging
 import os
 import secrets
 
@@ -21,6 +22,8 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from config import API_TOKEN_ENV_KEY
 
 from ..services import kis_ws
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["stream"])
 
@@ -92,7 +95,7 @@ async def ws_ticks(websocket: WebSocket, token: str | None = Query(default=None)
         pass
     except Exception as e:
         # 개별 연결의 예외가 서버 전체(다른 연결·수집 루프)에 번지면 안 된다.
-        print(f"[stream] /ws/ticks 처리 중 예외: {e}")
+        logger.warning(f"[stream] /ws/ticks 처리 중 예외: {e}")
     finally:
         # reader_task 는 두 경로로 여기 도달할 수 있다:
         #  ① 아직 진행 중(정상 송신 루프 중 다른 예외로 빠져나옴) → cancel() 후

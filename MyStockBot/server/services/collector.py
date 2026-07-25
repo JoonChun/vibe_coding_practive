@@ -13,6 +13,7 @@ GET /api/snapshot 은 이 모듈이 채운 상태(get_state)를 읽기만 한다
 사이클 간격: 장중(평일 09:00~15:40 Asia/Seoul) COLLECTOR_INTERVAL_MARKET,
 그 외 COLLECTOR_INTERVAL_IDLE. 부팅 직후 즉시 1회 수집.
 """
+import logging
 import random
 import threading
 import time
@@ -29,9 +30,10 @@ import kis_auth
 from config import (
     COLLECTOR_INTERVAL_IDLE,
     COLLECTOR_INTERVAL_MARKET,
-    KIS_RATE_LIMIT_DELAY,
     TIMEZONE,
 )
+
+logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 4
 
@@ -197,7 +199,7 @@ def _get_financials_cached(code: str, token: str | None) -> dict:
     try:
         data = crawler.fetch_kis_financials(code, token)
     except Exception as e:
-        print(f"[collector] 재무데이터 수집 실패 ({code}): {e}")
+        logger.warning(f"[collector] 재무데이터 수집 실패 ({code}): {e}")
         data = dict(_EMPTY_FINANCIALS)
 
     ttl = _FINANCIALS_TTL_SECONDS + random.uniform(
@@ -231,18 +233,20 @@ def _fetch_daily(code: str, token: str | None) -> tuple[pd.DataFrame | None, str
         try:
             df = crawler.fetch_kis_ohlcv(code, token, period="D", lookback_days=150)
         except Exception as e:
-            print(f"[collector] KIS 일봉 수집 예외 ({code}): {e}")
+            logger.warning(f"[collector] KIS 일봉 수집 예외 ({code}): {e}")
             df = None
-        time.sleep(KIS_RATE_LIMIT_DELAY)
+        # 호출 간격은 crawler 안에서 kis_auth.kis_throttle() 이 전역으로 보장한다
+        # (예전에는 여기서 다시 sleep 해 지연이 이중 적용됐다 — 워커 4개 × 종목 수만큼
+        #  사이클이 불필요하게 길어졌다).
         if df is not None and not df.empty:
             source = "kis"
 
     if df is None or df.empty:
-        print(f"[collector] ⚠ KIS 일봉 실패, yfinance 폴백: {code}")
+        logger.warning(f"[collector] ⚠ KIS 일봉 실패, yfinance 폴백: {code}")
         try:
             df = crawler.fetch_yf_ohlcv(code, interval="1d", period="2y")
         except Exception as e:
-            print(f"[collector] yfinance 일봉 폴백 실패 ({code}): {e}")
+            logger.warning(f"[collector] yfinance 일봉 폴백 실패 ({code}): {e}")
             df = None
         if df is not None and not df.empty:
             source = "yfinance"
@@ -302,7 +306,7 @@ def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
     try:
         df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
     except Exception as e:
-        print(f"[collector] 60분봉 수집 실패 ({code}): {e}")
+        logger.warning(f"[collector] 60분봉 수집 실패 ({code}): {e}")
         df60 = None
 
     if df60 is None or df60.empty:
@@ -335,7 +339,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
         bb = indicators.bollinger(daily_store_df)
         bb_upper, bb_mid, bb_lower = bb.get("bb_upper"), bb.get("bb_mid"), bb.get("bb_lower")
     except Exception as e:
-        print(f"[collector] 1일봉 지표 계산 실패 ({code}): {e}")
+        logger.warning(f"[collector] 1일봉 지표 계산 실패 ({code}): {e}")
         macd_1d = rsi_1d = None
         rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
@@ -350,7 +354,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
             rsi_60m = indicators.rsi_zone_signal(store60_df)
             rsi_value_60m = indicators.rsi_latest_value(store60_df)
         except Exception as e:
-            print(f"[collector] 60분봉 지표 계산 실패 ({code}): {e}")
+            logger.warning(f"[collector] 60분봉 지표 계산 실패 ({code}): {e}")
             macd_60m = rsi_60m = None
             rsi_value_60m = None
 
@@ -395,13 +399,13 @@ def _run_cycle() -> None:
         now = datetime.now(ZoneInfo(TIMEZONE))
         with _state_lock:
             _state = {"generated_at": now.isoformat(), "items": []}
-        print("[collector] watchlist 비어있음 — 수집 건너뜀")
+        logger.info("[collector] watchlist 비어있음 — 수집 건너뜀")
         return
 
     try:
         token = kis_auth.get_token()
     except Exception as e:
-        print(f"[collector] KIS 토큰 발급 실패 — 이번 사이클은 전 종목 yfinance 폴백 경로로 진행: {e}")
+        logger.warning(f"[collector] KIS 토큰 발급 실패 — 이번 사이클은 전 종목 yfinance 폴백 경로로 진행: {e}")
         token = None
 
     items: list[dict] = []
@@ -414,7 +418,7 @@ def _run_cycle() -> None:
             try:
                 items.append(future.result())
             except Exception as e:
-                print(f"[collector] 종목 수집 예외 ({stock.get('code')}): {e}")
+                logger.warning(f"[collector] 종목 수집 예외 ({stock.get('code')}): {e}")
                 items.append(_error_item(stock.get("code"), stock.get("name"), f"수집 예외: {e}"))
 
     now = datetime.now(ZoneInfo(TIMEZONE))
@@ -422,15 +426,18 @@ def _run_cycle() -> None:
         _state = {"generated_at": now.isoformat(), "items": items}
 
     success = sum(1 for it in items if it.get("error") is None)
-    print(f"[collector] 사이클 완료: 성공 {success}건 실패 {len(items) - success}건 (전체 {len(items)}건)")
+    failed = len(items) - success
+    # 정상 사이클은 info, 실패가 섞인 사이클만 warning — 로그 레벨로 걸러 볼 수 있게.
+    log = logger.warning if failed else logger.info
+    log(f"[collector] 사이클 완료: 성공 {success}건 실패 {failed}건 (전체 {len(items)}건)")
 
 
 def _loop() -> None:
-    print("[collector] 수집 루프 시작")
+    logger.info("[collector] 수집 루프 시작")
     try:
         _run_cycle()  # 부팅 직후 즉시 1회
     except Exception as e:
-        print(f"[collector] 부팅 직후 수집 사이클 실패: {e}")
+        logger.warning(f"[collector] 부팅 직후 수집 사이클 실패: {e}")
 
     while not _stop_event.is_set():
         interval = _cycle_interval_seconds()
@@ -439,9 +446,9 @@ def _loop() -> None:
         try:
             _run_cycle()
         except Exception as e:
-            print(f"[collector] 수집 사이클 실패: {e}")
+            logger.warning(f"[collector] 수집 사이클 실패: {e}")
 
-    print("[collector] 수집 루프 종료")
+    logger.info("[collector] 수집 루프 종료")
 
 
 def start() -> None:

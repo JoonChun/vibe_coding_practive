@@ -20,6 +20,7 @@
 공식 예제가 `ssl._create_unverified_context` 로 인증서 검증을 우회하는 것과 동일하게
 여기서도 requests verify=False 를 쓴다(구식/자체서명 인증서 대응, 공식 예제 그대로 이식).
 """
+import logging
 import sys
 import time
 import zipfile
@@ -35,6 +36,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import KIS_MASTER_URLS, STOCK_MASTER_STALE_DAYS
 
 import db
+
+logger = logging.getLogger(__name__)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -65,7 +68,7 @@ def _download_with_retry(url: str, dest_path: Path) -> None:
             return
         except requests.RequestException as e:
             last_error = e
-            print(f"[stock_master] 다운로드 실패(시도 {attempt}/{_MAX_RETRIES}): {url} — {e}")
+            logger.warning(f"[stock_master] 다운로드 실패(시도 {attempt}/{_MAX_RETRIES}): {url} — {e}")
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
     raise RuntimeError(f"마스터 파일 다운로드 실패: {url}") from last_error
@@ -93,7 +96,7 @@ def _parse_mst_file(mst_path: Path, market: str) -> list[dict]:
 def _download_and_parse_market(market: str, base_dir: Path) -> list[dict]:
     url = KIS_MASTER_URLS[market]
     zip_path = base_dir / f"{market.lower()}_code.zip"
-    print(f"[stock_master] {market} 마스터 다운로드 시작: {url}")
+    logger.info(f"[stock_master] {market} 마스터 다운로드 시작: {url}")
     _download_with_retry(url, zip_path)
 
     with zipfile.ZipFile(zip_path) as zf:
@@ -104,7 +107,7 @@ def _download_and_parse_market(market: str, base_dir: Path) -> list[dict]:
         raise FileNotFoundError(f"압축 해제 후 마스터 파일을 찾을 수 없음: {mst_path}")
 
     items = _parse_mst_file(mst_path, market)
-    print(f"[stock_master] {market} 파싱 완료: {len(items)}건")
+    logger.info(f"[stock_master] {market} 파싱 완료: {len(items)}건")
     return items
 
 
@@ -124,10 +127,10 @@ def download_and_parse() -> list[dict]:
 
 def refresh_stock_master() -> int:
     """마스터를 다운로드해 DB에 upsert. 반영 건수 반환."""
-    print("[stock_master] 종목마스터 갱신 시작")
+    logger.info("[stock_master] 종목마스터 갱신 시작")
     rows = download_and_parse()
     count = db.upsert_stock_master(rows)
-    print(f"[stock_master] 종목마스터 갱신 완료: {count}건")
+    logger.info(f"[stock_master] 종목마스터 갱신 완료: {count}건")
     return count
 
 

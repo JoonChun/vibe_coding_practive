@@ -1019,12 +1019,21 @@ MyStockBot_PRD.md 항목을 표시하는 중입니다.
 
 ### 19.1 구조·페이지
 * `[x]` **3-페이지 + 하단 탭 셸** (§9·§17.2·§18-3) — `web/src/App.tsx` 라우트(`/`=메인·`/watchlist`=Sub1·`/paper`=Sub2·`/stocks/:code`), `TabBar.tsx`·`TabLayout.tsx`.
-* `[x]` **메인 대시보드** (§10) — `MainDashboardPage.tsx` + `useIndices.ts` (지수 카드·상승/하락 색상 규칙).
+* `[~]` **메인 대시보드** (§10) — `MainDashboardPage.tsx` + `useIndices.ts`.
+  **§10.1 의 9개 블록 중 4개만 구현**(앱 헤더+실시간 배지 / 지수 카드 2개 / 시그널 분포 스트립 / Top Movers / 디스클레이머).
+  **미구현: 시장 상태 줄(장전·장중·장마감·휴장 배지 + 마감까지 N분 + 마지막 갱신 상대시간), 지수 스파크라인, 시장 폭(등락종목수·상하한가), 투자자 매매동향, 매크로 참고(환율·나스닥).**
+  ※ 이전 판에서 `[x] 완료`로 표기했으나 실제 코드와 불일치 → 정정(2026-07).
+  ※ `src/market_calendar.py` 는 있으나 시장 상태를 노출하는 API·UI가 없어 "휴장" 배지 근거가 화면에 닿지 않는다.
 * `[x]` **Sub2 모의투자 페이지** (§12) — `PaperTradingPage.tsx` (실주문·보유·거래내역·초기화).
+  단, §12.2 추천 기능(자산 추이 그래프·수익률 랭킹·판정 대비 성과)과 실현손익 구분·체결가 출처 기록은 미구현.
 
 ### 19.2 차별화 기능
 * `[x]` **⭐ 판정 백테스트** (§15.2·§18-6) — `server/services/backtest.py` + `GET /api/stocks/{code}/backtest`, `BacktestCard.tsx`. 기술적 판정(MACD+RSI)만, 재무 None. 지표 1회 계산(리뷰 M2).
-* `[x]` **🚀 적립식 백테스트(DCA)** (§15.2c) — `server/services/dca.py` + `GET .../dca`, `DcaCard.tsx` (정량/정액 모드).
+  `[x]` **표본 신뢰도 표기(2026-07 추가)** — 적중률 95% 신뢰구간(Wilson) + 겹침 보정 독립 표본 수(`effective_signals`) + `low_confidence` 배지 + `bars_used`/`bars_available`/`truncated` 노출 + 가정·한계 `notes`. 재무 미반영을 응답 필드(`fundamentals_included`)와 notes 양쪽에 명시.
+* `[~]` **🚀 적립식 백테스트(DCA)** (§15.2c) — `server/services/dca.py` + `GET .../dca`, `DcaCard.tsx` (정량/정액 모드).
+  **미구현: 공유 카드(쇼츠 세로 포맷 이미지·원탭 공유) — §15.2c 의 그로스 핵심 장치.**
+  **미지원: 해외·지수 종목(QQQ·^NDX·^GSPC) — `db.normalize_code` 가 6자리 국내코드를 강제.**
+  배당 재투자 토글은 UI에 있으나 실제 반영되지 않고 `notes` 로 미반영을 고지한다(§20 참고).
 
 ### 19.3 기술 보완
 * `[x]` **KIS 토큰/approval_key 동시성 락 (P0)** (§16.1) — `src/kis_auth.py` double-checked locking.
@@ -1044,12 +1053,32 @@ MyStockBot_PRD.md 항목을 표시하는 중입니다.
 ## 20. 후속 항목 진행 현황
 * `[x]` **`bar_history` 死코드 정리/연결 (P0)** (§16.1) — 고아 테이블 제거 + 백필을 `candles`로 연결.
 * `[x]` **판정 근거 자연어 설명·툴팁 (P1)** (§17.2·§15.3) — `FactorBreakdown` 규칙 설명·요약 캡션 + `DecisionGauge` 임계 규칙 명문화.
-* `[x]` **테스트·린트·CI (P1)** (§16.2) — pytest 20건 + ruff + GitHub Actions CI(backend·web).
-* `[~]` **P2 기술** (§16.3) — 휴장일 인지·KIS rate-limit 전역 조율·헬스 readiness 완료. **로깅 전면 통일·배포 하드닝(비특권 유저)은 미착수.**
+* `[x]` **테스트·린트·CI (P1)** (§16.2) — pytest + ruff + GitHub Actions CI(backend·web). **2026-07 확장: 51건**(kis_ws 46필드 파서·워치독, 시트 동기화 규칙, `bar_date` 파싱, 백테스트 신뢰도).
+* `[x]` **WebSocket read 워치독 (P1)** (§16.2) — `kis_ws._read_loop` 를 `asyncio.wait_for(ws.recv(), timeout)` 기반으로 전환(`_READ_IDLE_TIMEOUT_SECONDS=180`). 무수신 시 `_ReadIdleTimeout` → 연결 종료 → 재연결. "초록 배지 + 틱 0" 좀비 연결 해소.
+* `[x]` **로깅 전면 통일 (P2)** (§16.3) — `server/`·`src/`·`scripts/` 의 `print()` 전량(59건) 제거 → 모듈별 `logging.getLogger(__name__)`. 엔트리포인트(`server/main.py`·`src/main.py`·`scripts/*`)가 `basicConfig` 로 타임스탬프·레벨·로거명 포맷을 책임진다. 실패 섞인 수집 사이클만 WARNING.
+* `[x]` **크론 휴장일 인지 (P2 보강)** (§16.3·§8) — `src/main.py` 가 `market_calendar.is_trading_day()` 사용(기존엔 `weekday()` 만 검사). 2차 방어선으로 **시트 `날짜` 컬럼을 실행일이 아닌 거래일(`crawler._bar_date`)로 기록** → 달력 미등록 휴장일에도 `(날짜,종목코드)` 중복 스킵이 걸린다. 표 범위 밖 연도는 경고 로그(`market_calendar.TABLE_MAX_YEAR`).
+* `[x]` **관심종목 단일 소스화** (신규) — 웹앱 SQLite ↔ 크론 Google Sheets `Dashboard` 이원화 해소. `src/watchlist_sync.py`: 앱→시트 즉시 미러(추가=upsert, 삭제=C열 `해제` 표시로 비파괴), 시트→앱 주기 임포트(부팅 + 평일 매시 :50, **추가 전용**), `POST /api/watchlist/sync` 수동 트리거. 자격증명 없으면 조용히 비활성.
+* `[x]` **hit_rate 신뢰구간·`_MAX_BARS` 캡 표기 (감사 MEDIUM)** — §19.2 참고.
+* `[x]` **KIS 호출 지연 이중 적용 제거** — `collector._fetch_daily` 의 `time.sleep(KIS_RATE_LIMIT_DELAY)` 삭제(호출 간격은 `kis_auth.kis_throttle()` 이 전역 보장).
+* `[~]` **P2 기술** (§16.3) — 휴장일 인지·KIS rate-limit 전역 조율·헬스 readiness·로깅 통일 완료. **배포 하드닝(컨테이너 비특권 유저·의존성 상한 핀)은 미착수.**
 * `[~]` **P2 UX** (§17.3) — heading 계층·터치 타깃·카피 통일·백그라운드 폴링 정지 완료.
 * `[ ]` **배당 실제 반영 (DCA reinvest)** — 배당 시계열 데이터 소스 연동 필요(현재 미반영 고지만).
-* `[ ]` **WebSocket read 워치독 (P1)** (§16.2) — `kis_ws.py` `wait_for` 미도입.
-* `[ ]` **감사 MEDIUM/LOW** — 표본 hit_rate 신뢰구간·`_MAX_BARS` 캡 표기·SQLite lock→429·지수 실패 캐시 방지 등.
+* `[ ]` **메인 대시보드 잔여 블록** (§10.1) — 시장 상태 배지·지수 스파크라인·시장 폭·투자자 매매동향·매크로. `market_calendar` 를 노출하는 시장상태 API가 선결.
+* `[ ]` **DCA 공유 카드·해외 종목** (§15.2c) — 그로스 루프의 핵심이 아직 없음.
+* `[ ]` **판정 전환 알림 엔진·타임라인** (§15.3·§13-6) — collector 사이클 diff + 웹푸시.
+* `[ ]` **감사 MEDIUM/LOW 잔여** — SQLite lock→429 변환, 지수 실패 응답 캐시 방지, 모의투자 실현손익·체결가 출처 기록.
+
+## 21. 판정 엔진 자체의 한계 (2026-07 감사 추가)
+
+> §15.1 은 판정 로직을 "상대적으로 강한 것"으로 분류했으나, 코드를 다시 보면 **엔진 자체가 얇다**.
+> 백테스트로 검증할 대상의 품질 문제이므로 §15.2 시그니처 기능보다 상위 리스크로 기록한다.
+
+* **지표 2개 의존:** `src/indicators.py` 의 판정은 MACD 라벨 + RSI 라벨뿐이다. 거래량·추세강도(ADX 등)·변동성(ATR)·시장 레짐 미반영.
+* **계산은 하고 판정엔 안 쓰는 지표:** 볼린저밴드는 `collector` 에서 산출·화면 표시되지만 점수에 들어가지 않는다(`short_term_view`/`long_term_view` 인자에 없음).
+* **가중치·임계값이 미검증 상수:** `_macd_score`(±2/±1)·`_rsi_score`(±1)·`_fundamental_score`(±1씩)·`_level5`(단기 ±2, 장기 ±3) 모두 손으로 정한 값이며, 백테스트 결과를 룰 개선에 되먹이는 루프가 없다.
+* **재무가 기술 신호를 덮을 수 있음:** `long_term_view` 에서 재무 점수는 최대 ±3 이므로, 기술 점수가 0이어도 `PER<10 + PBR<1 + ROE≥15` 만으로 **강력매수**가 나온다. 가치주 필터가 사실상 장기 판정을 지배할 수 있다.
+* **단기 판정의 데이터 취약성:** 60분봉은 yfinance 전용 경로(`collector._get_60m_df`)라 KIS 분봉을 쓰지 않는다 → 야후 지연·결측·429 시 단기 판정이 통째로 사라진다.
+* **실시간 틱은 판정에 미반영:** WS 틱은 표시 전용이고, 판정은 신선도 게이트(일봉 600초·60분봉 5분) 기반 저장소 값으로 계산된다.
 
 > **E2E 검증 한계:** 프록시가 Yahoo(403) 차단 + KIS 자격증명 부재 → 지수는 failsafe로 200(에러 필드 포함) 응답 확인. 백테스트·DCA·모의투자는 시드 DB로 검증 완료.
-8. **[품질]** 테스트/CI·WS 워치독·a11y 대비
+> 2026-07 작업분도 동일 제약 하에 검증했다: 시트 동기화는 gspread 호출을 monkeypatch 한 단위테스트 + 자격증명 부재 시 `enabled:false` 응답 확인(실제 Google Sheets 왕복은 미검증), WS 워치독은 가짜 연결로 무수신·PINGPONG·파싱이상 경로 검증(실 KIS 세션 미검증).

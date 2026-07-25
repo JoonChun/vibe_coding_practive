@@ -2284,6 +2284,27 @@ select:focus-visible {
   color: var(--outline);
 }
 
+/* 표본이 부족한 적중률에 붙는 '참고치' 배지 — 큰 숫자만 보고 과신하지 않도록. */
+.bt-stat__flag {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: 0.6rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* 서버가 내려준 가정·한계 목록 */
+.bt-card__notes {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.68rem;
+  line-height: 1.6;
+  color: var(--on-surface-variant);
+}
+
 .bt-curve {
   width: 100%;
   height: 96px;
