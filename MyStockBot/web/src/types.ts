@@ -70,8 +70,10 @@ export interface MarketStatus {
   session_date: string;
   /** 지금 보이는 시세가 속한 거래일. 휴장·장전이면 직전 거래일 */
   reference_trading_day: string;
-  /** 휴장일 표가 이 연도를 커버하는지. false 면 음력 연휴를 놓칠 수 있다 */
+  /** 이 날짜의 판정을 신뢰할 수 있는지. false 면 음력 연휴를 놓칠 수 있다 */
   calendar_covered: boolean;
+  /** 판정 근거 — "kis"(공식 휴장일 캐시) | "builtin"(하드코딩 표) */
+  calendar_source: "kis" | "builtin";
 }
 
 export interface IndicesResponse {

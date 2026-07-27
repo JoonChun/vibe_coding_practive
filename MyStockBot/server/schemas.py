@@ -114,7 +114,8 @@ class MarketStatusResponse(BaseModel):
     session_close: str   # 같은 세션의 마감 시각
     session_date: str    # 그 세션의 날짜(YYYY-MM-DD)
     reference_trading_day: str  # 지금 보이는 시세가 속한 거래일(휴장·장전이면 직전 거래일)
-    calendar_covered: bool      # 휴장일 표가 이 연도를 커버하는지(False 면 음력 연휴 누락 가능)
+    calendar_covered: bool      # 이 날짜의 판정을 신뢰할 수 있는지(False 면 음력 연휴 누락 가능)
+    calendar_source: str = "builtin"  # "kis"(공식 휴장일 캐시) | "builtin"(하드코딩 표)
 
 
 class IndicesResponse(BaseModel):

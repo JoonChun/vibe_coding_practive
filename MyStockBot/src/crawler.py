@@ -19,6 +19,7 @@ from config import (
     KIS_APP_SECRET_ENV,
     KIS_DAILY_PRICE_URL,
     KIS_FINANCIAL_RATIO_URL,
+    KIS_HOLIDAY_URL,
     KIS_INCOME_STMT_URL,
     KIS_MINUTE_CHART_URL,
     KIS_RATE_LIMIT_DELAY,
@@ -361,6 +362,98 @@ def resample_minutes_to_60m(df: pd.DataFrame) -> pd.DataFrame | None:
     })
     out.index = idx
     return out
+
+
+# ────────────────────────────────────────────
+# KRX 휴장일 조회 — 국내휴장일조회 CTCA0903R
+#
+# 출처: examples_llm/domestic_stock/chk_holiday/chk_holiday.py (URL·tr_id·params·페이징),
+#       .../chk_chk_holiday.py COLUMN_MAPPING (응답 필드).
+#
+# ★ 공식 docstring 경고: "원장서비스와 연관되어 있어 단시간 내 다수 호출시 서비스에 영향을
+#   줄 수 있어 가급적 1일 1회 호출" → 호출부(scheduler)가 하루 1회로 제한하고 결과를
+#   SQLite 에 영속 저장한다. 이 함수 자체는 호출 빈도를 판단하지 않는다.
+# ★ 개장일 판단은 opnd_yn — 공식 docstring 이 "주문을 넣을 수 있는지 확인하고자 하실
+#   경우 개장일여부(opnd_yn)을 사용"이라고 명시한다.
+# ────────────────────────────────────────────
+
+_KIS_HOLIDAY_TR_ID = "CTCA0903R"
+# 응답 1페이지가 몇 건인지 문서화되어 있지 않아, 연속조회 헤더(tr_cont M/F)를 따라가되
+# 무한 루프 방지 상한을 둔다.
+_KIS_HOLIDAY_MAX_PAGES = 12
+_KIS_HOLIDAY_CONTINUE_FLAGS = ("M", "F")
+
+
+def _parse_kis_holiday_rows(rows: list[dict]) -> list[dict]:
+    """휴장일 output → [{date: 'YYYY-MM-DD', is_open: bool}]. 파싱 실패 행은 건너뜀."""
+    parsed = []
+    for item in rows:
+        raw_date = str(item.get("bass_dt") or "").strip()
+        if len(raw_date) != 8 or not raw_date.isdigit():
+            continue
+        opnd = str(item.get("opnd_yn") or "").strip().upper()
+        if opnd not in ("Y", "N"):
+            continue
+        parsed.append({
+            "date": f"{raw_date[0:4]}-{raw_date[4:6]}-{raw_date[6:8]}",
+            "is_open": opnd == "Y",
+        })
+    return parsed
+
+
+def fetch_kis_holidays(token: str, bass_dt: str, max_days: int) -> list[dict]:
+    """기준일자부터의 개장일 여부를 연속조회로 모아 반환. 실패 시 빈 리스트.
+
+    반환: [{date: 'YYYY-MM-DD', is_open: bool}, ...] (날짜 오름차순, 중복 제거)
+    max_days 만큼 모이거나 연속조회가 끝나면 종료한다.
+    """
+    headers = _get_headers(token)
+    headers["tr_id"] = _KIS_HOLIDAY_TR_ID
+    headers["tr_cont"] = ""
+
+    collected: dict[str, dict] = {}
+    ctx_fk = ""
+    ctx_nk = ""
+
+    for page in range(_KIS_HOLIDAY_MAX_PAGES):
+        params = {"BASS_DT": bass_dt, "CTX_AREA_FK": ctx_fk, "CTX_AREA_NK": ctx_nk}
+        try:
+            kis_auth.kis_throttle()
+            resp = requests.get(KIS_HOLIDAY_URL, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning("[KIS] 휴장일 조회 실패 (page=%d, bass_dt=%s): %s", page, bass_dt, e)
+            break
+
+        rows = data.get("output") or []
+        if isinstance(rows, dict):  # 단건 응답 변형 방어
+            rows = [rows]
+        parsed = _parse_kis_holiday_rows(rows)
+        if not parsed:
+            if not collected:
+                logger.warning(
+                    "[KIS] 휴장일 output 없음/파싱 실패: rt_cd=%s msg=%s",
+                    data.get("rt_cd"), data.get("msg1"),
+                )
+            break
+
+        for row in parsed:
+            collected.setdefault(row["date"], row)
+
+        if len(collected) >= max_days:
+            break
+
+        # 연속조회: 응답 헤더 tr_cont 가 M/F 면 다음 페이지가 있고, 바디의 ctx_area_* 를
+        # 다음 요청에 되돌려준다(공식 예제와 동일).
+        tr_cont = (resp.headers.get("tr_cont") or "").strip().upper()
+        if tr_cont not in _KIS_HOLIDAY_CONTINUE_FLAGS:
+            break
+        ctx_fk = str(data.get("ctx_area_fk") or "").strip()
+        ctx_nk = str(data.get("ctx_area_nk") or "").strip()
+        headers["tr_cont"] = "N"
+
+    return sorted(collected.values(), key=lambda r: r["date"])[:max_days]
 
 
 def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:

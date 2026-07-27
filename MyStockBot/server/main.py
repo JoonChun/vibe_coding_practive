@@ -53,6 +53,21 @@ def _refresh_stock_master_in_background() -> None:
         logger.warning("[startup] stock_master 백그라운드 갱신 실패(다음 기회에 재시도): %s", e)
 
 
+def _refresh_holidays_in_background() -> None:
+    """휴장일 캐시를 부팅 시 1회 시도(내부에서 20시간 제한을 재확인해 과호출을 막는다).
+
+    자격증명이 없으면 조용히 건너뛰고 하드코딩 표로 계속 동작한다.
+    """
+    try:
+        result = scheduler.refresh_market_holidays()
+        if result["called"] and result["saved"]:
+            logger.info("[startup] 휴장일 캐시 %d건 확보", result["saved"])
+        else:
+            logger.info("[startup] 휴장일 캐시 갱신 건너뜀: %s", result["reason"])
+    except Exception as e:
+        logger.warning("[startup] 휴장일 캐시 갱신 실패(스케줄러가 재시도): %s", e)
+
+
 def _import_watchlist_from_sheet_in_background() -> None:
     """시트 Dashboard 에만 있는 관심종목을 앱으로 끌어온다(부팅 시 1회, 추가 전용).
 
@@ -81,6 +96,9 @@ async def lifespan(app: FastAPI):
         target=_import_watchlist_from_sheet_in_background,
         daemon=True,
         name="watchlist-sheet-import",
+    ).start()
+    threading.Thread(
+        target=_refresh_holidays_in_background, daemon=True, name="holiday-refresh"
     ).start()
     scheduler.start()
     collector.start()

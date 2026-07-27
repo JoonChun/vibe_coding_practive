@@ -67,11 +67,48 @@ def is_year_covered(d) -> bool:
     return d.year <= TABLE_MAX_YEAR
 
 
+def _cached_open_flag(d: date) -> bool | None:
+    """KIS 국내휴장일조회(CTCA0903R) 결과 캐시를 조회. 없거나 실패하면 None.
+
+    이 캐시가 있으면 **그것이 권위 있는 답**이다(공식 개장일 여부). 하드코딩 표는 자격증명이
+    없거나 캐시에 없는 날짜를 위한 폴백으로만 남는다.
+
+    지연 import + 전체 예외 격리: market_calendar 는 DB 없이도 동작해야 한다(크론은
+    GitHub Actions 러너에서 매번 새로 클론되므로 DB가 비어 있다).
+    """
+    try:
+        import db
+
+        return db.get_market_open_flag(d.isoformat())
+    except Exception:
+        return None
+
+
 def is_trading_day(d) -> bool:
-    """평일이면서 휴장일이 아니면 True."""
+    """거래일(개장일)이면 True.
+
+    판단 순서:
+      1) KIS 휴장일 캐시(공식) — 있으면 이 값을 그대로 신뢰한다.
+      2) 하드코딩 표 + 주말 — 캐시에 없는 날짜(자격증명 없음·미래 구간·크론 환경)의 폴백.
+    """
     if isinstance(d, str):
         d = date.fromisoformat(d[:10])
+
+    cached = _cached_open_flag(d)
+    if cached is not None:
+        return cached
+
     return d.weekday() < 5 and not is_holiday(d)
+
+
+def calendar_source(d) -> str:
+    """이 날짜의 판정 근거 — "kis"(공식 캐시) 또는 "builtin"(하드코딩 표).
+
+    화면에서 "공휴일 판정이 정확하지 않을 수 있습니다" 경고를 낼지 결정하는 데 쓴다.
+    """
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    return "kis" if _cached_open_flag(d) is not None else "builtin"
 
 
 # ────────────────────────────────────────────
@@ -133,8 +170,10 @@ def market_status(now: datetime) -> dict:
           "마감까지 N시간 M분" / "개장까지 …" 카운트다운을 로컬에서 계산한다(초당 폴링 불필요).
       reference_trading_day — 지금 화면에 보이는 시세가 속한 거래일.
           휴장·장전이면 직전 거래일이다 → "최근 거래일 기준" 안내의 근거(신선도 오해 방지).
-      calendar_covered — 휴장일 표가 이 연도를 커버하는지. False 면 음력 연휴를 놓칠 수
-          있으므로 화면에서 단정적으로 "휴장"이라 말하면 안 된다.
+      calendar_covered — 이 날짜의 판정을 신뢰할 수 있는지.
+          KIS 공식 휴장일 캐시가 있으면 True. 없으면 하드코딩 표 범위(TABLE_MAX_YEAR) 안일
+          때만 True — 범위 밖이면 음력 연휴를 놓칠 수 있으므로 화면이 단정하지 않는다.
+      calendar_source — "kis"(공식 캐시) | "builtin"(하드코딩 표)
 
     now 는 tz-aware 여야 한다(호출부가 Asia/Seoul 로 만들어 넘긴다).
     """
@@ -160,6 +199,7 @@ def market_status(now: datetime) -> dict:
         reference_day = today
 
     tz = now.tzinfo
+    source = calendar_source(today)
     return {
         "status": status,
         "label": _STATUS_LABELS[status],
@@ -168,5 +208,7 @@ def market_status(now: datetime) -> dict:
         "session_close": datetime.combine(session_day, SESSION_CLOSE, tzinfo=tz).isoformat(),
         "session_date": session_day.isoformat(),
         "reference_trading_day": reference_day.isoformat(),
-        "calendar_covered": is_year_covered(today),
+        # 공식 캐시가 있으면 연도 범위와 무관하게 신뢰할 수 있다.
+        "calendar_covered": source == "kis" or is_year_covered(today),
+        "calendar_source": source,
     }

@@ -35,6 +35,19 @@ KIS_DAILY_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire
 # 국내주식(J)은 1분봉 고정이라 60분봉은 직접 제공되지 않고 리샘플이 필요하다.
 KIS_MINUTE_CHART_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
 
+# 국내휴장일조회: chk-holiday / CTCA0903R [국내주식-040]
+# 출처(추측 아님 — curl 로 원문 확인):
+#   github.com/koreainvestment/open-trading-api
+#   examples_llm/domestic_stock/chk_holiday/chk_holiday.py (L23 URL, L72 tr_id, L74-78 params)
+#   .../chk_chk_holiday.py COLUMN_MAPPING (응답 필드: bass_dt·wday_dvsn_cd·bzdy_yn·
+#                                          tr_day_yn·opnd_yn·sttl_day_yn)
+#
+# ★ 공식 docstring 경고: "당사 원장서비스와 연관되어 있어 단시간 내 다수 호출시 서비스에
+#   영향을 줄 수 있어 가급적 1일 1회 호출 부탁드립니다." → 결과를 SQLite 에 영속 캐시하고
+#   하루 1회만 갱신한다(KIS_HOLIDAY_MIN_REFRESH_HOURS).
+# ★ 개장일 판단은 opnd_yn(개장일여부)을 쓴다 — 공식 docstring 이 명시한 필드다.
+KIS_HOLIDAY_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/chk-holiday"
+
 KIS_FINANCIAL_RATIO_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/financial-ratio"
 KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-statement"
 # 국내업종 일자별 지수 시세(코스피/코스닥 지수): inquire-daily-indexchartprice / FHKUP03500100
@@ -123,3 +136,9 @@ KIS_MASTER_URLS = {
     "KOSDAQ": "https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip",
 }
 STOCK_MASTER_STALE_DAYS = 7
+
+# 휴장일 캐시 갱신 최소 간격(시간). 공식 문서가 "가급적 1일 1회"를 요청하므로 20시간을 둔다
+# (하루 1회 스케줄 + 부팅 시 1회가 겹쳐도 실제 호출은 하루 한 번으로 수렴).
+KIS_HOLIDAY_MIN_REFRESH_HOURS = int(os.environ.get("KIS_HOLIDAY_MIN_REFRESH_HOURS", "20"))
+# 한 번 갱신할 때 앞으로 며칠치를 확보할지(페이징으로 받는다).
+KIS_HOLIDAY_LOOKAHEAD_DAYS = int(os.environ.get("KIS_HOLIDAY_LOOKAHEAD_DAYS", "400"))

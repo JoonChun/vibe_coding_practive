@@ -71,6 +71,20 @@ def init_db() -> None:
             )
             """
         )
+        # ── KRX 휴장일 캐시 ──
+        # KIS 국내휴장일조회(CTCA0903R)는 "가급적 1일 1회 호출"을 요청하므로 결과를 여기
+        # 영속 저장한다. in-memory 캐시만 쓰면 서버 재시작마다 재호출하게 된다.
+        # is_open = opnd_yn(개장일여부) 을 0/1 로 저장.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS market_holidays (
+                date TEXT PRIMARY KEY,
+                is_open INTEGER NOT NULL,
+                fetched_at TEXT NOT NULL
+            )
+            """
+        )
+
         # ── 모의투자(Paper Trading) ── 개인용 단일 계좌(id=1 싱글턴)
         conn.execute(
             """
@@ -358,6 +372,59 @@ def get_candles_age_seconds(code: str, tf: str) -> float | None:
         except ValueError:
             return None
         return (datetime.now(timezone.utc) - fetched_dt).total_seconds()
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
+# KRX 휴장일 캐시 (KIS CTCA0903R 결과 영속화)
+# ────────────────────────────────────────────
+
+def upsert_market_holidays(rows: list[dict]) -> int:
+    """[{date: 'YYYY-MM-DD', is_open: bool}, ...] 를 upsert. 단일 트랜잭션. 반영 건수 반환.
+
+    빈 리스트는 no-op(0) — 실패한 조회 결과로 기존 캐시를 지우지 않기 위함이다.
+    """
+    if not rows:
+        return 0
+
+    fetched_at = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
+    conn = get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO market_holidays (date, is_open, fetched_at) VALUES (?, ?, ?)",
+            [(r["date"], 1 if r["is_open"] else 0, fetched_at) for r in rows],
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def get_market_open_flag(date_str: str) -> bool | None:
+    """캐시된 개장일 여부. 해당 날짜가 캐시에 없으면 None(호출부가 하드코딩 표로 폴백)."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT is_open FROM market_holidays WHERE date = ?", (date_str,)
+        ).fetchone()
+        return None if row is None else bool(row["is_open"])
+    finally:
+        conn.close()
+
+
+def get_market_holiday_meta() -> dict:
+    """휴장일 캐시 메타 — 건수·커버 범위·마지막 조회 시각.
+
+    스케줄러가 "1일 1회" 제약을 지키며 갱신 필요 여부를 판단하는 데 쓴다.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count, MIN(date) AS min_date, MAX(date) AS max_date, "
+            "MAX(fetched_at) AS fetched_at FROM market_holidays"
+        ).fetchone()
+        return dict(row)
     finally:
         conn.close()
 
