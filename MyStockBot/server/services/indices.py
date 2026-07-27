@@ -1,9 +1,16 @@
-"""시장 지수(코스피/코스닥) 조회 — read-through 인메모리 캐시.
+"""시장 지수(코스피/코스닥) + 시장 폭(등락종목수) 조회 — read-through 인메모리 캐시.
 
-개별 종목 시세(collector.py)와는 조회 경로가 다르다. 지수는 **KIS 국내업종 일자별
-지수(FHKUP03500100)를 1차**로 시도하고, 실패하면 **yfinance(^KS11/^KQ11)로 폴백**한다.
-KIS 경로가 어떤 이유(자격증명 없음·TR/필드 불일치·네트워크)로든 실패하면 예외를
-삼키고 yfinance 로 넘어가므로, KIS 경로가 틀려도 회귀 없이 항상 값을 낸다(failsafe).
+개별 종목 시세(collector.py)와는 조회 경로가 다르다. 3단 폴백:
+
+  1) **KIS 국내업종 현재지수(FHPUP02100000)** — 전일 대비·대비율을 직접 주고,
+     상승/보합/하락/상한/하한 종목 수(시장 폭)까지 같은 응답에 담겨 온다. 1순위.
+  2) **KIS 국내업종 일자별 지수(FHKUP03500100)** — 종가 2개를 빼서 등락을 계산한다.
+     시장 폭은 없다. 1)이 실패했을 때만.
+  3) **yfinance(^KS11/^KQ11)** — 지연·결측이 있고 시장 폭도 없다. 최후 폴백.
+
+어떤 이유(자격증명 없음·TR/필드 불일치·네트워크)로든 앞 단계가 실패하면 예외를 삼키고
+다음 단계로 넘어가므로, 항상 값을 낸다(failsafe). 시장 폭은 1)에서만 나오므로 그 외
+경로에서는 breadth=None 이고, 화면은 그때 시장 폭 블록을 숨긴다.
 
 get_indices() 는 동기 함수다(내부에서 blocking HTTP 호출) — 라우터에서
 asyncio.to_thread 로 감싸 호출한다(routers/stocks.py candles 와 동일 패턴).
@@ -47,6 +54,90 @@ def _from_two_closes(value, prev) -> tuple[float, float | None, float | None]:
         return value, None, None
     change = value - prev
     return value, round(change, 2), round(change / prev * 100, 2)
+
+
+# 전일 대비 부호 코드 → 극성. KIS 전 API 공통 관례(kis_ws._SIGN_POLARITY 와 동일):
+#   1 상한가, 2 상승, 3 보합, 4 하한가, 5 하락.
+# 원문 숫자에 부호가 이미 있을 수도 없을 수도 있어(WS 쪽에서 확정 불가로 판명), abs() 로
+# 절대값을 취한 뒤 이 코드로 극성을 결정한다 — 이중 반전을 막는다.
+_SIGN_POLARITY = {"1": 1, "2": 1, "3": 0, "4": -1, "5": -1}
+
+# 시장 폭 필드(FHPUP02100000 output) — chk_inquire_index_price.py COLUMN_MAPPING 원문 기준.
+_BREADTH_FIELDS = {
+    "up": "ascn_issu_cnt",        # 상승 종목 수
+    "flat": "stnr_issu_cnt",      # 보합 종목 수
+    "down": "down_issu_cnt",      # 하락 종목 수
+    "limit_up": "uplm_issu_cnt",  # 상한 종목 수
+    "limit_down": "lslm_issu_cnt",  # 하한 종목 수
+}
+
+
+def _safe_int(val) -> int | None:
+    try:
+        return int(float(val))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_breadth(output: dict) -> dict | None:
+    """지수 응답에서 등락종목수를 뽑는다. 상승·하락 둘 다 없으면 None(의미 없는 부분데이터 방지)."""
+    parsed = {key: _safe_int(output.get(field)) for key, field in _BREADTH_FIELDS.items()}
+    if parsed["up"] is None and parsed["down"] is None:
+        return None
+    return {k: (v if v is not None else 0) for k, v in parsed.items()}
+
+
+def _fetch_kis_index_price(iscd: str) -> tuple[float, float | None, float | None, dict | None]:
+    """KIS 국내업종 현재지수(FHPUP02100000) → (현재지수, 등락폭, 등락률%, 시장폭).
+
+    일자별 지수와 달리 등락을 직접 주므로 종가 2개를 빼는 계산이 필요 없고, 시장 폭이
+    같은 응답에 들어 있다. 실패 시 예외를 던진다(→ 호출부에서 다음 단계 폴백).
+    """
+    import os
+
+    import kis_auth
+    import requests
+    from config import (
+        KIS_APP_KEY_ENV,
+        KIS_APP_SECRET_ENV,
+        KIS_INDEX_PRICE_URL,
+    )
+
+    token = kis_auth.get_token()  # 자격증명 없으면 RuntimeError
+    headers = {
+        "Content-Type": "application/json",
+        "authorization": f"Bearer {token}",
+        "appkey": os.environ.get(KIS_APP_KEY_ENV, ""),
+        "appsecret": os.environ.get(KIS_APP_SECRET_ENV, ""),
+        "tr_id": "FHPUP02100000",
+    }
+    params = {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd}
+
+    kis_auth.kis_throttle()
+    resp = requests.get(KIS_INDEX_PRICE_URL, headers=headers, params=params, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    output = data.get("output")
+    if not output:
+        raise RuntimeError(
+            f"KIS 현재지수 output 없음: rt_cd={data.get('rt_cd')} msg={data.get('msg1')}"
+        )
+    # output 이 배열로 오는 변형에 대비(문서상 object 지만 방어).
+    if isinstance(output, list):
+        output = output[0] if output else {}
+
+    value = _safe_float(output.get("bstp_nmix_prpr"))
+    if value is None:
+        raise RuntimeError("KIS 현재지수 파싱 실패(bstp_nmix_prpr 없음)")
+
+    polarity = _SIGN_POLARITY.get(str(output.get("prdy_vrss_sign") or "").strip(), 0)
+    raw_change = _safe_float(output.get("bstp_nmix_prdy_vrss"))
+    raw_pct = _safe_float(output.get("bstp_nmix_prdy_ctrt"))
+    change = None if raw_change is None else round(abs(raw_change) * polarity, 2)
+    change_pct = None if raw_pct is None else round(abs(raw_pct) * polarity, 2)
+
+    return round(value, 2), change, change_pct, _parse_breadth(output)
 
 
 def _fetch_kis_index(iscd: str) -> tuple[float, float | None, float | None]:
@@ -135,25 +226,38 @@ def _fetch_yf_index(symbol: str) -> tuple[float, float | None, float | None]:
     return _from_two_closes(value, prev)
 
 
-def _fetch_one(d: dict) -> tuple[float, float | None, float | None, str]:
-    """KIS 1차 → yfinance 폴백. 반환에 source 포함. 둘 다 실패 시 예외 전파."""
+def _fetch_one(d: dict) -> tuple[float, float | None, float | None, dict | None, str]:
+    """현재지수(시장폭 포함) → 일자별 지수 → yfinance 순으로 폴백.
+
+    반환에 breadth 와 source 포함. 시장 폭은 1순위 경로에서만 나오므로 폴백하면 None 이다.
+    전부 실패하면 예외 전파(호출부가 종목별로 격리).
+    """
+    try:
+        value, change, pct, breadth = _fetch_kis_index_price(d["iscd"])
+        return value, change, pct, breadth, "kis"
+    except Exception as e:
+        logger.warning(f"[indices] {d['code']} KIS 현재지수 실패, 일자별 지수로 폴백: {e}")
+
     try:
         value, change, pct = _fetch_kis_index(d["iscd"])
-        return value, change, pct, "kis"
+        # 일자별 지수에는 등락종목수가 없다 → 시장 폭 블록은 화면에서 숨겨진다.
+        return value, change, pct, None, "kis"
     except Exception as e:
-        logger.warning(f"[indices] {d['code']} KIS 실패, yfinance 폴백: {e}")
+        logger.warning(f"[indices] {d['code']} KIS 일자별 지수 실패, yfinance 폴백: {e}")
+
     value, change, pct = _fetch_yf_index(d["symbol"])
-    return value, change, pct, "yfinance"
+    return value, change, pct, None, "yfinance"
 
 
 def _fetch_all() -> list[dict]:
     items: list[dict] = []
     for d in _INDEX_DEFS:
         try:
-            value, change, change_pct, source = _fetch_one(d)
+            value, change, change_pct, breadth, source = _fetch_one(d)
             items.append({
                 "code": d["code"], "name": d["name"],
                 "value": value, "change": change, "change_pct": change_pct,
+                "breadth": breadth,
                 "source": source, "error": None,
             })
         except Exception as e:  # 한 지수 실패가 다른 지수를 막지 않도록 개별 격리
@@ -161,6 +265,7 @@ def _fetch_all() -> list[dict]:
             items.append({
                 "code": d["code"], "name": d["name"],
                 "value": None, "change": None, "change_pct": None,
+                "breadth": None,
                 "source": None, "error": str(e),
             })
     return items

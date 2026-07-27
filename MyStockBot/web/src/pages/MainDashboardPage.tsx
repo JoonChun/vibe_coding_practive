@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { DistributionStrip } from "../components/DistributionStrip";
+import { MarketBreadthBar } from "../components/MarketBreadthBar";
 import { MarketStatusBar } from "../components/MarketStatusBar";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { SignalChip } from "../components/SignalChip";
@@ -134,6 +135,9 @@ export default function MainDashboardPage() {
             </div>
           )}
         </section>
+
+        {/* 시장 폭 — KIS 현재지수 경로에서만 데이터가 오고, 없으면 스스로 렌더하지 않는다. */}
+        <MarketBreadthBar items={indices.data?.items ?? []} />
 
         <DistributionStrip
           counts={distribution.counts}

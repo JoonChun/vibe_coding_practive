@@ -35,12 +35,23 @@ export interface WatchlistItemInput {
 }
 
 /** GET /api/indices 결과 항목 — 코스피/코스닥 지수 카드용 */
+/** 시장 폭(등락종목수) — KIS 현재지수 경로에서만 제공. 폴백 경로에서는 null. */
+export interface MarketBreadth {
+  up: number;
+  flat: number;
+  down: number;
+  limit_up: number;
+  limit_down: number;
+}
+
 export interface IndexItem {
   code: string; // "KOSPI" | "KOSDAQ"
   name: string;
   value: number | null;
   change: number | null;
   change_pct: number | null;
+  /** 시장 폭. KIS 현재지수 경로에서만 오고, 폴백 경로에서는 null */
+  breadth: MarketBreadth | null;
   source: SnapshotSource | null;
   error: string | null;
 }

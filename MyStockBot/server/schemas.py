@@ -84,13 +84,24 @@ class SnapshotResponse(BaseModel):
     rules: DecisionRules | None = None  # 판정 임계값(화면 캡션·게이지 정규화에 사용)
 
 
+class MarketBreadth(BaseModel):
+    """시장 폭(등락종목수) — KIS 국내업종 현재지수(FHPUP02100000) 경로에서만 제공된다."""
+    up: int          # 상승 종목 수
+    flat: int        # 보합 종목 수
+    down: int        # 하락 종목 수
+    limit_up: int    # 상한 종목 수
+    limit_down: int  # 하한 종목 수
+
+
 class IndexItem(BaseModel):
     code: str  # "KOSPI" | "KOSDAQ"
     name: str
     value: float | None = None      # 현재 지수
     change: float | None = None     # 전일 대비 등락폭
     change_pct: float | None = None # 등락률 %
-    source: str | None = None       # "yfinance" | None(조회 실패)
+    # 시장 폭. 일자별 지수·yfinance 폴백 경로에는 없으므로 None 일 수 있다.
+    breadth: MarketBreadth | None = None
+    source: str | None = None       # "kis" | "yfinance" | None(조회 실패)
     error: str | None = None
 
 

@@ -41,6 +41,15 @@ KIS_INCOME_STMT_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/finance/income-sta
 # (server/services/indices.py 가 사용 — 실패 시 yfinance 폴백)
 KIS_INDEX_CHART_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice"
 
+# 국내업종 현재지수: inquire-index-price / FHPUP02100000 [v1_국내주식-063]
+# 출처(추측 아님 — curl 로 원문 확인):
+#   github.com/koreainvestment/open-trading-api
+#   examples_llm/domestic_stock/inquire_index_price/inquire_index_price.py (L25 URL, L73 tr_id)
+#   .../chk_inquire_index_price.py COLUMN_MAPPING (응답 필드 전체)
+# 일자별 지수(FHKUP03500100)와 달리 **전일 대비·대비율을 직접** 주고, 게다가
+# 상승/보합/하락/상한/하한 종목 수(시장 폭)까지 같은 응답에 담겨 온다.
+KIS_INDEX_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-index-price"
+
 # KIS 환경변수 키
 KIS_APP_KEY_ENV = "KIS_APP_KEY"
 KIS_APP_SECRET_ENV = "KIS_APP_SECRET"
