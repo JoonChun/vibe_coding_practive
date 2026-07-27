@@ -1728,6 +1728,84 @@ select:focus-visible {
 }
 
 /* 지수 카드 그리드 */
+/* ── 시장 상태 줄 (PRD §10.1 블록2) ── */
+.market-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.market-bar--skeleton {
+  opacity: 0.6;
+}
+
+.market-bar__badge {
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* 장중만 초록(실시간 의미색과 동일 계열), 나머지는 중립 — 상승/하락 색과 겹치지 않게 */
+.market-bar__badge--open {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.market-bar__badge--pre {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.market-bar__badge--closed,
+.market-bar__badge--holiday {
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+}
+
+.market-bar__detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  font-size: 0.74rem;
+  color: var(--on-surface-variant);
+  min-width: 0;
+}
+
+.market-bar__countdown {
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 휴장·장전에는 "지금 보이는 값이 언제 것인지"를 명시한다(신선도 오해 방지) */
+.market-bar__reference {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--surface-container);
+  font-weight: 600;
+}
+
+.market-bar__updated {
+  color: var(--outline);
+}
+
+.market-bar__caveat {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
 .index-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2779,6 +2857,16 @@ select:focus-visible {
     background-color: #12261a;
     border-color: #1f3d2a;
     color: #4ade80;
+  }
+
+  /* 시장 상태 배지 — 장중(초록)/장전(앰버). 장마감·휴장은 토큰(surface-container-high)으로 커버됨 */
+  .market-bar__badge--open {
+    background: #12261a;
+    color: #4ade80;
+  }
+  .market-bar__badge--pre {
+    background: #2a2110;
+    color: #f0c674;
   }
 
   /* 마켓 배지 */

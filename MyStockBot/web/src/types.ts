@@ -45,6 +45,24 @@ export interface IndexItem {
   error: string | null;
 }
 
+/** 장 운영 상태 (GET /api/market/status) */
+export type MarketStatusCode = "pre" | "open" | "closed" | "holiday";
+
+export interface MarketStatus {
+  status: MarketStatusCode;
+  /** 화면 표시 라벨 — 서버가 내려준다(프론트가 문자열을 복제하지 않도록) */
+  label: string;
+  server_time: string;
+  /** 의미 있는 다음 세션의 개장/마감 — 카운트다운은 이 값으로 로컬 계산한다 */
+  session_open: string;
+  session_close: string;
+  session_date: string;
+  /** 지금 보이는 시세가 속한 거래일. 휴장·장전이면 직전 거래일 */
+  reference_trading_day: string;
+  /** 휴장일 표가 이 연도를 커버하는지. false 면 음력 연휴를 놓칠 수 있다 */
+  calendar_covered: boolean;
+}
+
 export interface IndicesResponse {
   generated_at: string;
   cache_hit: boolean;

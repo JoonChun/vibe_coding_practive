@@ -6,7 +6,7 @@
 이 표는 **매년 갱신**해야 한다. 표에 없는 미래 연도는 '고정 공휴일 + 주말'만 인지하므로
 음력/대체 휴장을 놓칠 수 있다(그 경우 불필요 조회가 조금 생길 뿐 데이터 정확성엔 무해).
 """
-from datetime import date
+from datetime import date, datetime, time, timedelta
 
 # YYYY-MM-DD (Asia/Seoul) — 고정 공휴일 + 설/추석 연휴 + 대체공휴일 + 노동절(5/1, 증시휴장)
 # + 연말 폐장일(12/31). 2025~2026 큐레이션.
@@ -72,3 +72,101 @@ def is_trading_day(d) -> bool:
     if isinstance(d, str):
         d = date.fromisoformat(d[:10])
     return d.weekday() < 5 and not is_holiday(d)
+
+
+# ────────────────────────────────────────────
+# 정규장 세션 시각 (KRX)
+#
+# 09:00 개장 ~ 15:30 마감. 이 값은 **화면에 표시하는 시장 상태** 기준이다.
+# 수집 루프의 창(server/services/collector.py 의 09:00~15:40)과 일부러 다르다 —
+# 그쪽은 마감 직후 종가가 확정될 여유를 둔 '수집 창'이고, 여기는 사용자에게 보여주는
+# '실제 장 운영 시간'이다. 두 값을 하나로 합치면 어느 한쪽이 틀리게 된다.
+# ────────────────────────────────────────────
+
+SESSION_OPEN = time(9, 0)
+SESSION_CLOSE = time(15, 30)
+
+# 상태 코드 → 화면 표시 라벨. 프론트가 문자열을 복제하지 않도록 서버가 함께 내려준다.
+_STATUS_LABELS = {
+    "pre": "장전",
+    "open": "장중",
+    "closed": "장마감",
+    "holiday": "휴장",
+}
+
+# 미래로 거래일을 찾을 때의 탐색 상한(연휴가 길어도 이 안에 반드시 거래일이 있다).
+_SEARCH_LIMIT_DAYS = 30
+
+
+def previous_trading_day(d) -> date:
+    """d 이전(d 제외)의 가장 최근 거래일."""
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    cursor = d - timedelta(days=1)
+    for _ in range(_SEARCH_LIMIT_DAYS):
+        if is_trading_day(cursor):
+            return cursor
+        cursor -= timedelta(days=1)
+    return cursor
+
+
+def next_trading_day(d) -> date:
+    """d 이후(d 제외)의 가장 이른 거래일."""
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    cursor = d + timedelta(days=1)
+    for _ in range(_SEARCH_LIMIT_DAYS):
+        if is_trading_day(cursor):
+            return cursor
+        cursor += timedelta(days=1)
+    return cursor
+
+
+def market_status(now: datetime) -> dict:
+    """현재 시장 상태와 세션 경계를 계산한다(외부 조회 없음, 순수 계산).
+
+    반환:
+      status  — "pre" | "open" | "closed" | "holiday"
+      label   — 화면 표시용 한국어 라벨
+      session_open / session_close — **다음에 의미 있는 세션**의 경계(ISO8601).
+          장전·장중이면 오늘 세션, 장마감·휴장이면 다음 거래일 세션. 프론트가 이 값으로
+          "마감까지 N시간 M분" / "개장까지 …" 카운트다운을 로컬에서 계산한다(초당 폴링 불필요).
+      reference_trading_day — 지금 화면에 보이는 시세가 속한 거래일.
+          휴장·장전이면 직전 거래일이다 → "최근 거래일 기준" 안내의 근거(신선도 오해 방지).
+      calendar_covered — 휴장일 표가 이 연도를 커버하는지. False 면 음력 연휴를 놓칠 수
+          있으므로 화면에서 단정적으로 "휴장"이라 말하면 안 된다.
+
+    now 는 tz-aware 여야 한다(호출부가 Asia/Seoul 로 만들어 넘긴다).
+    """
+    today = now.date()
+    trading_today = is_trading_day(today)
+
+    if not trading_today:
+        status = "holiday"
+        session_day = next_trading_day(today)
+        reference_day = previous_trading_day(today)
+    elif now.time() < SESSION_OPEN:
+        status = "pre"
+        session_day = today
+        # 개장 전에는 아직 오늘 시세가 없다 → 직전 거래일 기준.
+        reference_day = previous_trading_day(today)
+    elif now.time() <= SESSION_CLOSE:
+        status = "open"
+        session_day = today
+        reference_day = today
+    else:
+        status = "closed"
+        session_day = next_trading_day(today)
+        reference_day = today
+
+    tz = now.tzinfo
+    return {
+        "status": status,
+        "label": _STATUS_LABELS[status],
+        "server_time": now.isoformat(),
+        "session_open": datetime.combine(session_day, SESSION_OPEN, tzinfo=tz).isoformat(),
+        "session_close": datetime.combine(session_day, SESSION_CLOSE, tzinfo=tz).isoformat(),
+        "session_date": session_day.isoformat(),
+        "reference_trading_day": reference_day.isoformat(),
+        "calendar_covered": is_year_covered(today),
+    }

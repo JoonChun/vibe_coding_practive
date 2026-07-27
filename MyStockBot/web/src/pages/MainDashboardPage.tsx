@@ -1,10 +1,13 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { DistributionStrip } from "../components/DistributionStrip";
+import { MarketStatusBar } from "../components/MarketStatusBar";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { SignalChip } from "../components/SignalChip";
 import { TokenBanner } from "../components/TokenBanner";
 import { useIndices } from "../hooks/useIndices";
+import { useMarketStatus } from "../hooks/useMarketStatus";
+import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickStream } from "../hooks/useTickStream";
 import type { IndexItem, SnapshotItem } from "../types";
@@ -58,6 +61,8 @@ export default function MainDashboardPage() {
   const indices = useIndices();
   const snapshot = useSnapshot();
   const tickStream = useTickStream();
+  const marketStatus = useMarketStatus();
+  const updatedRelative = useRelativeTime(snapshot.lastUpdatedAt);
   const navigate = useNavigate();
 
   const unauthorized =
@@ -99,6 +104,13 @@ export default function MainDashboardPage() {
       </header>
 
       <main className="dash-main">
+        <MarketStatusBar
+          data={marketStatus.data}
+          remainingMs={marketStatus.remainingMs}
+          countdownTarget={marketStatus.countdownTarget}
+          updatedRelative={updatedRelative}
+        />
+
         <section className="index-grid" aria-label="시장 지수">
           {indices.data && indices.data.items.length > 0 ? (
             indices.data.items.map((idx) => (

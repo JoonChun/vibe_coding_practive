@@ -94,6 +94,18 @@ class IndexItem(BaseModel):
     error: str | None = None
 
 
+class MarketStatusResponse(BaseModel):
+    """GET /api/market/status — 장 운영 상태와 세션 경계."""
+    status: str          # "pre" | "open" | "closed" | "holiday"
+    label: str           # 화면 표시 라벨("장전"/"장중"/"장마감"/"휴장")
+    server_time: str     # ISO8601 (Asia/Seoul)
+    session_open: str    # 의미 있는 다음 세션의 개장 시각 — 프론트 카운트다운 기준
+    session_close: str   # 같은 세션의 마감 시각
+    session_date: str    # 그 세션의 날짜(YYYY-MM-DD)
+    reference_trading_day: str  # 지금 보이는 시세가 속한 거래일(휴장·장전이면 직전 거래일)
+    calendar_covered: bool      # 휴장일 표가 이 연도를 커버하는지(False 면 음력 연휴 누락 가능)
+
+
 class IndicesResponse(BaseModel):
     generated_at: str
     cache_hit: bool

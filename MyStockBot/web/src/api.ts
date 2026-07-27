@@ -3,6 +3,7 @@ import type {
   CandlesResponse,
   DcaResponse,
   IndicesResponse,
+  MarketStatus,
   PaperAccount,
   PaperOrderInput,
   PaperTradesResponse,
@@ -134,6 +135,11 @@ export function getSnapshot(): Promise<SnapshotResponse> {
 /** 코스피·코스닥 시장 지수 조회 (메인 대시보드용). */
 export function getIndices(): Promise<IndicesResponse> {
   return request<IndicesResponse>("/api/indices");
+}
+
+/** 장 운영 상태(장전/장중/장마감/휴장) + 세션 경계. 외부 조회 없는 순수 계산이라 가볍다. */
+export function getMarketStatus(): Promise<MarketStatus> {
+  return request<MarketStatus>("/api/market/status");
 }
 
 /** 모의투자 가상 계좌(현금·평가손익·보유목록) 조회. */
