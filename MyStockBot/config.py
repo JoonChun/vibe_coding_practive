@@ -81,6 +81,7 @@ BB_PERIOD = 20
 BB_STD = 2
 
 CREDENTIALS_ENV_KEY = "GOOGLE_CREDENTIALS_JSON"
+SLACK_WEBHOOK_URL_ENV_KEY = "SLACK_WEBHOOK_URL"
 SPREADSHEET_ID_ENV_KEY = "SPREADSHEET_ID"
 GMAIL_APP_PASSWORD_ENV_KEY = "GMAIL_APP_PASSWORD"
 NOTIFY_EMAIL_ENV_KEY = "NOTIFY_EMAIL"
@@ -136,6 +137,46 @@ KIS_MASTER_URLS = {
     "KOSDAQ": "https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip",
 }
 STOCK_MASTER_STALE_DAYS = 7
+
+# ────────────────────────────────────────────
+# 판정 전환 알림 (server/services/alerts.py)
+#
+# **기본 비활성.** 켜기 전에 알아야 할 것 — 아래 값들은 모두 "알림 폭풍"을 막기 위한
+# 장치이고, 각각 실제 코드에서 확인된 오알림 경로에 대응한다(README '판정 전환 알림' 절).
+# ────────────────────────────────────────────
+def _env_flag(key: str, default: str = "") -> bool:
+    return os.environ.get(key, default).strip().lower() in ("1", "true", "yes", "on")
+
+
+DECISION_ALERT_ENABLED = _env_flag("DECISION_ALERT_ENABLED")
+
+# 감시할 판정 종류. "short"(60분봉) / "long"(일봉+재무) 중 콤마로 선택.
+DECISION_ALERT_VIEWS = tuple(
+    v.strip()
+    for v in os.environ.get("DECISION_ALERT_VIEWS", "short,long").split(",")
+    if v.strip() in ("short", "long")
+)
+
+# True 면 '측'(매수측/관망/매도측)이 바뀔 때만 알린다.
+# False 로 두면 강력매수→매수 같은 등급 변화도 알리는데, 그건 골든크로스가 다음 봉에
+# 소멸하면서 **반드시** 생기는 구조적 사건이라 골든크로스마다 두 번째 알림이 따라온다.
+# (decision_rules.view_side 주석 참고)
+DECISION_ALERT_SIDE_ONLY = _env_flag("DECISION_ALERT_SIDE_ONLY", "1")
+
+# 같은 판정이 연속 몇 사이클 유지되면 확정으로 볼지(히스테리시스).
+# 장중 사이클이 30초라 2면 60초 확정. 장중 마지막 봉은 미완성이므로 한 사이클만 보고
+# 알리면 계산 흔들림이 그대로 알림이 된다.
+DECISION_ALERT_CONFIRM_CYCLES = max(1, int(os.environ.get("DECISION_ALERT_CONFIRM_CYCLES", "2")))
+
+# 같은 종목·같은 판정 종류에 대한 최소 알림 간격(분).
+DECISION_ALERT_COOLDOWN_MINUTES = int(os.environ.get("DECISION_ALERT_COOLDOWN_MINUTES", "60"))
+
+# 기준선(마지막 알린 판정)이 이보다 오래 방치되면 비교하지 않고 조용히 재시딩한다.
+# 관심종목에서 뺐다가 한참 뒤 다시 넣는 경우 옛 기준선과 비교해 헛알림이 나가는 것을 막는다.
+DECISION_ALERT_STATE_TTL_DAYS = int(os.environ.get("DECISION_ALERT_STATE_TTL_DAYS", "7"))
+
+# 한 메시지에 나열할 최대 전환 건수(초과분은 "외 N건"으로 요약). 전체 건수는 항상 표기한다.
+DECISION_ALERT_MAX_ROWS = int(os.environ.get("DECISION_ALERT_MAX_ROWS", "30"))
 
 # 휴장일 캐시 갱신 최소 간격(시간). 공식 문서가 "가급적 1일 1회"를 요청하므로 20시간을 둔다
 # (하루 1회 스케줄 + 부팅 시 1회가 겹쳐도 실제 호출은 하루 한 번으로 수렴).

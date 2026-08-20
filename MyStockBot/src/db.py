@@ -85,6 +85,33 @@ def init_db() -> None:
             """
         )
 
+        # ── 판정 전환 알림 기준선 ──
+        # "직전 사이클과 비교"가 아니라 "마지막으로 **알린** 판정과 비교"한다.
+        # in-memory 로만 들고 있으면 (1) 서버 재시작 때 기준선이 사라져 재부팅마다 전 종목
+        # 알림이 터지고, (2) 판정이 A↔B 로 왕복할 때 매번 알림이 나간다. 영속화하면 둘 다
+        # 공짜로 해결된다 — 왕복해서 돌아온 판정은 마지막 알린 값과 같으므로 알리지 않는다.
+        #
+        # fund_present / source 도 함께 저장한다: 재무데이터가 뒤늦게 도착하거나(장기 판정이
+        # 재무 ±3점만큼 통째로 이동) 데이터 출처가 kis↔yfinance 로 바뀌면 판정이 바뀌는데,
+        # 그건 시장이 아니라 **입력 구성**이 바뀐 것이라 알릴 사건이 아니다.
+        #
+        # notified_at 은 실제 발송 시각(쿨다운 기준), updated_at 은 행을 마지막으로 만진
+        # 시각(TTL 재시딩 기준)이다. 무음 시딩은 notified_at 을 건드리지 않는다.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_alert_state (
+                code TEXT NOT NULL,
+                view_kind TEXT NOT NULL,
+                view TEXT NOT NULL,
+                fund_present INTEGER NOT NULL DEFAULT 0,
+                source TEXT,
+                notified_at TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (code, view_kind)
+            )
+            """
+        )
+
         # ── 모의투자(Paper Trading) ── 개인용 단일 계좌(id=1 싱글턴)
         conn.execute(
             """
@@ -211,6 +238,12 @@ def remove_watchlist_item(code) -> bool:
         cursor = conn.execute(
             "UPDATE watchlist SET is_active = 0 WHERE code = ? AND is_active = 1",
             (normalized_code,),
+        )
+        # 알림 기준선도 같은 트랜잭션에서 지운다. 남겨두면 나중에 이 종목을 다시 추가했을 때
+        # 그동안 시장이 움직인 결과가 '방금 전환'으로 알려진다(watchlist 는 soft delete 라
+        # 행이 재사용되므로 기준선이 저절로 사라지지 않는다).
+        conn.execute(
+            "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -425,6 +458,90 @@ def get_market_holiday_meta() -> dict:
             "MAX(fetched_at) AS fetched_at FROM market_holidays"
         ).fetchone()
         return dict(row)
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
+# 판정 전환 알림 기준선
+# ────────────────────────────────────────────
+
+def get_decision_alert_state() -> dict[tuple[str, str], dict]:
+    """{(code, view_kind): {view, fund_present, source, notified_at, updated_at}}.
+
+    사이클마다 종목 수만큼 SELECT 하지 않도록 전량을 한 번에 읽는다(관심종목 규모가
+    수십 건이라 전량 읽기가 더 싸다).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT code, view_kind, view, fund_present, source, notified_at, updated_at "
+            "FROM decision_alert_state"
+        ).fetchall()
+        return {
+            (r["code"], r["view_kind"]): {
+                "view": r["view"],
+                "fund_present": int(r["fund_present"]),
+                "source": r["source"],
+                "notified_at": r["notified_at"],
+                "updated_at": r["updated_at"],
+            }
+            for r in rows
+        }
+    finally:
+        conn.close()
+
+
+def upsert_decision_alert_state(rows: list[dict]) -> int:
+    """[{code, view_kind, view, fund_present, source, notified: bool}, ...] 를 upsert.
+
+    notified=False(무음 시딩)면 기존 notified_at 을 **보존한다** — 시딩이 쿨다운 기준
+    시각을 뒤로 밀어 실제 전환 알림을 지연시키는 일이 없도록.
+    """
+    if not rows:
+        return 0
+
+    now = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
+    conn = get_connection()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO decision_alert_state
+                (code, view_kind, view, fund_present, source, notified_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(code, view_kind) DO UPDATE SET
+                view = excluded.view,
+                fund_present = excluded.fund_present,
+                source = excluded.source,
+                notified_at = COALESCE(excluded.notified_at, decision_alert_state.notified_at),
+                updated_at = excluded.updated_at
+            """,
+            [
+                (
+                    r["code"], r["view_kind"], r["view"],
+                    1 if r.get("fund_present") else 0,
+                    r.get("source"),
+                    now if r.get("notified") else None,
+                    now,
+                )
+                for r in rows
+            ],
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def delete_decision_alert_state(code) -> int:
+    """한 종목의 알림 기준선을 삭제. 관심종목에서 제거할 때 함께 지운다."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "DELETE FROM decision_alert_state WHERE code = ?", (_normalize_code(code),)
+        )
+        conn.commit()
+        return cursor.rowcount
     finally:
         conn.close()
 

@@ -50,6 +50,25 @@ VIEW_STRONG_SELL = "강력매도"
 # 판정 없음으로 취급하는 입력값 — None(지표 계산 예외)과 "데이터부족" 문자열을 같은 등급으로 본다.
 NO_DATA_INPUTS = (None, NO_DATA)
 
+# 5단계 판정을 3개 '측(side)'으로 묶는다 — 알림이 구조적 강등을 신호로 오독하지 않도록.
+#
+# 골든크로스(+2)는 **다음 봉에서 필연적으로** 진입구간(+1)으로 내려앉는다(교차는 한 봉만
+# 성립한다). 즉 강력매수→매수 전환은 시장이 바뀐 게 아니라 라벨 정의가 만들어낸 사건이고,
+# 골든크로스마다 두 번째 알림이 자동으로 따라온다. 데드크로스→매도구간도 대칭으로 같다.
+# 측이 바뀔 때만 알리면 이 잡음이 구조적으로 사라진다(server/services/alerts.py 참고).
+_VIEW_SIDES = {
+    VIEW_STRONG_BUY: "buy",
+    VIEW_BUY: "buy",
+    VIEW_HOLD: "hold",
+    VIEW_SELL: "sell",
+    VIEW_STRONG_SELL: "sell",
+}
+
+
+def view_side(view) -> str | None:
+    """판정 라벨 → "buy" | "hold" | "sell". 판정 없음(None·데이터부족)은 None."""
+    return _VIEW_SIDES.get(view)
+
 
 @dataclass(frozen=True)
 class Band:

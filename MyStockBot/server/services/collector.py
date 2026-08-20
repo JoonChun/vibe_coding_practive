@@ -35,6 +35,8 @@ from config import (
     TIMEZONE,
 )
 
+from . import alerts
+
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 4
@@ -449,6 +451,17 @@ def _run_cycle() -> None:
     now = datetime.now(ZoneInfo(TIMEZONE))
     with _state_lock:
         _state = {"generated_at": now.isoformat(), "items": items}
+
+    # 판정 전환 알림 — **반드시 락 밖에서.**
+    # _state_lock 은 이벤트 루프 스레드가 직접 잡는다(routers/snapshot.py 의 async 핸들러가
+    # to_thread 없이 snapshot_cache → collector.get_state() 를 호출한다). 락을 쥔 채
+    # SMTP·HTTP 를 하면 서버 전체가 그 시간만큼 응답을 멈춘다.
+    # 이 경로는 KIS 를 다시 부르지 않는다 — kis_auth.kis_throttle() 이 전역 락을 잡고
+    # 0.5초 sleep 하므로 알림이 수집 사이클을 늘리게 된다. 스냅샷 값만 쓴다.
+    try:
+        alerts.process_cycle(items, now)
+    except Exception as e:
+        logger.warning(f"[collector] 판정 전환 알림 처리 실패: {e}")
 
     success = sum(1 for it in items if it.get("error") is None)
     failed = len(items) - success

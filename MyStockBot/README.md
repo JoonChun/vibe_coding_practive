@@ -44,6 +44,13 @@
 | `/paper` | 모의투자 | 가상 시드머니로 매수·매도, 보유 평가손익, 거래내역 |
 | `/stocks/:code` | 상세 | 팩터 분해, 볼린저·RSI·MACD, 멀티 타임프레임 캔들차트, 백테스트·DCA |
 
+### 알림
+- **판정 전환 알림** — 관심종목의 판정이 바뀌면 Slack·Gmail 로 알린다.
+  오알림을 막는 게이트가 핵심이다(판정 없음 무시·측 변화만·히스테리시스·쿨다운·
+  장 시간대 한정·발송 성공 시에만 기준선 이동) → [아래](#판정-전환-알림).
+  **기본 비활성**
+- **일일 수집 리포트** — 크론 배치 결과를 HTML 메일로 발송(성공/실패 종목·기준일·에러 원인)
+
 ### 데이터·인프라
 - **실시간 틱**: KIS WebSocket(H0STCNT0) 구독 → 브라우저 WS 중계 (무수신 워치독 내장)
 - **시세 소스**: KIS Open API 1차 → yfinance 폴백 (60분봉은 yfinance)
@@ -69,10 +76,11 @@ MyStockBot/
 │   ├── main.py              #   앱 조립·lifespan(수집루프·WS·스케줄러 기동)
 │   ├── auth.py              #   Bearer 토큰 미들웨어
 │   ├── schemas.py           #   Pydantic 응답 계약
-│   ├── routers/             #   watchlist·snapshot·stocks·indices·paper·stream
+│   ├── routers/             #   watchlist·snapshot·stocks·indices·market·paper·
+│                            #   stream·alerts
 │   └── services/            #   collector(수집루프)·kis_ws·candles·backtest·dca·
 │                            #   indices·paper·scheduler·snapshot_cache·timeseries·
-│                            #   rule_eval(룰 평가 하네스)
+│                            #   rule_eval(룰 평가 하네스)·alerts(판정 전환 알림)
 ├── src/                     # 공용 모듈 + 일일 배치 경로
 │   ├── main.py              #   크론 엔트리포인트(시트 기록 + 이메일)
 │   ├── crawler.py           #   KIS/yfinance 시세·재무 조회
@@ -84,7 +92,8 @@ MyStockBot/
 │   ├── watchlist_sync.py    #   관심종목 시트↔SQLite 동기화
 │   ├── sheets.py            #   Google Sheets 연동
 │   ├── stock_master.py      #   전 종목 마스터 다운로드·파싱(검색용)
-│   ├── notifier.py          #   Gmail HTML 리포트
+│   ├── notifier.py          #   Gmail HTML 리포트·알림 발송
+│   ├── alert_channels.py    #   Slack Incoming Webhook 발송
 │   └── pipeline.py          #   배치 수집 오케스트레이션
 ├── web/                     # React PWA
 ├── tests/                   # pytest
@@ -112,7 +121,15 @@ MyStockBot/
 | `KIS_HOLIDAY_LOOKAHEAD_DAYS` | 웹앱 | 휴장일 1회 조회 시 확보할 일수. 기본 `400` |
 | `SPREADSHEET_ID` | 크론·동기화 | 대상 Google Sheets ID |
 | `GOOGLE_CREDENTIALS_JSON` | 크론·동기화 | 서비스 계정 JSON 전체 |
-| `SENDER_EMAIL` / `NOTIFY_EMAIL` / `GMAIL_APP_PASSWORD` | 크론 | Gmail 리포트 발송 (2FA 앱 비밀번호 필수) |
+| `SENDER_EMAIL` / `NOTIFY_EMAIL` / `GMAIL_APP_PASSWORD` | 크론·알림 | Gmail 리포트·판정 전환 알림 발송 (2FA 앱 비밀번호 필수) |
+| `SLACK_WEBHOOK_URL` | 알림 | Slack Incoming Webhook URL. **이 URL 자체가 비밀** — [주의사항](#판정-전환-알림) |
+| `DECISION_ALERT_ENABLED` | 알림 | 판정 전환 알림 켜기. **기본 off** |
+| `DECISION_ALERT_VIEWS` | 알림 | 감시할 판정(`short,long`). 기본 둘 다 |
+| `DECISION_ALERT_SIDE_ONLY` | 알림 | 측(매수/관망/매도)이 바뀔 때만 알림. 기본 `1` |
+| `DECISION_ALERT_CONFIRM_CYCLES` | 알림 | 확정에 필요한 연속 사이클 수. 기본 `2` |
+| `DECISION_ALERT_COOLDOWN_MINUTES` | 알림 | 같은 종목·종류 최소 알림 간격. 기본 `60` |
+| `DECISION_ALERT_STATE_TTL_DAYS` | 알림 | 기준선 방치 허용 일수(초과 시 무음 재시딩). 기본 `7` |
+| `DECISION_ALERT_MAX_ROWS` | 알림 | 한 메시지에 나열할 최대 전환 수. 기본 `30` |
 | `VITE_API_BASE` | 프론트 | 백엔드 공개 URL(배포 시). 개발 중에는 비워 두면 Vite 프록시 사용 |
 
 ## 로컬 실행
@@ -239,6 +256,73 @@ KIS_MINUTE_BACKFILL_DAYS=10     # 초기 백필 거래일 수(기본 10)
 
 실패 시에는 자동으로 yfinance 로 폴백하므로 켜서 안 되면 조용히 기존 동작으로 돌아간다.
 
+## 판정 전환 알림
+
+관심종목의 판정이 바뀌면 Slack·Gmail 로 알린다. **기본 비활성**
+(`DECISION_ALERT_ENABLED=1` 로 켠다).
+
+수집 루프가 이미 전 종목 판정을 주기적으로 산출하므로, 사이클마다 판정을 비교해 전환을
+찾는다. 발송은 수집 스레드에서 `collector._state_lock` **밖에서** 하고, 이 경로에서 KIS 를
+다시 부르지 않는다(전역 스로틀이 0.5초씩 잡아 사이클을 늘리기 때문).
+
+### Slack 연결 (권장)
+
+토큰이 없어 갱신 로직이 필요 없다 — PRD 가 카카오톡 알림을 접었던 이유(토큰 갱신 부담)가
+Incoming Webhook 에는 아예 존재하지 않는다.
+
+```bash
+# 1) Slack 앱 생성 → Incoming Webhooks 활성화 → 채널 선택 → Webhook URL 복사
+#    (api.slack.com/apps → "Create New App" → "Incoming Webhooks")
+
+# 2) .env 에 추가 — 이 URL 자체가 자격증명이다. 절대 커밋하지 말 것(.env 는 gitignore 됨)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
+DECISION_ALERT_ENABLED=1
+
+# 3) 서버를 띄우고 테스트 발송으로 채널이 살아 있는지 먼저 확인한다.
+#    (이 엔드포인트는 ENABLED 플래그와 장 시간대 게이트를 우회한다)
+curl -X POST localhost:8000/api/alerts/test \
+     -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
+# → {"channels":["slack"],"results":{"slack":true},"detail":"성공: slack"}
+
+# 4) 설정·기준선 확인
+curl localhost:8000/api/alerts/config -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
+curl localhost:8000/api/alerts/state  -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
+```
+
+> ⚠️ **실발송 미검증.** 이 저장소는 Slack 도메인(`hooks.slack.com`·`api.slack.com`·
+> `docs.slack.dev`)이 이그레스 프록시에서 **전부 403 CONNECT 로 막힌** 환경에서 개발되었다.
+> 그래서 공식 문서 페이지도 열 수 없었고 실제 발송도 해보지 못했다. 규격은 Slack 이 직접
+> 배포하는 SDK **소스 코드**에서 교차 확인했다(`slackapi/python-slack-sdk` 의
+> `webhook/internal_utils.py` → 인증 헤더 없음·Content-Type,
+> `slackapi/java-slack-sdk` → 성공 판정은 HTTP 200 + 본문 문자열 `ok`).
+> 위 3번 테스트 발송이 **유일한 실검증 경로**다.
+
+Gmail 은 크론 리포트와 같은 자격증명(`SENDER_EMAIL`/`NOTIFY_EMAIL`/`GMAIL_APP_PASSWORD`)을
+쓴다. 둘 다 설정하면 두 채널로 모두 보내고, 하나라도 성공하면 발송으로 간주한다.
+
+### 왜 게이트가 이렇게 많은가
+
+이 기능의 실패 모드는 "알림이 안 온다"가 아니라 **"쓸모없는 알림이 계속 온다"** 다. 한 번
+신뢰를 잃으면 알림을 꺼버리게 되고, 그러면 기능이 없는 것과 같다. 아래는 전부 이 저장소
+코드에서 **실제로 확인한** 오알림 경로다(각각 `tests/test_alerts.py` 에 대응 테스트 있음).
+
+| 게이트 | 막는 것 |
+|--------|---------|
+| 판정 없음 무시 | 수집 실패(`None`)·`데이터부족`이 매매 신호로 보이는 것. 지표 봉이 모자랄 때는 `데이터부족`이 아니라 0점=관망이 나오므로, 35번째 봉이 쌓이는 순간 가짜 '관망→매수'가 생긴다 |
+| 기준선 = 마지막 **알린** 판정 (SQLite 영속) | 재시작마다 전 종목 알림 폭발 / A↔B 왕복 시 매번 알림 |
+| 입력 구성 변화 시 무음 재시딩 | 재무 6시간 캐시가 뒤늦게 도착하면 장기 판정이 ±3점 통째로 이동한다(부팅 2~3사이클 뒤에 터진다). 출처 `kis↔yfinance` 전환도 같다 |
+| 측(side) 변화만 알림 | 골든크로스(+2 강력매수)는 **다음 봉에 필연적으로** 진입구간(+1 매수)으로 내려앉는다 → 골든크로스마다 두 번째 알림이 자동으로 따라온다(매도측 대칭) |
+| 히스테리시스 N사이클 | 장중 마지막 봉이 미완성이라 계산이 흔들리는 것 |
+| 쿨다운 | 같은 종목의 연속 알림 |
+| 거래일 정규장(09:00~15:30)만 | 유휴 사이클(600초) > 60분봉 신선도(300초) 라서 **주말·야간에도** 재조회가 돈다 → 야후 실패/복구가 일요일 새벽 알림이 된다 |
+| 발송 성공 시에만 기준선 이동 | 실패한 발송으로 기준선을 옮겨 그 전환이 영구 유실되는 것 |
+
+관심종목을 제거하면 기준선도 함께 삭제된다(`watchlist` 는 soft delete 라 행이 재사용되므로,
+남겨두면 나중에 다시 추가할 때 그동안의 시장 움직임이 '방금 전환'으로 알려진다).
+
+**게이트로 없앨 수 없는 한계:** 장중 판정은 아직 닫히지 않은 봉으로 계산한 값이다. 10시에
+나온 '관망→매수'가 15:30에 되돌아갈 수 있다. 지표의 성질이므로 알림 본문에 그렇게 적어 보낸다.
+
 ## 데이터 무결성 규칙 (알고 있어야 할 것)
 
 - **시트 `날짜` 컬럼은 실행일이 아니라 거래일(`bar_date`)** 입니다. 휴장일에 크론이 돌아
@@ -281,7 +365,9 @@ KIS_MINUTE_BACKFILL_DAYS=10     # 초기 백필 거래일 수(기본 10)
   부족해 실제 채택 결정을 내릴 수 없다.
 - 메인 대시보드 잔여 블록: 지수 스파크라인, 투자자 매매동향, 매크로 참고(환율·나스닥)
 - 단일 사용자·단일 공유 토큰 구조 (다중 사용자 불가)
-- 판정 전환 알림·웹푸시 미구현 — 앱을 열어야만 판정 변화를 안다
+- **웹푸시 미구현** — 판정 전환 알림은 Slack·Gmail 로만 간다(브라우저 푸시 없음)
+- **Slack 실발송 미검증** — 개발 환경에서 Slack 도메인이 전부 차단돼 규격은 공식 SDK
+  소스로만 확인했다. `POST /api/alerts/test` 로 각자 확인해야 한다
 - DCA 공유 카드·해외 종목 미지원, 모의투자 실현손익·수수료 미반영
 - 배포 하드닝 미착수 (컨테이너 root 실행, 의존성 상한 미고정)
 

@@ -32,7 +32,7 @@ import stock_master
 import watchlist_sync
 
 from .auth import auth_middleware, is_auth_enabled
-from .routers import indices, market, paper, stream, watchlist, snapshot, stocks
+from .routers import alerts, indices, market, paper, stream, watchlist, snapshot, stocks
 from .services import collector, kis_ws, scheduler
 
 logger = logging.getLogger(__name__)
@@ -168,5 +168,6 @@ app.include_router(snapshot.router)
 app.include_router(stocks.router)
 app.include_router(indices.router)
 app.include_router(market.router)
+app.include_router(alerts.router)
 app.include_router(paper.router)
 app.include_router(stream.router)

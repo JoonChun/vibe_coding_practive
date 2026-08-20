@@ -1,3 +1,4 @@
+import html
 import logging
 import os
 import smtplib
@@ -18,6 +19,15 @@ logger = logging.getLogger(__name__)
 
 GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT = 465
+# ★ 타임아웃 필수. smtplib 은 기본값이 소켓 전역 타임아웃(보통 None = 무한)이라,
+#   지정하지 않으면 SMTP 연결이 응답하지 않을 때 호출 스레드가 **영구히** 멈춘다.
+#   이 함수는 크론 배치와 수집 루프(알림 발송) 양쪽에서 불리므로 둘 다 같이 멈춘다.
+SMTP_TIMEOUT_SECONDS = 30
+
+
+def esc(value) -> str:
+    """HTML 이스케이프. 종목명·에러 메시지는 외부(시트·API·예외)에서 오므로 그대로 넣지 않는다."""
+    return html.escape("" if value is None else str(value), quote=True)
 
 
 def _build_subject(success_list: list[dict], failed_list: list[dict], date_str: str) -> str:
@@ -50,10 +60,11 @@ def _build_success_table(success_list: list[dict]) -> str:
     # 한눈에 보이도록 별도 컬럼으로 노출한다 — "오늘 종가"로 오해하지 않도록.
     rows = "".join(
         f"<tr>"
-        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{item.get('code', '')}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{item.get('name', '')}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{item.get('bar_date') or '—'}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;text-align:right;'>{item.get('close', '')}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{esc(item.get('code', ''))}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{esc(item.get('name', ''))}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;'>{esc(item.get('bar_date') or '—')}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e5e7eb;text-align:right;'>"
+        f"{esc(item.get('close', ''))}</td>"
         f"</tr>"
         for item in success_list
     )
@@ -78,9 +89,10 @@ def _build_failed_table(failed_list: list[dict]) -> str:
         return ""
     rows = "".join(
         f"<tr>"
-        f"<td style='padding:6px 12px;border:1px solid #fca5a5;'>{item.get('code', '')}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #fca5a5;'>{item.get('name', '')}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #fca5a5;color:#dc2626;'>{item.get('error', '')}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #fca5a5;'>{esc(item.get('code', ''))}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #fca5a5;'>{esc(item.get('name', ''))}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #fca5a5;color:#dc2626;'>"
+        f"{esc(item.get('error', ''))}</td>"
         f"</tr>"
         for item in failed_list
     )
@@ -120,29 +132,57 @@ def _build_html(success_list: list[dict], failed_list: list[dict], date_str: str
 </html>"""
 
 
-def send_report(success_list: list[dict], failed_list: list[dict], date_str: str) -> None:
-    sender = os.environ.get(SENDER_EMAIL_ENV_KEY, "")
-    password = os.environ.get(GMAIL_APP_PASSWORD_ENV_KEY, "")
-    recipient_raw = os.environ.get(NOTIFY_EMAIL_ENV_KEY, "")
-
-    recipients = [addr.strip() for addr in recipient_raw.split(",") if addr.strip()]
-
+def _email_config() -> tuple[str, str, list[str]] | None:
+    """(sender, password, recipients). 하나라도 비면 None."""
+    sender = os.environ.get(SENDER_EMAIL_ENV_KEY, "").strip()
+    password = os.environ.get(GMAIL_APP_PASSWORD_ENV_KEY, "").strip()
+    recipients = [
+        addr.strip()
+        for addr in os.environ.get(NOTIFY_EMAIL_ENV_KEY, "").split(",")
+        if addr.strip()
+    ]
     if not sender or not password or not recipients:
-        logger.warning("[notifier] 이메일 환경변수 누락 — 알림 발송 건너뜀")
-        return
+        return None
+    return sender, password, recipients
 
-    subject = _build_subject(success_list, failed_list, date_str)
-    html = _build_html(success_list, failed_list, date_str)
+
+def email_enabled() -> bool:
+    """Gmail 발송이 설정되어 있는지. 알림 채널 선택에 쓴다."""
+    return _email_config() is not None
+
+
+def send_html(subject: str, body_html: str) -> bool:
+    """HTML 본문 메일 1건 발송. 성공하면 True.
+
+    반환값이 있어야 하는 이유: 판정 전환 알림은 **발송이 성공했을 때만** 기준선을
+    갱신한다. 실패를 성공으로 착각해 기준선을 옮기면 그 전환은 영구히 유실된다.
+    """
+    config = _email_config()
+    if config is None:
+        logger.warning("[notifier] 이메일 환경변수 누락 — 알림 발송 건너뜀")
+        return False
+    sender, password, recipients = config
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(html, "html"))
+    msg.attach(MIMEText(body_html, "html"))
 
     try:
-        with smtplib.SMTP_SSL(GMAIL_SMTP_HOST, GMAIL_SMTP_PORT) as smtp:
+        with smtplib.SMTP_SSL(
+            GMAIL_SMTP_HOST, GMAIL_SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS
+        ) as smtp:
             smtp.login(sender, password)
             smtp.sendmail(sender, recipients, msg.as_string())
+        return True
     except Exception as e:
         logger.warning(f"[notifier] 이메일 발송 실패: {e}")
+        return False
+
+
+def send_report(success_list: list[dict], failed_list: list[dict], date_str: str) -> bool:
+    return send_html(
+        _build_subject(success_list, failed_list, date_str),
+        _build_html(success_list, failed_list, date_str),
+    )

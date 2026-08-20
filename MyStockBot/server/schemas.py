@@ -118,6 +118,45 @@ class MarketStatusResponse(BaseModel):
     calendar_source: str = "builtin"  # "kis"(공식 휴장일 캐시) | "builtin"(하드코딩 표)
 
 
+class AlertConfigResponse(BaseModel):
+    """GET /api/alerts/config — 알림 설정 진단.
+
+    ★ 웹훅 URL·메일 주소 같은 비밀은 절대 담지 않는다. 설정 여부(bool)만 노출한다.
+    """
+    enabled: bool                  # DECISION_ALERT_ENABLED
+    channels: list[str]            # 설정된 채널 이름("slack" | "email")
+    views: list[str]               # 감시 중인 판정 종류("short" | "long")
+    side_only: bool                # 측(매수/관망/매도)이 바뀔 때만 알리는지
+    confirm_cycles: int            # 확정에 필요한 연속 사이클 수
+    cooldown_minutes: int          # 같은 종목·종류의 최소 알림 간격
+    in_window: bool                # 지금이 알림 시간대(거래일 정규장)인지
+    baselines: int                 # 저장된 기준선 행 수
+
+
+class AlertBaseline(BaseModel):
+    code: str
+    view_kind: str      # "short" | "long"
+    view: str           # 마지막 기준 판정
+    source: str | None = None
+    notified_at: str | None = None  # 실제 발송 시각(UTC). 무음 시딩만 됐으면 None
+    updated_at: str | None = None
+
+
+class AlertStateResponse(BaseModel):
+    items: list[AlertBaseline]
+
+
+class AlertTestResponse(BaseModel):
+    """POST /api/alerts/test — 채널별 발송 결과.
+
+    이 저장소는 Slack 도메인이 막힌 환경에서 개발되어 **실제 발송이 검증되지 않았다.**
+    사용자가 자기 네트워크에서 이 엔드포인트로 한 번 확인하는 것이 유일한 검증 경로다.
+    """
+    channels: list[str]         # 설정된 채널
+    results: dict[str, bool]    # 채널별 성공 여부
+    detail: str
+
+
 class IndicesResponse(BaseModel):
     generated_at: str
     cache_hit: bool

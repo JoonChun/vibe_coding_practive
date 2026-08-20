@@ -1,0 +1,95 @@
+"""판정 전환 알림 라우트 — 설정 확인 · 기준선 조회 · 테스트 발송.
+
+## 테스트 발송이 왜 필요한가
+이 저장소는 Slack 도메인(hooks.slack.com 포함)이 이그레스 프록시에서 전부 막힌 환경에서
+개발되었다. 규격은 Slack 공식 SDK 소스로 교차 확인했지만(src/alert_channels.py 주석)
+**실제 발송은 한 번도 해보지 못했다.** 사용자가 자기 네트워크에서 이 엔드포인트를 한 번
+때려보는 것이 유일한 실검증 경로다.
+
+핸들러는 모두 `def`(async 아님)로 둔다 — FastAPI 가 스레드풀로 넘겨주므로, SMTP·HTTP
+발송이 이벤트 루프를 막지 않는다.
+"""
+import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter
+
+import db
+from config import (
+    DECISION_ALERT_CONFIRM_CYCLES,
+    DECISION_ALERT_COOLDOWN_MINUTES,
+    DECISION_ALERT_ENABLED,
+    DECISION_ALERT_SIDE_ONLY,
+    DECISION_ALERT_VIEWS,
+    TIMEZONE,
+)
+
+from ..schemas import AlertConfigResponse, AlertStateResponse, AlertTestResponse
+from ..services import alerts
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api")
+
+
+@router.get("/alerts/config", response_model=AlertConfigResponse)
+def get_alert_config():
+    now = datetime.now(ZoneInfo(TIMEZONE))
+    return {
+        "enabled": DECISION_ALERT_ENABLED,
+        "channels": alerts.channels(),
+        "views": list(DECISION_ALERT_VIEWS),
+        "side_only": DECISION_ALERT_SIDE_ONLY,
+        "confirm_cycles": DECISION_ALERT_CONFIRM_CYCLES,
+        "cooldown_minutes": DECISION_ALERT_COOLDOWN_MINUTES,
+        "in_window": alerts.in_alert_window(now),
+        "baselines": len(db.get_decision_alert_state()),
+    }
+
+
+@router.get("/alerts/state", response_model=AlertStateResponse)
+def get_alert_state():
+    """저장된 기준선 — "어떤 판정을 마지막으로 알렸는지". 오알림 진단용."""
+    state = db.get_decision_alert_state()
+    items = [
+        {
+            "code": code, "view_kind": kind, "view": row["view"],
+            "source": row["source"],
+            "notified_at": row["notified_at"], "updated_at": row["updated_at"],
+        }
+        for (code, kind), row in sorted(state.items())
+    ]
+    return {"items": items}
+
+
+@router.post("/alerts/test", response_model=AlertTestResponse)
+def send_test_alert():
+    """설정된 채널로 예시 전환 1건을 발송한다. 기준선은 건드리지 않는다.
+
+    DECISION_ALERT_ENABLED 와 장 시간대 게이트를 **우회한다** — 설정을 켜기 전에
+    채널이 살아 있는지 먼저 확인하는 것이 이 엔드포인트의 목적이기 때문이다.
+    """
+    configured = alerts.channels()
+    if not configured:
+        return {
+            "channels": [], "results": {},
+            "detail": (
+                "설정된 채널이 없습니다. SLACK_WEBHOOK_URL 또는 "
+                "SENDER_EMAIL·GMAIL_APP_PASSWORD·NOTIFY_EMAIL 을 .env 에 설정하세요."
+            ),
+        }
+
+    now = datetime.now(ZoneInfo(TIMEZONE))
+    sample = alerts.Transition(
+        code="000000", name="[테스트] 발송 확인", kind="long",
+        before="관망", after="매수", close=71200.0, change_pct=1.83,
+    )
+    results = alerts.dispatch([sample], now)
+    ok = [name for name, success in results.items() if success]
+    failed = [name for name, success in results.items() if not success]
+
+    detail = f"성공: {', '.join(ok) or '없음'}"
+    if failed:
+        detail += f" / 실패: {', '.join(failed)} (서버 로그의 [slack]·[notifier] 경고 확인)"
+    return {"channels": configured, "results": results, "detail": detail}
