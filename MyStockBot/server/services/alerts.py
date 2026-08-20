@@ -58,6 +58,7 @@ to_thread 없이 collector.get_state() 를 호출) 락 안에서 SMTP·HTTP 를 
 알림 본문에 그렇게 적어 보낸다.
 """
 import logging
+import math
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -127,15 +128,40 @@ def in_alert_window(now: datetime) -> bool:
     return market_calendar.SESSION_OPEN <= now.time() <= market_calendar.SESSION_CLOSE
 
 
-def _context(item: dict, kind: str) -> tuple[int, str | None]:
-    """(재무 반영 여부, 데이터 출처) — 위 ③번 게이트의 비교 대상.
+def _provenance(value) -> str | None:
+    """알려진 데이터 출처만 남기고 나머지는 '알 수 없음'(None)으로 접는다.
 
-    단기 판정은 60분봉만 쓰므로 재무는 항상 0, 출처는 source_60m.
+    ★ 이게 없으면 게이트 ②(영속화)가 통째로 무효화된다:
+    `collector._remembered_source()` 는 신선도 게이트로 fetch 를 건너뛸 때 실제 출처가 아닌
+    센티널 문자열 `"store"` 를 돌려준다. 프로세스 재시작 직후 첫 사이클은 저장소가 신선하므로
+    **항상** 저장소 서빙이고, 그러면 영속된 `"kis"` 와 달라져 게이트 ③이 전 종목 · 전
+    view_kind 의 기준선을 현재 판정으로 무음 재시딩한다 — 장중 재기동 한 번에 그 구간의
+    전환이 전부 사라진다.
+
+    화이트리스트 방식이라 나중에 다른 센티널이 추가돼도 같은 사고가 재발하지 않는다.
+    """
+    return value if value in ("kis", "yfinance") else None
+
+
+def _context(item: dict, kind: str) -> tuple[int, str | None]:
+    """(재무 존재 비트마스크, 데이터 출처) — 위 ③번 게이트의 비교 대상.
+
+    재무는 **필드별 존재 비트마스크**(per=1, pbr=2, roe=4 → 0~7)다. any() 로 접은 1비트로는
+    "세 값 중 하나만 도착·소실한 사이클"을 구분할 수 없는데, 세 값은 각각 독립적으로 ±1 점을
+    내고(decision_rules.RuleSet.fundamental_score) 관망 구간이 score==0 **단일 점**이라
+    한 필드의 도착만으로도 측이 바뀐다. 적자·미공시 종목은 per 만 결측인 경우가 흔해서
+    실제로 밟히는 경로다.
+
+    단기 판정은 60분봉만 쓰므로 재무 마스크는 항상 0, 출처는 source_60m.
     """
     if kind == "long":
-        has_fund = any(item.get(field) is not None for field in ("per", "pbr", "roe"))
-        return (1 if has_fund else 0), item.get("source")
-    return 0, item.get("source_60m")
+        mask = (
+            int(item.get("per") is not None)
+            | int(item.get("pbr") is not None) << 1
+            | int(item.get("roe") is not None) << 2
+        )
+        return mask, _provenance(item.get("source"))
+    return 0, _provenance(item.get("source_60m"))
 
 
 def _parse_ts(value) -> datetime | None:
@@ -147,11 +173,11 @@ def _parse_ts(value) -> datetime | None:
         return None
 
 
-def _seed_row(code: str, kind: str, view: str, fund_present: int, source) -> dict:
+def _seed_row(code: str, kind: str, view: str, fund_mask: int, source) -> dict:
     """무음 시딩 행 — 기준선만 옮기고 알리지 않는다(notified_at 보존)."""
     return {
         "code": code, "view_kind": kind, "view": view,
-        "fund_present": fund_present, "source": source, "notified": False,
+        "fund_mask": fund_mask, "source": source, "notified": False,
     }
 
 
@@ -194,17 +220,25 @@ def diff(
                 continue
 
             key = (code, kind)
-            fund_present, source = _context(item, kind)
+            fund_mask, source = _context(item, kind)
             prev = state.get(key)
 
             # 기준선이 없거나 오래 방치됐으면 조용히 시딩(부팅 폭발·재추가 헛알림 방지).
             if prev is None or _is_stale(prev, now, state_ttl_days):
-                seeds.append(_seed_row(code, kind, view, fund_present, source))
+                seeds.append(_seed_row(code, kind, view, fund_mask, source))
                 continue
 
             # ③ 입력 구성이 바뀐 사이클 — 판정 변화의 원인이 시장이 아니다.
-            if prev["fund_present"] != fund_present or prev["source"] != source:
-                seeds.append(_seed_row(code, kind, view, fund_present, source))
+            #
+            # 출처는 **양쪽이 모두 알려진 값일 때만** 비교한다. 알 수 없음(None)과
+            # 비교하면 재시작 직후 첫 사이클이 전 종목을 무음 재시딩한다(_provenance 주석).
+            source_changed = (
+                source is not None
+                and prev["source"] is not None
+                and prev["source"] != source
+            )
+            if prev["fund_mask"] != fund_mask or source_changed:
+                seeds.append(_seed_row(code, kind, view, fund_mask, source))
                 continue
 
             prev_view = prev["view"]
@@ -212,7 +246,7 @@ def diff(
                 # ④ 같은 측 안의 등급 변화 — 알리지 않지만 기준선은 최신 라벨로 옮겨
                 #    다음 알림 본문의 '이전 판정'이 실제 직전 값이 되게 한다.
                 if view != prev_view:
-                    seeds.append(_seed_row(code, kind, view, fund_present, source))
+                    seeds.append(_seed_row(code, kind, view, fund_mask, source))
                 continue
             if not side_only and view == prev_view:
                 continue
@@ -261,34 +295,73 @@ def _in_cooldown(prev: dict, now: datetime, cooldown_minutes: int) -> bool:
 # 렌더링
 # ────────────────────────────────────────────
 
-def _price_suffix(t: Transition) -> str:
-    if t.close is None:
+def _finite(value) -> float | None:
+    """유한한 실수만 통과. NaN·inf 는 None — 포맷하면 "nan원"/"inf원" 이 그대로 찍힌다."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _price_text(t: Transition) -> str:
+    """"71,200원 (+1.83%)" 또는 값이 없으면 빈 문자열."""
+    close = _finite(t.close)
+    if close is None:
         return ""
-    price = f"{t.close:,.0f}원"
-    if t.change_pct is None:
-        return f" · {price}"
-    return f" · {price} ({t.change_pct:+.2f}%)"
+    pct = _finite(t.change_pct)
+    return f"{close:,.0f}원" if pct is None else f"{close:,.0f}원 ({pct:+.2f}%)"
 
 
-def render_slack_text(transitions: list[Transition], now: datetime) -> str:
-    """Slack mrkdwn 본문. **굵게는 `*한쪽별표*`** 다 — 마크다운의 `**` 가 아니다."""
-    total = len(transitions)
-    shown = transitions[:DECISION_ALERT_MAX_ROWS]
+def _price_suffix(t: Transition) -> str:
+    """줄 끝에 붙이는 형태(" · 71,200원 …"). 표 셀에는 _price_text 를 쓴다.
+
+    예전에는 표 쪽에서 이 값을 `lstrip(' ·')` 로 되돌렸는데, lstrip 은 **문자 집합**을
+    지우는 함수라 접두어 제거 용도로는 위험하다(집합에 든 문자가 값 앞에 오면 같이 깎인다).
+    두 형태를 따로 만들어 되돌릴 필요를 없앴다.
+    """
+    text = _price_text(t)
+    return f" · {text}" if text else ""
+
+
+def render_slack_text(
+    transitions: list[Transition], now: datetime, total: int | None = None
+) -> str:
+    """Slack mrkdwn 본문. **굵게는 `*한쪽별표*`** 다 — 마크다운의 `**` 가 아니다.
+
+    `transitions` 는 **이미 잘린(발송 대상) 목록**이고 `total` 은 이번 사이클의 전체
+    전환 수다. 여기서 자르지 않는 이유: 예전에는 렌더러가 잘랐는데 호출부는 전체 목록으로
+    기준선을 옮겨서, 어느 채널에도 실린 적 없는 전환이 '알린 판정'으로 기록되고 다시는
+    보고되지 않았다(게이트 ⑧ 위반). 자르는 주체를 호출부 하나로 모았다.
+
+    보간되는 값은 전부 `escape_mrkdwn` 을 통과한다 — 종목명이 외부 입력이고 `<!channel>`
+    이 실제 멘션 제어 시퀀스라서다(alert_channels.escape_mrkdwn 주석 참고).
+    의도한 `*굵게*`·`_기울임_` 마크업은 이스케이프 대상이 아니므로 줄 단위로 감싸지 않는다.
+    """
+    esc = alert_channels.escape_mrkdwn
+    total = len(transitions) if total is None else total
     lines = [f"*MyStockBot 판정 전환* {total}건 · {now.strftime('%m/%d %H:%M')}"]
-    for t in shown:
+    for t in transitions:
         lines.append(
-            f"• *{t.name}*({t.code}) {t.kind_label} {t.before} → *{t.after}*{_price_suffix(t)}"
+            f"• *{esc(t.name)}*({esc(t.code)}) {esc(t.kind_label)} "
+            f"{esc(t.before)} → *{esc(t.after)}*{esc(_price_suffix(t))}"
         )
-    if total > len(shown):
-        lines.append(f"… 외 {total - len(shown)}건")
+    remaining = total - len(transitions)
+    if remaining > 0:
+        lines.append(f"… 나머지 {remaining}건은 다음 사이클에 이어서 알립니다")
     lines.append(f"_{_INTRADAY_CAVEAT}_")
     return "\n".join(lines)
 
 
-def render_email(transitions: list[Transition], now: datetime) -> tuple[str, str]:
-    """(제목, HTML 본문). 종목명은 외부 입력이라 이스케이프한다."""
-    total = len(transitions)
-    shown = transitions[:DECISION_ALERT_MAX_ROWS]
+def render_email(
+    transitions: list[Transition], now: datetime, total: int | None = None
+) -> tuple[str, str]:
+    """(제목, HTML 본문). 종목명은 외부 입력이라 이스케이프한다.
+
+    `render_slack_text` 와 동일하게 **자르지 않는다** — 호출부가 자른 목록을 받는다.
+    """
+    total = len(transitions) if total is None else total
+    shown = transitions
     subject = f"[MyStockBot] 판정 전환 {total}건 - {now.strftime('%Y-%m-%d %H:%M')}"
 
     rows = "".join(
@@ -301,12 +374,13 @@ def render_email(transitions: list[Transition], now: datetime) -> tuple[str, str
         f"<td style='padding:6px 12px;border:1px solid #e5e7eb;font-weight:bold;'>"
         f"{notifier.esc(t.after)}</td>"
         f"<td style='padding:6px 12px;border:1px solid #e5e7eb;text-align:right;'>"
-        f"{notifier.esc(_price_suffix(t).lstrip(' ·') or '—')}</td>"
+        f"{notifier.esc(_price_text(t) or '—')}</td>"
         f"</tr>"
         for t in shown
     )
     more = (
-        f"<p style='color:#6b7280;font-size:13px;'>… 외 {total - len(shown)}건</p>"
+        f"<p style='color:#6b7280;font-size:13px;'>"
+        f"… 나머지 {total - len(shown)}건은 다음 사이클에 이어서 알립니다</p>"
         if total > len(shown) else ""
     )
     html_body = f"""<!DOCTYPE html>
@@ -349,13 +423,21 @@ def channels() -> list[str]:
     return names
 
 
-def dispatch(transitions: list[Transition], now: datetime) -> dict[str, bool]:
-    """설정된 모든 채널로 발송. {채널명: 성공여부}."""
+def dispatch(
+    transitions: list[Transition], now: datetime, total: int | None = None
+) -> dict[str, bool]:
+    """설정된 모든 채널로 발송. {채널명: 성공여부}.
+
+    `transitions` 는 **실제로 실어 보낼 목록**이고 `total` 은 이번 사이클 전체 건수다
+    (잘린 경우 본문에 잔여 안내를 넣기 위함). 자르는 주체는 호출부 하나다.
+    """
     results: dict[str, bool] = {}
     if alert_channels.slack_enabled():
-        results["slack"] = alert_channels.send_slack(render_slack_text(transitions, now))
+        results["slack"] = alert_channels.send_slack(
+            render_slack_text(transitions, now, total)
+        )
     if notifier.email_enabled():
-        subject, html_body = render_email(transitions, now)
+        subject, html_body = render_email(transitions, now, total)
         results["email"] = notifier.send_html(subject, html_body)
     return results
 
@@ -401,33 +483,48 @@ def process_cycle(items: list[dict], now: datetime | None = None) -> dict:
             "channels": configured, "seeded": len(seeds),
         }
 
-    results = dispatch(transitions, now)
+    # ⑧-a 한 메시지 상한. **여기 한 곳에서만 자른다.**
+    #     예전에는 렌더러가 각자 잘랐는데 기준선은 전체 목록으로 옮겨서, 어느 채널에도
+    #     실린 적 없는 전환이 '알린 판정'으로 기록되고 다시는 보고되지 않았다 —
+    #     지수 급락일처럼 알림이 가장 필요한 날에만 터지고, 무엇이 유실됐는지 복원할
+    #     경로도 없었다(로그도 건수만 남긴다).
+    #     이제 잘린 꼬리는 _pending 에 count>=confirm 상태로 남고 notified_at 도
+    #     건드려지지 않으므로 다음 사이클에 그대로 발화한다 = 자연 페이지네이션.
+    total = len(transitions)
+    shown = transitions[:DECISION_ALERT_MAX_ROWS] if DECISION_ALERT_MAX_ROWS > 0 else transitions
+
+    results = dispatch(shown, now, total)
     delivered = [name for name, ok in results.items() if ok]
 
     if delivered:
-        # ⑧ 성공한 발송에 대해서만 기준선을 옮긴다.
+        # ⑧-b 성공한 발송에 **실린 것만** 기준선을 옮긴다.
         by_code = {item.get("code"): item for item in items}
         notified_rows = []
-        for t in transitions:
-            fund_present, source = _context(by_code.get(t.code, {}), t.kind)
+        for t in shown:
+            fund_mask, source = _context(by_code.get(t.code, {}), t.kind)
             notified_rows.append({
                 "code": t.code, "view_kind": t.kind, "view": t.after,
-                "fund_present": fund_present, "source": source, "notified": True,
+                "fund_mask": fund_mask, "source": source, "notified": True,
             })
         db.upsert_decision_alert_state(notified_rows)
         with _pending_lock:
-            for t in transitions:
+            for t in shown:
                 _pending.pop(t.key, None)
-        logger.info(
-            "[alerts] 판정 전환 %d건 발송(%s)", len(transitions), ", ".join(delivered)
-        )
+        if total > len(shown):
+            logger.info(
+                "[alerts] 판정 전환 %d건 중 %d건 발송(%s) — 나머지 %d건은 다음 사이클",
+                total, len(shown), ", ".join(delivered), total - len(shown),
+            )
+        else:
+            logger.info("[alerts] 판정 전환 %d건 발송(%s)", total, ", ".join(delivered))
     else:
         # 전 채널 실패 — 기준선을 옮기지 않아 다음 사이클에 재시도한다.
-        logger.warning("[alerts] 판정 전환 %d건 발송 실패 — 다음 사이클 재시도", len(transitions))
+        logger.warning("[alerts] 판정 전환 %d건 발송 실패 — 다음 사이클 재시도", total)
 
     return {
         "enabled": True, "reason": "발송" if delivered else "발송 실패",
-        "sent": len(transitions) if delivered else 0,
-        "transitions": len(transitions),
+        "sent": len(shown) if delivered else 0,
+        "transitions": total,
+        "deferred": total - len(shown),
         "channels": configured, "results": results, "seeded": len(seeds),
     }

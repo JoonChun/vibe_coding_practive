@@ -10,10 +10,11 @@
 발송이 이벤트 루프를 막지 않는다.
 """
 import logging
+import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 import db
 from config import (
@@ -31,6 +32,15 @@ from ..services import alerts
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+# 테스트 발송 동시 실행을 1건으로 제한한다.
+#
+# 이 핸들러는 `def`(동기)라 FastAPI 가 anyio 스레드풀로 넘기는데, 한 번 호출이 Slack
+# 15초 + SMTP 30초를 **순차로** 블로킹하며 토큰 1개를 최대 45초 점유한다. 기본 풀이
+# 40토큰이므로 40건 동시 호출이면 모든 동기 엔드포인트(/api/health · /api/watchlist ·
+# /api/paper/* · /api/market/status · /api/stocks/search …)가 함께 멈춘다.
+# 세마포어 1개로 그 소진이 구조적으로 불가능해진다.
+_test_lock = threading.Semaphore(1)
 
 
 @router.get("/alerts/config", response_model=AlertConfigResponse)
@@ -64,11 +74,13 @@ def get_alert_state():
 
 
 @router.post("/alerts/test", response_model=AlertTestResponse)
-def send_test_alert():
+def send_test_alert(response: Response):
     """설정된 채널로 예시 전환 1건을 발송한다. 기준선은 건드리지 않는다.
 
     DECISION_ALERT_ENABLED 와 장 시간대 게이트를 **우회한다** — 설정을 켜기 전에
     채널이 살아 있는지 먼저 확인하는 것이 이 엔드포인트의 목적이기 때문이다.
+
+    동시 실행은 1건으로 제한한다(_test_lock 주석 참고). 이미 진행 중이면 429.
     """
     configured = alerts.channels()
     if not configured:
@@ -80,12 +92,24 @@ def send_test_alert():
             ),
         }
 
-    now = datetime.now(ZoneInfo(TIMEZONE))
-    sample = alerts.Transition(
-        code="000000", name="[테스트] 발송 확인", kind="long",
-        before="관망", after="매수", close=71200.0, change_pct=1.83,
-    )
-    results = alerts.dispatch([sample], now)
+    if not _test_lock.acquire(blocking=False):
+        response.status_code = 429
+        response.headers["Retry-After"] = "45"
+        return {
+            "channels": configured, "results": {},
+            "detail": "테스트 발송이 이미 진행 중입니다. 잠시 후 다시 시도하세요.",
+        }
+
+    try:
+        now = datetime.now(ZoneInfo(TIMEZONE))
+        sample = alerts.Transition(
+            code="000000", name="[테스트] 발송 확인", kind="long",
+            before="관망", after="매수", close=71200.0, change_pct=1.83,
+        )
+        results = alerts.dispatch([sample], now)
+    finally:
+        _test_lock.release()
+
     ok = [name for name, success in results.items() if success]
     failed = [name for name, success in results.items() if not success]
 

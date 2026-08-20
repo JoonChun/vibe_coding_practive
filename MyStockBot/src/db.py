@@ -28,6 +28,26 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_decision_alert_state(conn: sqlite3.Connection) -> None:
+    """구버전 스키마(fund_present 0/1)를 fund_mask 비트마스크로 교체한다.
+
+    두 컬럼의 **의미가 달라서** 값을 그대로 옮길 수 없다(0/1 vs 0~7 비트마스크).
+    이 테이블은 "무엇을 마지막으로 알렸는지"만 담은 캐시이므로 버려도 손실은
+    키당 무음 시딩 1회뿐이다 — 값을 억지로 변환해 잘못된 기준선을 남기는 것보다 낫다.
+
+    `CREATE TABLE IF NOT EXISTS` 는 기존 테이블에 컬럼을 추가하지 않으므로 이 단계가 필요하다.
+    조건부이므로 부팅마다 지우지 않는다.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'decision_alert_state'"
+    ).fetchone()
+    if exists is None:
+        return
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(decision_alert_state)")}
+    if "fund_mask" not in columns:
+        conn.execute("DROP TABLE decision_alert_state")
+
+
 def init_db() -> None:
     conn = get_connection()
     try:
@@ -91,25 +111,42 @@ def init_db() -> None:
         # 알림이 터지고, (2) 판정이 A↔B 로 왕복할 때 매번 알림이 나간다. 영속화하면 둘 다
         # 공짜로 해결된다 — 왕복해서 돌아온 판정은 마지막 알린 값과 같으므로 알리지 않는다.
         #
-        # fund_present / source 도 함께 저장한다: 재무데이터가 뒤늦게 도착하거나(장기 판정이
+        # fund_mask / source 도 함께 저장한다: 재무데이터가 뒤늦게 도착하거나(장기 판정이
         # 재무 ±3점만큼 통째로 이동) 데이터 출처가 kis↔yfinance 로 바뀌면 판정이 바뀌는데,
         # 그건 시장이 아니라 **입력 구성**이 바뀐 것이라 알릴 사건이 아니다.
         #
+        # fund_mask 는 per/pbr/roe 의 **존재 여부 비트마스크**(0~7)다. 예전엔 any() 로 접은
+        # 0/1 이었는데, 세 값은 각각 독립적으로 ±1 점을 내고 관망 구간이 score==0 단일 점이라
+        # **한 필드만 도착·소실해도** 측이 바뀐다. 1비트로는 그 사이클을 구분할 수 없어
+        # "재무 도착이 매매 신호로 보이는" 경로가 그대로 열려 있었다(적자·미공시 종목은
+        # per 만 결측인 경우가 흔하다).
+        # 재무 '점수'를 저장하는 대안은 채택하지 않았다 — KIS 의 PER/PBR 은 현재가로
+        # 계산되므로 주가가 움직이면 점수도 움직인다. 점수를 입력 지문으로 쓰면 진짜 시장
+        # 전환까지 무음 흡수해 오알림을 알림 누락으로 바꾸는 것뿐이다.
+        #
         # notified_at 은 실제 발송 시각(쿨다운 기준), updated_at 은 행을 마지막으로 만진
         # 시각(TTL 재시딩 기준)이다. 무음 시딩은 notified_at 을 건드리지 않는다.
+        _migrate_decision_alert_state(conn)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS decision_alert_state (
                 code TEXT NOT NULL,
                 view_kind TEXT NOT NULL,
                 view TEXT NOT NULL,
-                fund_present INTEGER NOT NULL DEFAULT 0,
+                fund_mask INTEGER NOT NULL DEFAULT 0,
                 source TEXT,
                 notified_at TEXT,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (code, view_kind)
             )
             """
+        )
+        # 고아 기준선 정리 — 관심종목에서 빠진 코드의 행을 남겨두면 나중에 다시 추가했을 때
+        # 그동안의 시장 움직임이 '방금 전환'으로 알려지고, /api/alerts/config 의 baselines
+        # 카운트도 실제보다 커진다. 부팅 때 한 번 쓸어낸다(활성 목록이 진실의 원천).
+        conn.execute(
+            "DELETE FROM decision_alert_state WHERE code NOT IN "
+            "(SELECT code FROM watchlist WHERE is_active = 1)"
         )
 
         # ── 모의투자(Paper Trading) ── 개인용 단일 계좌(id=1 싱글턴)
@@ -209,6 +246,14 @@ def add_watchlist_item(code, name) -> dict:
                 "UPDATE watchlist SET is_active = 1, name = ? WHERE code = ?",
                 (name, normalized_code),
             )
+            # 알림 기준선을 여기서도 지운다 — **추가 시점이 경합 없는 지점이다.**
+            # 삭제 시점에만 지우면, 그때 진행 중이던 수집 사이클이 사이클 끝에 기준선을
+            # 되살릴 수 있다(watchlist 는 soft delete 라 행이 재사용된다). 추가 시점에
+            # 한 번 더 지우면 재추가 직후의 기준선은 반드시 비어 있고, 첫 사이클이 조용히
+            # 시딩하므로 "그동안의 시장 움직임"이 방금 전환으로 알려지지 않는다.
+            conn.execute(
+                "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
+            )
             conn.commit()
             row = conn.execute(
                 "SELECT id, code, name, is_active, created_at FROM watchlist WHERE code = ?",
@@ -219,6 +264,10 @@ def add_watchlist_item(code, name) -> dict:
         conn.execute(
             "INSERT INTO watchlist (code, name) VALUES (?, ?)",
             (normalized_code, name),
+        )
+        # 신규 코드라도 고아 기준선이 남아 있을 수 있다(부활한 행·수동 조작).
+        conn.execute(
+            "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
         )
         conn.commit()
         row = conn.execute(
@@ -467,7 +516,7 @@ def get_market_holiday_meta() -> dict:
 # ────────────────────────────────────────────
 
 def get_decision_alert_state() -> dict[tuple[str, str], dict]:
-    """{(code, view_kind): {view, fund_present, source, notified_at, updated_at}}.
+    """{(code, view_kind): {view, fund_mask, source, notified_at, updated_at}}.
 
     사이클마다 종목 수만큼 SELECT 하지 않도록 전량을 한 번에 읽는다(관심종목 규모가
     수십 건이라 전량 읽기가 더 싸다).
@@ -475,13 +524,13 @@ def get_decision_alert_state() -> dict[tuple[str, str], dict]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT code, view_kind, view, fund_present, source, notified_at, updated_at "
+            "SELECT code, view_kind, view, fund_mask, source, notified_at, updated_at "
             "FROM decision_alert_state"
         ).fetchall()
         return {
             (r["code"], r["view_kind"]): {
                 "view": r["view"],
-                "fund_present": int(r["fund_present"]),
+                "fund_mask": int(r["fund_mask"]),
                 "source": r["source"],
                 "notified_at": r["notified_at"],
                 "updated_at": r["updated_at"],
@@ -493,10 +542,20 @@ def get_decision_alert_state() -> dict[tuple[str, str], dict]:
 
 
 def upsert_decision_alert_state(rows: list[dict]) -> int:
-    """[{code, view_kind, view, fund_present, source, notified: bool}, ...] 를 upsert.
+    """[{code, view_kind, view, fund_mask, source, notified: bool}, ...] 를 upsert.
 
-    notified=False(무음 시딩)면 기존 notified_at 을 **보존한다** — 시딩이 쿨다운 기준
-    시각을 뒤로 밀어 실제 전환 알림을 지연시키는 일이 없도록.
+    세 가지 보호 장치가 이 한 문장에 들어 있다:
+
+    1. `WHERE EXISTS (... watchlist ... is_active = 1)` — **활성 관심종목만** 기준선을 갖는다.
+       수집 사이클은 시작 시점의 watchlist 스냅샷으로 돌고 사이클 **끝**에 이 함수를 부르므로,
+       그 사이에 라우터 스레드가 종목을 지우면 방금 지운 기준선이 되살아난다(그 행은
+       notified_at=NULL 이라 쿨다운도 안 걸려 재추가 시 헛알림이 된다). 단일 statement 안의
+       원자적 검사라 그 레이스가 구조적으로 닫힌다.
+    2. `notified_at = COALESCE(...)` — 무음 시딩이 기존 발송 시각을 밀지 않는다(쿨다운 기준 보존).
+    3. `source = COALESCE(...)` — 출처를 알 수 없는 사이클(None)이 저장된 'kis'/'yfinance' 를
+       지우지 않는다. 지우면 다음 사이클에 NULL→'kis' 가 또 입력 변화로 잡혀 2차 무음 재시딩이 난다.
+
+    fund_mask 는 bool 로 강제하지 않는다 — 0~7 비트마스크를 1 로 접으면 게이트가 무력해진다.
     """
     if not rows:
         return 0
@@ -507,22 +566,24 @@ def upsert_decision_alert_state(rows: list[dict]) -> int:
         conn.executemany(
             """
             INSERT INTO decision_alert_state
-                (code, view_kind, view, fund_present, source, notified_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (code, view_kind, view, fund_mask, source, notified_at, updated_at)
+            SELECT ?, ?, ?, ?, ?, ?, ?
+             WHERE EXISTS (SELECT 1 FROM watchlist WHERE code = ? AND is_active = 1)
             ON CONFLICT(code, view_kind) DO UPDATE SET
                 view = excluded.view,
-                fund_present = excluded.fund_present,
-                source = excluded.source,
+                fund_mask = excluded.fund_mask,
+                source = COALESCE(excluded.source, decision_alert_state.source),
                 notified_at = COALESCE(excluded.notified_at, decision_alert_state.notified_at),
                 updated_at = excluded.updated_at
             """,
             [
                 (
                     r["code"], r["view_kind"], r["view"],
-                    1 if r.get("fund_present") else 0,
+                    int(r.get("fund_mask") or 0),
                     r.get("source"),
                     now if r.get("notified") else None,
                     now,
+                    r["code"],  # WHERE EXISTS 용 — 활성 관심종목 확인
                 )
                 for r in rows
             ],

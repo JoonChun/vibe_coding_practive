@@ -50,6 +50,38 @@ _TIMEOUT_SECONDS = 15
 _SUCCESS_BODY = "ok"
 
 
+def escape_mrkdwn(value) -> str:
+    """Slack 메시지 본문에 **보간되는 값**을 안전하게 만든다.
+
+    왜 필요한가 — 종목명은 Google Sheets·외부 API 에서 오는 미검증 문자열이고,
+    `<` 는 Slack 의 제어 시퀀스 시작 문자다. 종목명에 `<!channel>` 이 들어가면 알림이
+    나갈 때마다 채널 전원에게 푸시가 간다.
+
+    확인한 것(추측 금지 — Slack 도메인이 이 환경에서 차단되어 SDK 소스로 교차 확인):
+      · `slackapi/python-slack-sdk` tests/web/classes/test_objects.py —
+        `ChannelLink()` → `"<!channel|channel>"`, `HereLink()` → `"<!here|here>"`,
+        `EveryoneLink()` → `"<!everyone|everyone>"`.
+        즉 `<!...>` 가 실제로 Slack 의 멘션 제어 시퀀스임이 Slack 자체 코드로 확인된다.
+      · `slackapi/java-slack-sdk` slack-api-model/.../model/Field.java —
+        마크업을 담을 수 있는 `value` 는 "must be escaped as normal"(L24), 반면 마크업을
+        담을 수 없는 `title` 은 "will be escaped for you"(L19).
+        → 마크업 필드의 이스케이프는 **호출자 책임**이고 SDK 가 대신 해주지 않는다.
+
+    확인하지 못한 것: `& < >` → `&amp; &lt; &gt;` 라는 **정확한 엔티티 대응**을 Slack 소유
+    코드에서 문장으로 찾지는 못했다(문서 사이트가 차단됨). 이 치환을 택한 이유는 위에서
+    확인된 주입 경로를 확실히 무력화하기 때문이고, 혹시 Slack 의 매핑이 세부에서 다르더라도
+    실패 모드는 `&amp;` 가 글자로 보이는 **표시상의 문제**이지 멘션 주입이 아니다.
+
+    `&` 를 **먼저** 치환해야 한다 — 나중에 하면 `&lt;` 의 `&` 를 다시 이스케이프한다.
+    """
+    return (
+        str("" if value is None else value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def slack_webhook_url() -> str | None:
     """설정된 웹훅 URL. 미설정이거나 형식이 다르면 None."""
     url = os.environ.get(SLACK_WEBHOOK_URL_ENV_KEY, "").strip()

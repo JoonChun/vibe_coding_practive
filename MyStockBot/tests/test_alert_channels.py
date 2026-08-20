@@ -189,3 +189,68 @@ def test_webhook_url_never_appears_in_logs(monkeypatch, webhook, caplog, failure
 
     assert secret not in caplog.text
     assert "hooks.slack.com" not in caplog.text
+
+
+# ── DECISION_ALERT_VIEWS 오설정이 기능 전체를 무음으로 죽이던 경로 ──
+
+def _reload_config(monkeypatch, value):
+    import importlib
+
+    import config
+    monkeypatch.setenv("DECISION_ALERT_VIEWS", value)
+    return importlib.reload(config)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("short,long", ("short", "long")),
+    ("long", ("long",)),
+    ("SHORT,LONG", ("short", "long")),      # 대소문자 무관
+    (" short , long ", ("short", "long")),  # 공백 관용
+    ("long,long", ("long",)),               # 중복 제거
+    ("long,short", ("short", "long")),      # 순서 고정
+])
+def test_alert_views_parsing(monkeypatch, raw, expected):
+    cfg = _reload_config(monkeypatch, raw)
+    assert cfg.DECISION_ALERT_VIEWS == expected
+
+
+@pytest.mark.parametrize("raw", ["daily", "", "SHRT,lnog", ",,,"])
+def test_bad_alert_views_falls_back_with_warning(monkeypatch, caplog, raw):
+    """빈 튜플이면 diff(kinds=()) 가 전환도 시딩도 하지 않아 알림이 무음으로 죽는다.
+
+    그런데 /api/alerts/config 의 enabled 는 여전히 true 라 진단 신호가 사실상 없었다.
+    """
+    with caplog.at_level(logging.WARNING):
+        cfg = _reload_config(monkeypatch, raw)
+
+    assert cfg.DECISION_ALERT_VIEWS == ("short", "long")
+    assert "DECISION_ALERT_VIEWS" in caplog.text
+
+
+def test_partially_valid_views_warns_but_keeps_valid(monkeypatch, caplog):
+    with caplog.at_level(logging.WARNING):
+        cfg = _reload_config(monkeypatch, "long,daily")
+
+    assert cfg.DECISION_ALERT_VIEWS == ("long",)
+    assert "daily" in caplog.text
+
+
+def test_empty_env_assignment_keeps_documented_default(monkeypatch):
+    """`.env` 의 `DECISION_ALERT_SIDE_ONLY=` 빈 대입이 문서화된 기본값 1 을 뒤집지 않는다."""
+    import importlib
+
+    import config
+    monkeypatch.setenv("DECISION_ALERT_SIDE_ONLY", "")
+    cfg = importlib.reload(config)
+
+    assert cfg.DECISION_ALERT_SIDE_ONLY is True
+
+
+@pytest.fixture(autouse=True)
+def _restore_config():
+    """reload 로 바꾼 config 를 원상복구 — 다른 테스트가 오염되지 않게."""
+    yield
+    import importlib
+
+    import config
+    importlib.reload(config)

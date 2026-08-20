@@ -30,7 +30,7 @@ def _item(code="005930", name="삼성전자", *, short=None, long=None,
     }
 
 
-def _state(view, *, kind="long", fund_present=1, source="kis",
+def _state(view, *, kind="long", fund_mask=0b111, source="kis",
            notified_at=NOW, updated_at=NOW):
     def _ts(v):
         if v is None:
@@ -38,7 +38,7 @@ def _state(view, *, kind="long", fund_present=1, source="kis",
         return v.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     return {("005930", kind): {
-        "view": view, "fund_present": fund_present, "source": source,
+        "view": view, "fund_mask": fund_mask, "source": source,
         "notified_at": _ts(notified_at), "updated_at": _ts(updated_at),
     }}
 
@@ -82,7 +82,7 @@ def test_first_sight_seeds_silently():
     assert transitions == []
     assert seeds == [{
         "code": "005930", "view_kind": "long", "view": dr.VIEW_BUY,
-        "fund_present": 1, "source": "kis", "notified": False,
+        "fund_mask": 0b111, "source": "kis", "notified": False,
     }]
 
 
@@ -111,7 +111,7 @@ def test_late_arriving_financials_do_not_alert():
 
     '첫 사이클을 기준선으로' 만으로는 막히지 않는 경로 — 2~3번째 사이클에 터진다.
     """
-    state = _state(dr.VIEW_HOLD, fund_present=0)
+    state = _state(dr.VIEW_HOLD, fund_mask=0)
     item = _item(long=dr.VIEW_STRONG_BUY, per=8.0)  # 재무 도착
 
     transitions, seeds, _ = _diff([item], state)
@@ -119,7 +119,7 @@ def test_late_arriving_financials_do_not_alert():
     assert transitions == []
     assert seeds[0] == {
         "code": "005930", "view_kind": "long", "view": dr.VIEW_STRONG_BUY,
-        "fund_present": 1, "source": "kis", "notified": False,
+        "fund_mask": 0b111, "source": "kis", "notified": False,
     }
 
 
@@ -259,7 +259,7 @@ def test_alert_window(moment, expected):
 
 def test_short_and_long_are_tracked_independently():
     state = {**_state(dr.VIEW_HOLD, kind="long"),
-             **_state(dr.VIEW_HOLD, kind="short", fund_present=0)}
+             **_state(dr.VIEW_HOLD, kind="short", fund_mask=0)}
     item = _item(long=dr.VIEW_BUY, short=dr.VIEW_SELL)
 
     transitions, _, _ = _diff([item], state, kinds=("short", "long"))
@@ -271,7 +271,7 @@ def test_short_and_long_are_tracked_independently():
 
 def test_short_kind_uses_source_60m_for_context():
     """단기 판정의 출처는 source_60m 이다 — 일봉 출처로 비교하면 오탐이 난다."""
-    state = _state(dr.VIEW_HOLD, kind="short", fund_present=0, source="kis")
+    state = _state(dr.VIEW_HOLD, kind="short", fund_mask=0, source="kis")
     item = _item(short=dr.VIEW_BUY, source="yfinance", source_60m="kis")
 
     transitions, _, _ = _diff([item], state, kinds=("short",))
@@ -329,7 +329,7 @@ def test_successful_send_commits_and_clears_pending(monkeypatch, wired):
     assert result["sent"] == 1
     assert wired.upserts == [{
         "code": "005930", "view_kind": "long", "view": dr.VIEW_BUY,
-        "fund_present": 1, "source": "kis", "notified": True,
+        "fund_mask": 0b111, "source": "kis", "notified": True,
     }]
     assert alerts._pending == {}
     assert "매수" in sent[0]
@@ -377,23 +377,57 @@ def test_seeds_are_committed_even_without_transitions(monkeypatch, wired):
 
 # ── 스레드·유량 안전 (사이클을 늘리거나 서버를 멈추지 않는다) ──
 
-def test_dispatch_never_touches_the_collector_state_lock(monkeypatch, wired):
-    """collector._state_lock 은 이벤트 루프 스레드가 잡는다 — 알림 경로가 쥐면 서버가 멈춘다."""
+def test_collector_calls_alerts_outside_the_state_lock(monkeypatch):
+    """collector._run_cycle 이 **락 밖에서** 알림을 부르는지 — 호출부를 실제로 실행해 검증한다.
+
+    이 테스트는 반드시 `collector._run_cycle()` 을 통과해야 한다. 예전 버전은
+    `alerts.process_cycle` 을 직접 불러서 **락을 쥔 주체가 애초에 없었고**,
+    `acquire(blocking=False)` 가 항상 True 라 위반을 탐지할 수 없었다.
+    실측으로 확인: process_cycle 호출을 `with _state_lock:` 안으로 옮겨도 예전 테스트는
+    통과했다. 지금 버전은 그 회귀에서 실패한다.
+
+    락 안에서 I/O 를 하면 서버 전체가 멈춘다 — 그 락은 이벤트 루프 스레드가 직접 잡는다
+    (routers/snapshot.py 의 async 핸들러가 to_thread 없이 collector.get_state() 호출).
+    """
+    import db as db_module
+    import kis_auth
+    from server.services import collector
+
+    # **모든** 호출을 기록한다. 마지막 호출만 보면, 락 안에 호출이 하나 추가돼도 뒤이은
+    # 락 밖 호출이 기록을 덮어써서 회귀를 놓친다(실제로 그렇게 새는 것을 확인했다).
+    observed: list[bool] = []
+
+    def spy(items, now=None):
+        observed.append(collector._state_lock.locked())
+        return {"enabled": False, "sent": 0}
+
+    monkeypatch.setattr(db_module, "load_watchlist", lambda: [{"code": "005930", "name": "삼성전자"}])
+    monkeypatch.setattr(kis_auth, "get_token", lambda: "tok")
+    monkeypatch.setattr(collector, "_collect_one", lambda item, token: _item(long=dr.VIEW_BUY))
+    monkeypatch.setattr(collector.alerts, "process_cycle", spy)
+
+    collector._run_cycle()
+
+    assert observed, "collector 가 알림을 호출하지 않았다"
+    assert not any(observed), (
+        f"_state_lock 을 쥔 채로 알림을 호출했다(호출별 락 상태: {observed}) — 서버가 멈춘다"
+    )
+
+
+def test_alerts_module_itself_never_takes_the_state_lock(monkeypatch, wired):
+    """알림 모듈 내부에서 락을 잡는 회귀도 함께 막는다(발송 시점에 락이 비어 있는지)."""
     from server.services import collector
 
     observed = []
 
     def fake_send(text, **kwargs):
-        acquired = collector._state_lock.acquire(blocking=False)
-        observed.append(acquired)
-        if acquired:
-            collector._state_lock.release()
+        observed.append(collector._state_lock.locked())
         return True
 
     monkeypatch.setattr(alert_channels, "send_slack", fake_send)
     alerts.process_cycle([_item(long=dr.VIEW_BUY)], NOW)
 
-    assert observed == [True], "발송 중 _state_lock 이 잡혀 있었다"
+    assert observed == [False], "발송 중 _state_lock 이 잡혀 있었다"
 
 
 def test_alert_path_never_calls_kis(monkeypatch, wired):
@@ -423,16 +457,21 @@ def test_slack_text_uses_single_asterisk_bold():
     assert "닫히지 않은 봉" in text, "장중 판정의 한계 문구가 빠졌다"
 
 
-def test_slack_text_truncates_but_reports_the_total(monkeypatch):
-    monkeypatch.setattr(alerts, "DECISION_ALERT_MAX_ROWS", 2)
+def test_slack_text_reports_total_and_deferred_count():
+    """렌더러는 자르지 않고, 호출부가 잘라 넘긴 목록 + 전체 건수를 받아 표시만 한다.
+
+    (예전에는 렌더러가 잘랐는데 호출부는 전체로 기준선을 옮겨 꼬리가 유실됐다 —
+    test_truncated_tail_is_deferred_not_lost 참고.)
+    """
     ts = [
         alerts.Transition(f"00000{i}", f"종목{i}", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
-        for i in range(5)
+        for i in range(2)
     ]
-    text = alerts.render_slack_text(ts, NOW)
+    text = alerts.render_slack_text(ts, NOW, total=5)
 
     assert "판정 전환* 5건" in text
-    assert "외 3건" in text
+    assert text.count("•") == 2
+    assert "나머지 3건은 다음 사이클" in text
 
 
 def test_email_escapes_stock_names():
@@ -453,3 +492,195 @@ def test_missing_price_renders_without_crashing():
     subject, html_body = alerts.render_email([t], NOW)
     assert "판정 전환 1건" in subject
     assert "단기" in html_body
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 적대적 리뷰(6관점 × 반증 검증)에서 확증된 결함들의 회귀 테스트.
+# 전부 "228건이 통과하는데도 틀렸던" 경로다.
+# ══════════════════════════════════════════════════════════════════════
+
+# ── 재무 '일부' 도착이 오알림이 되던 경로 (fund_present 1비트 → fund_mask 비트마스크) ──
+
+def test_partial_financial_arrival_does_not_alert():
+    """per 만 뒤늦게 도착하는 사이클. 적자·미공시 종목은 per 만 결측인 경우가 흔하다.
+
+    any() 로 접은 1비트로는 이 사이클이 1→1 로 보여 게이트 ③을 그대로 통과했다.
+    세 값은 각각 독립적으로 ±1 점을 내고 관망 구간이 score==0 단일 점이라, 한 필드의
+    도착만으로도 측이 바뀐다 → 시장이 안 움직였는데 '관망 → 매수'가 나갔다.
+    """
+    state = _state(dr.VIEW_HOLD, fund_mask=0b110)          # pbr·roe 만 있던 상태
+    item = _item(long=dr.VIEW_BUY, per=8.0)                # per 도착 → 0b111
+
+    transitions, seeds, _ = _diff([item], state)
+
+    assert transitions == [], "재무 한 필드 도착이 매매 신호로 나갔다"
+    assert seeds[0]["fund_mask"] == 0b111
+
+
+def test_partial_financial_loss_does_not_alert():
+    """역방향 — KIS 가 per 을 빈 값으로 주는 사이클도 대칭으로 막아야 한다."""
+    state = _state(dr.VIEW_BUY, fund_mask=0b111)
+    item = _item(long=dr.VIEW_HOLD, per=None)              # per 소실 → 0b110
+
+    transitions, seeds, _ = _diff([item], state)
+
+    assert transitions == []
+    assert seeds[0]["fund_mask"] == 0b110
+
+
+def test_context_mask_encodes_each_field_independently():
+    assert alerts._context(_item(per=1.0), "long")[0] == 0b111
+    assert alerts._context({"per": 1.0}, "long")[0] == 0b001
+    assert alerts._context({"pbr": 1.0}, "long")[0] == 0b010
+    assert alerts._context({"roe": 1.0}, "long")[0] == 0b100
+    assert alerts._context({}, "long")[0] == 0
+    # 단기 판정은 재무를 쓰지 않으므로 항상 0
+    assert alerts._context(_item(per=1.0), "short")[0] == 0
+
+
+def test_financials_unchanged_still_alerts_on_real_move():
+    """재무 구성이 그대로면 게이트 ③은 침묵해야 한다 — 오알림을 알림 누락으로 바꾸지 않는다."""
+    transitions, _, _ = _diff([_item(long=dr.VIEW_SELL)], _state(dr.VIEW_BUY))
+
+    assert [t.after for t in transitions] == [dr.VIEW_SELL]
+
+
+# ── 재시작 첫 사이클의 "store" 센티널이 전 종목 기준선을 리셋하던 경로 ──
+
+@pytest.mark.parametrize("sentinel", ["store", None, "", "unknown"])
+def test_unknown_source_does_not_reseed_everything(sentinel):
+    """collector._remembered_source() 는 저장소 서빙 시 실제 출처가 아닌 "store" 를 준다.
+
+    재시작 직후 첫 사이클은 저장소가 신선하므로 **항상** 저장소 서빙이다. 이 값을 영속된
+    "kis" 와 비교하면 전 종목·전 view_kind 가 무음 재시딩되어, 장중 재기동 한 번으로
+    그 구간의 전환이 전부 사라진다 — 영속화(게이트 ②)의 목적이 통째로 무효화된다.
+    """
+    state = _state(dr.VIEW_HOLD, source="kis")
+    item = _item(long=dr.VIEW_BUY, source=sentinel)
+
+    transitions, seeds, _ = _diff([item], state)
+
+    assert [t.after for t in transitions] == [dr.VIEW_BUY], (
+        f"source={sentinel!r} 가 입력 변화로 오인되어 전환이 삼켜졌다"
+    )
+    assert seeds == []
+
+
+def test_provenance_keeps_only_real_sources():
+    assert alerts._provenance("kis") == "kis"
+    assert alerts._provenance("yfinance") == "yfinance"
+    assert alerts._provenance("store") is None
+    assert alerts._provenance(None) is None
+
+
+def test_real_source_switch_is_still_gated():
+    """알려진 출처끼리 바뀌는 경우는 여전히 게이트 ③이 잡아야 한다."""
+    transitions, seeds, _ = _diff(
+        [_item(long=dr.VIEW_SELL, source="yfinance")], _state(dr.VIEW_BUY, source="kis")
+    )
+
+    assert transitions == []
+    assert seeds[0]["source"] == "yfinance"
+
+
+# ── MAX_ROWS 로 잘린 꼬리가 영구 유실되던 경로 ──
+
+def test_truncated_tail_is_deferred_not_lost(monkeypatch, wired):
+    """지수 급락일처럼 알림이 가장 필요한 날에만 터졌던 결함.
+
+    렌더러가 30건만 실어 보냈는데 호출부는 전체 목록으로 기준선을 옮겨서, 어느 채널에도
+    실린 적 없는 전환이 '알린 판정'으로 기록되고 다시는 보고되지 않았다(로그도 건수만).
+    """
+    monkeypatch.setattr(alerts, "DECISION_ALERT_MAX_ROWS", 2)
+    sent = []
+    monkeypatch.setattr(alert_channels, "send_slack", lambda text, **k: sent.append(text) or True)
+
+    codes = ["00000%d" % i for i in range(3)]
+    wired.state = {
+        (c, "long"): {
+            "view": dr.VIEW_HOLD, "fund_mask": 0b111, "source": "kis",
+            "notified_at": None, "updated_at": NOW.astimezone(timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+        }
+        for c in codes
+    }
+    items = [_item(code=c, name=f"종목{c}", long=dr.VIEW_BUY) for c in codes]
+
+    result = alerts.process_cycle(items, NOW)
+
+    assert result["transitions"] == 3
+    assert result["sent"] == 2
+    assert result["deferred"] == 1
+    # 실려 보낸 2건만 기준선이 이동한다.
+    assert len(wired.upserts) == 2
+    assert {r["code"] for r in wired.upserts} == set(codes[:2])
+    # 꼬리는 카운터에 남아 다음 사이클에 이어서 발화한다.
+    assert ("000002", "long") in alerts._pending
+    assert "다음 사이클" in sent[0]
+
+
+def test_renderers_do_not_slice_on_their_own():
+    """자르는 주체는 호출부 하나여야 한다 — 렌더러가 또 자르면 같은 유실이 재발한다."""
+    ts = [
+        alerts.Transition(f"00000{i}", f"종목{i}", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
+        for i in range(5)
+    ]
+    text = alerts.render_slack_text(ts, NOW, total=5)
+
+    assert text.count("•") == 5, "렌더러가 자체적으로 잘랐다"
+    assert "다음 사이클" not in text
+
+
+# ── Slack mrkdwn 주입 ──
+
+def test_slack_escapes_mention_control_sequence():
+    """종목명은 시트·외부 API 에서 오는 미검증 문자열이다.
+
+    `<!channel>` 은 Slack 의 실제 멘션 제어 시퀀스다(python-slack-sdk 의 ChannelLink()
+    가 `"<!channel|channel>"` 를 렌더한다) — 알림마다 채널 전원에게 푸시가 간다.
+    """
+    t = alerts.Transition(
+        "005930", "삼성전자<!channel>", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None
+    )
+    text = alerts.render_slack_text([t], NOW)
+
+    assert "<!channel>" not in text
+    assert "&lt;!channel&gt;" in text
+
+
+def test_slack_escapes_ampersand():
+    t = alerts.Transition("012450", "S&T모티브", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
+    text = alerts.render_slack_text([t], NOW)
+
+    assert "S&amp;T모티브" in text
+
+
+def test_slack_keeps_intended_markup():
+    """이스케이프가 의도한 `*굵게*` 마크업 구조를 무너뜨리지 않아야 한다."""
+    t = alerts.Transition("005930", "삼성전자", "long", dr.VIEW_HOLD, dr.VIEW_BUY, 71200.0, 1.83)
+    text = alerts.render_slack_text([t], NOW)
+
+    assert "*삼성전자*(005930)" in text
+    assert "*매수*" in text
+
+
+def test_escape_mrkdwn_order():
+    """`&` 를 먼저 치환해야 한다 — 나중이면 `&lt;` 의 `&` 를 다시 이스케이프한다."""
+    assert alert_channels.escape_mrkdwn("<a&b>") == "&lt;a&amp;b&gt;"
+    assert alert_channels.escape_mrkdwn(None) == ""
+
+
+# ── 숫자 포맷 방어 ──
+
+@pytest.mark.parametrize("close,pct", [
+    (float("nan"), 1.0), (float("inf"), 1.0), (71200.0, float("nan")), (None, None),
+])
+def test_non_finite_prices_do_not_leak_into_messages(close, pct):
+    t = alerts.Transition("005930", "삼성전자", "long", dr.VIEW_HOLD, dr.VIEW_BUY, close, pct)
+    text = alerts.render_slack_text([t], NOW)
+    _, html_body = alerts.render_email([t], NOW)
+
+    for out in (text, html_body):
+        assert "nan" not in out.lower()
+        assert "inf" not in out.lower()

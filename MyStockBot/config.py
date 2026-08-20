@@ -1,4 +1,7 @@
+import logging
 import os
+
+_logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/Seoul"
 
@@ -145,16 +148,42 @@ STOCK_MASTER_STALE_DAYS = 7
 # 장치이고, 각각 실제 코드에서 확인된 오알림 경로에 대응한다(README '판정 전환 알림' 절).
 # ────────────────────────────────────────────
 def _env_flag(key: str, default: str = "") -> bool:
-    return os.environ.get(key, default).strip().lower() in ("1", "true", "yes", "on")
+    # 빈 대입(`KEY=`)이 문서화된 기본값을 뒤집지 않도록 `or default` 로 받는다.
+    return (os.environ.get(key) or default).strip().lower() in ("1", "true", "yes", "on")
 
 
 DECISION_ALERT_ENABLED = _env_flag("DECISION_ALERT_ENABLED")
 
-# 감시할 판정 종류. "short"(60분봉) / "long"(일봉+재무) 중 콤마로 선택.
-DECISION_ALERT_VIEWS = tuple(
-    v.strip()
-    for v in os.environ.get("DECISION_ALERT_VIEWS", "short,long").split(",")
-    if v.strip() in ("short", "long")
+# 감시할 판정 종류. "short"(60분봉) / "long"(일봉+재무) 중 콤마로 선택. 대소문자 무관.
+#
+# 오타·대문자를 조용히 버리면 빈 튜플이 되고, kinds=() 인 diff() 는 전환도 시딩도 하지
+# 않아 **알림 기능 전체가 무음으로 죽는다.** 그런데 /api/alerts/config 의 enabled 는
+# 여전히 true 라 진단 신호가 사실상 없다. 그래서 관용적으로 파싱하고, 버린 토큰은 경고로
+# 남기고, 결과가 비면 기본값으로 되돌린다.
+_DECISION_ALERT_VIEW_CHOICES = ("short", "long")
+
+
+def _parse_alert_views(raw: str) -> tuple[str, ...]:
+    tokens = [t.strip().lower() for t in raw.split(",") if t.strip()]
+    valid = tuple(t for t in tokens if t in _DECISION_ALERT_VIEW_CHOICES)
+    dropped = [t for t in tokens if t not in _DECISION_ALERT_VIEW_CHOICES]
+    if dropped:
+        _logger.warning(
+            "[config] DECISION_ALERT_VIEWS 에 알 수 없는 값 %s — 허용값은 %s",
+            dropped, _DECISION_ALERT_VIEW_CHOICES,
+        )
+    if not valid:
+        _logger.warning(
+            "[config] DECISION_ALERT_VIEWS 가 비어 기본값 %s 을 사용합니다",
+            _DECISION_ALERT_VIEW_CHOICES,
+        )
+        return _DECISION_ALERT_VIEW_CHOICES
+    # 중복 제거 + 선언 순서 고정
+    return tuple(c for c in _DECISION_ALERT_VIEW_CHOICES if c in valid)
+
+
+DECISION_ALERT_VIEWS = _parse_alert_views(
+    os.environ.get("DECISION_ALERT_VIEWS", "short,long")
 )
 
 # True 면 '측'(매수측/관망/매도측)이 바뀔 때만 알린다.
