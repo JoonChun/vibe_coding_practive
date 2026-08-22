@@ -254,3 +254,50 @@ def _restore_config():
 
     import config
     importlib.reload(config)
+
+
+# ── 진단 가능성 vs 비밀 유출 (둘 다 지킨다) ──
+
+def test_os_error_reason_is_logged_for_diagnosis(monkeypatch, webhook, caplog):
+    """타입 이름만 남기면 로그가 "URLError" 한 단어라 사용자가 원인을 알 수 없다.
+
+    실측: 프록시 차단 환경에서 URLError.reason 은 OSError("Tunnel connection failed:
+    403 Forbidden") 였고 URL 을 담지 않았다. 그런 reason 은 통과시켜야 진단이 된다.
+    """
+    def boom(request, timeout=None):
+        raise urllib.error.URLError(OSError("Tunnel connection failed: 403 Forbidden"))
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.send_slack("hi") is False
+
+    assert "Tunnel connection failed: 403 Forbidden" in caplog.text
+
+
+def test_string_reason_is_not_logged(monkeypatch, webhook, caplog):
+    """문자열 reason 은 호출자가 URL 을 넣어 만들 수 있으므로 통째로 버린다."""
+    def boom(request, timeout=None):
+        raise urllib.error.URLError(f"failed to reach {WEBHOOK}")
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        alert_channels.send_slack("hi")
+
+    assert "URLError" in caplog.text
+    assert "failed to reach" not in caplog.text
+
+
+def test_os_error_reason_carrying_a_url_is_dropped(monkeypatch, webhook, caplog):
+    """OSError 라도 URL 조각이 섞이면 버린다(이중 방어)."""
+    def boom(request, timeout=None):
+        raise urllib.error.URLError(OSError(f"cannot reach {WEBHOOK}"))
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        alert_channels.send_slack("hi")
+
+    assert "hooks.slack.com" not in caplog.text
+    assert WEBHOOK.rsplit("/", 1)[-1] not in caplog.text

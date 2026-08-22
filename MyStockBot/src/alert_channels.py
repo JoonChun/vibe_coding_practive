@@ -146,7 +146,28 @@ def send_slack(text: str, blocks: list[dict] | None = None) -> bool:
         logger.warning("[slack] 발송 실패: HTTP %s / %s%s", e.code, body, suffix)
         return False
     except Exception as e:
-        # ★ URL 을 담지 않는다. urllib 예외는 보통 URL 을 문자열에 포함하지 않지만,
-        #   혹시 모를 노출을 막기 위해 예외 타입만 남긴다.
-        logger.warning("[slack] 발송 실패: %s", type(e).__name__)
+        logger.warning("[slack] 발송 실패: %s%s", type(e).__name__, _safe_reason(e, url))
         return False
+
+
+def _safe_reason(exc: Exception, url: str) -> str:
+    """예외에서 **URL 을 담지 않는** 진단 문구만 뽑아낸다. 없으면 빈 문자열.
+
+    왜 이렇게까지 하나 — 타입 이름만 남기면 로그가 `URLError` 한 단어라서, 사용자가 자기
+    네트워크에서 왜 안 가는지 알 방법이 없다(실측: 프록시 차단 환경에서 정확히 그랬다).
+    반면 `urllib.error.URLError.reason` 이 OSError 인 경우 그 문자열은 errno/strerror
+    기반이라 URL 을 담지 않고 원인을 정확히 알려준다 — 예: "Tunnel connection failed:
+    403 Forbidden", "[Errno -2] Name or service not known".
+
+    그래서 **OSError 인 reason 만** 통과시킨다. `URLError("failed to reach https://…")`
+    처럼 문자열로 만들어진 reason 은 호출자가 URL 을 넣을 수 있으므로 제외한다.
+    마지막으로, 그래도 URL 조각이 섞여 있으면 문구 전체를 버린다(이중 방어).
+    """
+    reason = getattr(exc, "reason", None)
+    if not isinstance(reason, OSError):
+        return ""
+    text = str(reason)[:200]
+    secret = url.rsplit("/", 1)[-1]
+    if "hooks.slack.com" in text or (secret and secret in text):
+        return ""
+    return f": {text}"
