@@ -1,5 +1,6 @@
 import type {
   AlertConfig,
+  AlertHistoryResponse,
   AlertStateResponse,
   AlertTestResponse,
   BacktestResponse,
@@ -240,4 +241,9 @@ export function getAlertState(): Promise<AlertStateResponse> {
  */
 export function sendTestAlert(): Promise<AlertTestResponse> {
   return request<AlertTestResponse>("/api/alerts/test", { method: "POST" });
+}
+
+/** 실제로 알림으로 나간 전환 이력(최신순). 기준선과 달리 append-only 기록이다. */
+export function getAlertHistory(limit = 50): Promise<AlertHistoryResponse> {
+  return request<AlertHistoryResponse>(`/api/alerts/history?limit=${limit}`);
 }

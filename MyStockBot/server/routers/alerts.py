@@ -26,7 +26,12 @@ from config import (
     TIMEZONE,
 )
 
-from ..schemas import AlertConfigResponse, AlertStateResponse, AlertTestResponse
+from ..schemas import (
+    AlertConfigResponse,
+    AlertHistoryResponse,
+    AlertStateResponse,
+    AlertTestResponse,
+)
 from ..services import alerts
 
 logger = logging.getLogger(__name__)
@@ -71,6 +76,16 @@ def get_alert_state():
         for (code, kind), row in sorted(state.items())
     ]
     return {"items": items}
+
+
+@router.get("/alerts/history", response_model=AlertHistoryResponse)
+def get_alert_history(limit: int = 100):
+    """실제로 알림으로 나간 전환 이력(최신순).
+
+    기준선(`/alerts/state`)은 종목·종류당 한 행만 들고 있어 "언제 어떻게 바뀌었나"에
+    답하지 못한다. 이력은 그 질문 전용이다. 알림을 놓쳤거나 지난 며칠을 되짚을 때 쓴다.
+    """
+    return {"items": db.get_decision_alert_history(limit)}
 
 
 @router.post("/alerts/test", response_model=AlertTestResponse)

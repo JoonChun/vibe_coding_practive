@@ -1,6 +1,6 @@
 import { TokenBanner } from "../components/TokenBanner";
 import { useAlerts } from "../hooks/useAlerts";
-import type { AlertStateItem } from "../types";
+import type { AlertHistoryItem, AlertStateItem } from "../types";
 
 /** 채널명 → 실패 원인이 찍히는 서버 로그 태그. server/services/alerts.py::log_tag 와 같다. */
 const LOG_TAGS: Record<string, string> = { email: "notifier" };
@@ -33,6 +33,50 @@ function StateRow({ item }: { item: AlertStateItem }) {
   );
 }
 
+/** 발송 시각을 짧게 — 오늘이면 시:분, 아니면 월/일 시:분.
+ *
+ * 서버는 SQLite `datetime('now')` = **타임존 표기 없는 UTC** 문자열을 준다.
+ * 그대로 Date.parse 하면 브라우저가 로컬 시각으로 읽어 9시간 어긋난다(KST 기준).
+ * 표기가 없을 때만 `Z` 를 붙여 UTC 로 해석시킨다.
+ */
+function shortTime(iso: string): string {
+  const hasZone = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(iso);
+  const ms = Date.parse(hasZone ? iso : `${iso.replace(" ", "T")}Z`);
+  if (Number.isNaN(ms)) return iso;
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  return sameDay ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
+function HistoryRow({ item }: { item: AlertHistoryItem }) {
+  return (
+    <li className="alert-hist__row">
+      <span className="alert-hist__when">{shortTime(item.notified_at)}</span>
+      <span className="alert-hist__name">
+        {item.name}
+        <span className="alert-state__kind">
+          {VIEW_LABELS[item.view_kind] ?? item.view_kind}
+        </span>
+      </span>
+      <span className="alert-hist__move">
+        {item.before_view} → <strong>{item.after_view}</strong>
+      </span>
+      <span className="alert-hist__meta">
+        {item.channels || "채널 미기록"}
+        {item.close !== null
+          ? ` · ${Math.round(item.close).toLocaleString("ko-KR")}원`
+          : ""}
+      </span>
+    </li>
+  );
+}
+
 /**
  * 알림 진단 페이지 — /alerts
  *
@@ -49,7 +93,7 @@ function StateRow({ item }: { item: AlertStateItem }) {
  */
 export default function AlertsPage() {
   const {
-    config, state, loading, error, errorStatus, refresh,
+    config, state, history, loading, error, errorStatus, refresh,
     testing, testResult, testError, runTest,
   } = useAlerts();
 
@@ -199,6 +243,24 @@ export default function AlertsPage() {
               아직 기준선이 없습니다. 첫 수집 사이클이 조용히 시딩합니다(그 사이클에는 알림이
               나가지 않습니다).
             </p>
+          )}
+        </section>
+        {/* ── 최근 알림 ── */}
+        <section aria-label="최근 알림">
+          <h2 className="movers__title">최근 알림</h2>
+          <p className="alert-note">
+            <strong>실제로 나간 알림</strong>만 남습니다. 쿨다운·히스테리시스로 눌린 전환은
+            유실이 아니라 지연이므로(조건이 풀리면 발화합니다) 여기 중복으로 보이지 않고,
+            테스트 발송도 남지 않습니다.
+          </p>
+          {history && history.items.length > 0 ? (
+            <ul className="alert-hist" data-testid="alert-history">
+              {history.items.map((item) => (
+                <HistoryRow key={item.id} item={item} />
+              ))}
+            </ul>
+          ) : (
+            <p className="movers__empty">아직 발송된 알림이 없습니다.</p>
           )}
         </section>
       </main>

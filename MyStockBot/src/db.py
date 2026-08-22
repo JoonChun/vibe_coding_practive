@@ -223,6 +223,37 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_trades_ts ON paper_trades(ts DESC)"
         )
+
+        # ── 알림 이력 ── "실제로 알림으로 나간 판정 전환"의 기록.
+        #
+        # decision_alert_state 와 역할이 다르다: 그쪽은 종목·종류당 **한 행**(마지막으로
+        # 알린 판정)만 들고 게이트 판단에 쓰이는 캐시다. 이쪽은 append-only 기록이라
+        # "언제 어떻게 바뀌었나"에 답한다 — 알림을 놓쳤거나 지난 며칠을 되짚을 때 필요하다.
+        #
+        # 쿨다운·히스테리시스로 눌린 전환은 넣지 않는다. 그것들은 _pending 에 남아 조건이
+        # 풀리면 발화하므로 유실이 아니라 지연이고, 넣으면 같은 전환이 두 번 보인다.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notified_at TEXT NOT NULL DEFAULT (datetime('now')),
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                view_kind TEXT NOT NULL,
+                before_view TEXT NOT NULL,
+                after_view TEXT NOT NULL,
+                close REAL,
+                change_pct REAL,
+                -- 실제로 **성공한** 채널만 콤마로 잇는다. 실패한 채널을 실으면
+                -- "어디로 갔는지"가 사실과 달라진다.
+                channels TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_id "
+            "ON decision_alert_history(id DESC)"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -541,6 +572,75 @@ def get_market_holiday_meta() -> dict:
             "MAX(fetched_at) AS fetched_at FROM market_holidays"
         ).fetchone()
         return dict(row)
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
+# 판정 전환 알림 이력
+# ────────────────────────────────────────────
+
+# 보존 상한. 개인용 앱이라 이력이 무한히 자라면 DB 만 커진다. 넘으면 오래된 것부터 지운다.
+# 관심종목 수십 개 × 하루 몇 건이면 수백 건으로 몇 주가 덮인다.
+ALERT_HISTORY_MAX_ROWS = 500
+
+
+def insert_decision_alert_history(rows: list[dict]) -> None:
+    """발송 성공한 전환을 이력에 남긴다. 빈 리스트면 아무 것도 하지 않는다.
+
+    `channels` 는 **성공한 채널만** 콤마로 이어 넘긴다(호출부 책임).
+    """
+    if not rows:
+        return
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "INSERT INTO decision_alert_history "
+            "(code, name, view_kind, before_view, after_view, close, change_pct, channels) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    _normalize_code(r["code"]), r["name"], r["view_kind"],
+                    r["before_view"], r["after_view"],
+                    r.get("close"), r.get("change_pct"), r["channels"],
+                )
+                for r in rows
+            ],
+        )
+        # 상한 초과분 정리. id 기준이라 삽입 순서가 곧 시간 순서다(notified_at 은
+        # 초 단위라 같은 사이클 내 동시 삽입을 구분하지 못한다).
+        cap = max(1, int(ALERT_HISTORY_MAX_ROWS))
+        conn.execute(
+            "DELETE FROM decision_alert_history WHERE id <= ("
+            "  SELECT MAX(id) FROM decision_alert_history"
+            ") - ?",
+            (cap,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_decision_alert_history(limit: int = 100) -> list[dict]:
+    """최신순 알림 이력. limit 은 1~500 으로 조인다.
+
+    0·음수를 그대로 LIMIT 에 넘기면 SQLite 가 전체를 돌려준다(LIMIT -1 = 무제한) —
+    페이지 크기를 실수로 0 으로 준 호출이 전체 스캔이 되지 않게 막는다.
+    """
+    safe_limit = max(1, min(int(limit), 500))
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, notified_at, code, name, view_kind, before_view, after_view, "
+            "close, change_pct, channels "
+            "FROM decision_alert_history ORDER BY id DESC LIMIT ?",
+            (safe_limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 

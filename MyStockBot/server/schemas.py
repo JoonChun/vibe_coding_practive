@@ -151,6 +151,29 @@ class AlertStateResponse(BaseModel):
     items: list[AlertBaseline]
 
 
+class AlertHistoryItem(BaseModel):
+    """GET /api/alerts/history 항목 — **실제로 알림으로 나간** 전환 1건.
+
+    기준선(AlertBaseline)과 역할이 다르다: 기준선은 종목·종류당 한 행만 남는 캐시고,
+    이력은 append-only 기록이라 "언제 어떻게 바뀌었나"에 답한다. 쿨다운·히스테리시스로
+    눌린 전환은 들어오지 않는다(유실이 아니라 지연이므로 나중에 발화하며 그때 기록된다).
+    """
+    id: int
+    notified_at: str
+    code: str
+    name: str
+    view_kind: str          # "short" | "long"
+    before_view: str
+    after_view: str
+    close: float | None = None
+    change_pct: float | None = None
+    channels: str           # 발송에 **성공한** 채널만 콤마로 이은 값
+
+
+class AlertHistoryResponse(BaseModel):
+    items: list[AlertHistoryItem]
+
+
 class AlertTestResponse(BaseModel):
     """POST /api/alerts/test — 채널별 발송 결과.
 

@@ -77,9 +77,13 @@ async function main() {
   });
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
   page.on("requestfailed", (r) => {
-    if (r.url().startsWith(appOrigin)) {
-      consoleErrors.push(`요청 실패 ${r.url()} — ${r.failure()?.errorText}`);
-    }
+    if (!r.url().startsWith(appOrigin)) return;
+    const reason = r.failure()?.errorText ?? "";
+    // ERR_ABORTED = 취소된 요청. 이 스크립트가 다음 화면으로 이동하면 브라우저가
+    // 진행 중 요청(스파크라인 캔들 등)을 취소한다 — 앱 결함이 아니다. 실측으로
+    // 확인했다: 같은 엔드포인트를 직접 호출하면 200 이고, 앱에 AbortController 도 없다.
+    if (reason.includes("ERR_ABORTED")) return;
+    consoleErrors.push(`요청 실패 ${r.url()} — ${reason}`);
   });
 
   // 토큰이 필요하면 localStorage 에 미리 심는다(TokenBanner 를 우회).
@@ -119,6 +123,26 @@ async function main() {
         check(`${label} 탭바 1줄`, rows === 1, `${rows}줄로 줄바꿈됐다`);
       }
 
+      // 페이지 맨 아래까지 스크롤했을 때 푸터가 고정 탭바에 가리지 않는지.
+      //
+      // 탭바는 `position: fixed` 라 문서 흐름에서 빠져 있다 — 본문 하단 여백이 부족하면
+      // 마지막 내용이 그 아래로 들어가 읽을 수 없다. 화면에 섹션을 추가할 때마다 위험해지는
+      // 지점이라 자동으로 잰다. (fullPage 스크린샷은 고정 요소를 뷰포트 위치에 그려서
+      // 겹친 것처럼 보이므로 눈으로 판단하면 안 된다 — 실제로 그렇게 헛짚었다.)
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(250);
+      const clearance = await page.evaluate(() => {
+        const barTop = document.querySelector(".tabbar")?.getBoundingClientRect().top;
+        const footBottom = document.querySelector(".app-footer")?.getBoundingClientRect()
+          .bottom;
+        if (barTop === undefined || footBottom === undefined) return null;
+        return barTop - footBottom;
+      });
+      if (clearance !== null) {
+        check(`${label} 푸터가 탭바에 가리지 않음`, clearance >= 0,
+              `${Math.round(-clearance)}px 겹침`);
+      }
+
       if (expect) {
         // 한 번 읽고 끝내면 데이터 fetch 가 끝나기 전에 실패한다(플레이키). 나타날
         // 때까지 기다린다.
@@ -134,6 +158,18 @@ async function main() {
 
     // 알림 화면의 핵심 동작: 테스트 발송 버튼이 있고, 누르면 결과가 표시된다.
     await page.goto(`${BASE}/alerts`, { waitUntil: "domcontentloaded" });
+    // ★ 설정 로딩이 끝날 때까지 기다린다.
+    //   버튼은 `testing || channels.length === 0` 이면 비활성이고, config 가 도착하기
+    //   전에는 channels 가 빈 배열이다 — 그 순간을 읽으면 "채널 미설정"으로 오판한다
+    //   (실제로 그렇게 헛짚었다). 채널 칩이나 미설정 안내 중 하나가 나타나면 끝난 것이다.
+    const loaded = await page
+      .locator(".alert-chip, .movers__empty")
+      .first()
+      .waitFor({ timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    check("알림 설정 로딩 완료", loaded, "칩도 안내문도 나타나지 않았다");
+
     const button = page.getByRole("button", { name: /테스트 발송/ });
     const hasButton = (await button.count()) > 0;
     check("테스트 발송 버튼 존재", hasButton);

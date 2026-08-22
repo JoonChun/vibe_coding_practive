@@ -590,6 +590,27 @@ def process_cycle(items: list[dict], now: datetime | None = None) -> dict:
                 "fund_mask": fund_mask, "source": source, "notified": True,
             })
         db.upsert_decision_alert_state(notified_rows)
+
+        # ⑧-c 이력. 기준선과 **같은 조건**으로 남긴다 — 발송 성공에 실린 것만.
+        #
+        # 기준선(decision_alert_state)은 종목·종류당 한 행만 들고 게이트 판단에 쓰이는
+        # 캐시라 "언제 어떻게 바뀌었나"에 답할 수 없다. 이력은 그 질문 전용이다.
+        # 실패한 채널은 싣지 않는다 — 어디로 갔는지가 사실과 달라진다.
+        # 이력 쓰기가 실패해도 발송·기준선은 이미 끝났으므로 사이클을 멈추지 않는다.
+        delivered_label = ",".join(sorted(delivered))
+        try:
+            db.insert_decision_alert_history([
+                {
+                    "code": t.code, "name": t.name, "view_kind": t.kind,
+                    "before_view": t.before, "after_view": t.after,
+                    "close": t.close, "change_pct": t.change_pct,
+                    "channels": delivered_label,
+                }
+                for t in shown
+            ])
+        except Exception as e:
+            logger.warning("[alerts] 이력 기록 실패(발송은 완료됨): %s", e)
+
         with _pending_lock:
             for t in shown:
                 _pending.pop(t.key, None)

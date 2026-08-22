@@ -377,3 +377,22 @@ export interface AlertTestResponse {
   results: Record<string, boolean>;
   detail: string;
 }
+
+/** GET /api/alerts/history 항목 — **실제로 알림으로 나간** 전환 1건 */
+export interface AlertHistoryItem {
+  id: number;
+  notified_at: string;
+  code: string;
+  name: string;
+  view_kind: string;
+  before_view: string;
+  after_view: string;
+  close: number | null;
+  change_pct: number | null;
+  /** 발송에 성공한 채널만 콤마로 이은 값 */
+  channels: string;
+}
+
+export interface AlertHistoryResponse {
+  items: AlertHistoryItem[];
+}

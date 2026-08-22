@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, getAlertConfig, getAlertState, sendTestAlert } from "../api";
-import type { AlertConfig, AlertStateResponse, AlertTestResponse } from "../types";
+import {
+  ApiError,
+  getAlertConfig,
+  getAlertHistory,
+  getAlertState,
+  sendTestAlert,
+} from "../api";
+import type {
+  AlertConfig,
+  AlertHistoryResponse,
+  AlertStateResponse,
+  AlertTestResponse,
+} from "../types";
 
 export interface UseAlertsResult {
   config: AlertConfig | null;
   state: AlertStateResponse | null;
+  history: AlertHistoryResponse | null;
   loading: boolean;
   error: string | null;
   errorStatus: number | null;
@@ -25,6 +37,7 @@ export interface UseAlertsResult {
 export function useAlerts(): UseAlertsResult {
   const [config, setConfig] = useState<AlertConfig | null>(null);
   const [state, setState] = useState<AlertStateResponse | null>(null);
+  const [history, setHistory] = useState<AlertHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
@@ -40,13 +53,16 @@ export function useAlerts(): UseAlertsResult {
     inFlightRef.current = true;
     setLoading(true);
     try {
-      // 기준선 조회가 실패해도 설정은 보여준다 — 둘의 실패 이유가 다를 수 있다.
-      const [cfg, st] = await Promise.all([
+      // 기준선·이력 조회가 실패해도 설정은 보여준다 — 실패 이유가 서로 다를 수 있고,
+      // 설정(어떤 채널이 인식됐나)이 가장 먼저 필요한 정보다.
+      const [cfg, st, hist] = await Promise.all([
         getAlertConfig(),
         getAlertState().catch(() => null),
+        getAlertHistory().catch(() => null),
       ]);
       setConfig(cfg);
       setState(st);
+      setHistory(hist);
       setError(null);
       setErrorStatus(null);
     } catch (e) {
@@ -84,7 +100,7 @@ export function useAlerts(): UseAlertsResult {
   }, [load]);
 
   return {
-    config, state, loading, error, errorStatus, refresh: load,
+    config, state, history, loading, error, errorStatus, refresh: load,
     testing, testResult, testError, runTest,
   };
 }
