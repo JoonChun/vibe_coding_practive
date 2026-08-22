@@ -631,3 +631,72 @@ def test_slack_has_no_invented_hints(webhook, monkeypatch, caplog):
 
     assert "404" in caplog.text and "no_service" in caplog.text
     assert "—" not in caplog.text, "확인되지 않은 Slack 안내 문구가 붙었다"
+
+
+# ── 구조 검증: startswith 만으로는 못 잡는 오염 ──
+
+# 실사용에서 이 형태가 검증을 통과해 버렸다. README 예시 줄(접두사) 뒤에 복사한 URL 을
+# 이어 붙인 값이다. 앞 33자가 맞으니 startswith 검사를 통과하고, 오류는 한참 뒤
+# Discord 의 404(code 10015)로만 드러났다.
+GLUED = "https://discord.com/api/webhooks/" + DISCORD_WEBHOOK
+
+
+def test_discord_rejects_two_urls_glued_together(monkeypatch, caplog):
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", GLUED)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.discord_enabled() is False
+        assert alert_channels.send_discord("hi") is False
+
+    assert "DISCORD_WEBHOOK_URL" in caplog.text
+    assert "두 개" in caplog.text, "무엇이 잘못됐는지 알려주지 않는다"
+    # 잘못된 값도 비밀일 수 있다 — 토큰이 로그에 남으면 안 된다.
+    assert DISCORD_WEBHOOK.rsplit("/", 1)[-1] not in caplog.text
+
+
+def test_slack_rejects_two_urls_glued_together(monkeypatch, caplog):
+    """같은 오염은 Slack 쪽에서도 난다 — 이 검사는 벤더 공통이다."""
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/" + WEBHOOK)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.slack_enabled() is False
+    assert "두 개" in caplog.text
+
+
+@pytest.mark.parametrize("bad, expect", [
+    (DISCORD_WEBHOOK + "/extra", "조각"),                    # 경로 조각이 하나 더
+    (DISCORD_WEBHOOK.rsplit("/", 1)[0], "조각"),             # 토큰 누락
+    ("https://discord.com/api/webhooks/abc/" + "t" * 68, "숫자"),  # id 가 숫자가 아님
+    # 값 **안쪽**에 공백 (앞뒤 공백은 strip 이 처리하므로 여기서 볼 대상이 아니다)
+    ("https://discord.com/api/webhooks/" + "1" * 19 + "/" + "d" * 30 + " " + "d" * 37,
+     "공백"),
+])
+def test_discord_path_shape_is_validated(monkeypatch, caplog, bad, expect):
+    """공식 라우트는 POST /webhooks/{webhook.id}/{webhook.token} 이고 id 는 snowflake.
+
+    (webhook.mdx L207 · L23, reference.mdx L136)
+    """
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", bad)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.discord_enabled() is False
+    assert expect in caplog.text
+
+
+def test_valid_discord_url_still_passes(discord):
+    """검사를 조인 만큼, 정상 URL 을 막지 않는 것도 같이 잠근다."""
+    assert alert_channels.discord_enabled() is True
+
+
+def test_legacy_host_still_passes_structure_check(monkeypatch):
+    monkeypatch.setenv(
+        "DISCORD_WEBHOOK_URL",
+        "https://discordapp.com/api/webhooks/" + "1" * 19 + "/" + "t" * 68,
+    )
+    assert alert_channels.discord_enabled() is True
+
+
+def test_query_string_does_not_break_path_check(monkeypatch):
+    """사용자가 쿼리를 붙여 둔 URL 도 경로 검사를 통과해야 한다(send 가 wait 을 병합한다)."""
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK + "?thread_id=123")
+    assert alert_channels.discord_enabled() is True

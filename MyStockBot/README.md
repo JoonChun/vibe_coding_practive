@@ -297,19 +297,48 @@ KIS_MINUTE_BACKFILL_DAYS=10     # 초기 백필 거래일 수(기본 10)
 #    Slack  : api.slack.com/apps → Create New App → Incoming Webhooks → 채널 선택
 
 # 2) .env 에 추가 — 이 URL 자체가 자격증명이다. 절대 커밋하지 말 것(.env 는 gitignore 됨)
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/.../...
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
+#    ★ 복사한 URL 전체를 그대로 넣는다. 아래 <> 를 지우고 붙여넣되 **앞에 아무것도 남기지
+#      말 것** — 예시 접두사 뒤에 URL 을 이어 붙이면 값이 두 개가 되고, 그러면 발송이
+#      비활성되면서 [discord] 경고가 뜬다(실제로 겪은 실수라 검증으로 막아 두었다).
+DISCORD_WEBHOOK_URL=<Discord 에서 복사한 웹훅 URL 전체>
+SLACK_WEBHOOK_URL=<Slack 에서 복사한 웹훅 URL 전체>
 DECISION_ALERT_ENABLED=1
 
 # 3) 서버를 띄우고 테스트 발송으로 채널이 살아 있는지 먼저 확인한다.
 #    (이 엔드포인트는 ENABLED 플래그와 장 시간대 게이트를 우회한다)
-curl -X POST localhost:8000/api/alerts/test \
-     -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
+#    MYSTOCKBOT_API_TOKEN 은 .env 안에만 있고 셸에는 없으므로 직접 읽어 쓴다.
+TOKEN=$(sed -n 's/^MYSTOCKBOT_API_TOKEN=//p' .env | head -1 | tr -d '"'"'"'\r')
+curl -X POST localhost:8000/api/alerts/test -H "Authorization: Bearer $TOKEN"
 # → {"channels":["discord"],"results":{"discord":true},"detail":"성공: discord"}
 
 # 4) 설정·기준선 확인
-curl localhost:8000/api/alerts/config -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
-curl localhost:8000/api/alerts/state  -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
+curl localhost:8000/api/alerts/config -H "Authorization: Bearer $TOKEN"
+curl localhost:8000/api/alerts/state  -H "Authorization: Bearer $TOKEN"
+```
+
+#### 알림이 안 갈 때
+
+원인은 **서버를 띄운 터미널의 경고**에 찍힌다(웹훅 URL·토큰은 절대 찍히지 않는다).
+`results` 의 채널명과 로그 태그가 다른 경우가 있어서, 실패 안내는 **로그 태그**로 알려준다.
+
+| 증상 | 원인 | 조치 |
+|---|---|---|
+| `config` 의 `channels` 에 채널이 안 보임 | 환경변수 미설정, 또는 **값이 검증에서 거부됨** | 같은 터미널의 `[discord]`·`[slack]` 경고를 본다 |
+| `[discord] … URL 이 두 개 이어붙어 있습니다` | 예시 접두사 뒤에 URL 을 이어 붙였다 | 앞쪽 접두사를 지우고 복사한 URL 하나만 남긴다 |
+| `[discord] … 경로가 /api/webhooks/{id}/{token} 형태가 아닙니다` | URL 이 잘렸거나 다른 주소 | Discord 에서 URL 을 다시 복사한다 |
+| `HTTP 404 / code 10015 (Unknown webhook)` | 웹훅이 삭제됨(채널 삭제 시 함께 사라진다) | 웹훅을 새로 만들어 교체한다 |
+| `[notifier] 이메일 발송 실패: …` | Gmail 앱 비밀번호·계정 문제 | 앱 비밀번호를 재발급한다 |
+| `URLError: … Tunnel connection failed` 등 | 그 머신에서 해당 도메인이 안 나간다 | 네트워크·프록시를 본다 |
+
+`.env` 값이 의심되면 **서버와 같은 파서로** 확인한다(셸에 export 된 값이 있으면
+python-dotenv 는 `.env` 를 덮지 않으므로, 셸 값이 조용히 이긴다):
+
+```bash
+python3 -c "
+import os
+from dotenv import load_dotenv; load_dotenv('.env')
+v = os.environ.get('DISCORD_WEBHOOK_URL') or ''
+print('길이', len(v), '/ 조각', len(v.split('/')), '(정상 7) / :// 횟수', v.count('://'))"
 ```
 
 테스트 발송은 **동시 1건**으로 제한된다(이미 진행 중이면 `429`). 한 호출이 Slack 15초 +

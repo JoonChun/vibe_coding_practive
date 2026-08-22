@@ -181,26 +181,82 @@ DISCORD_DIALECT = Dialect(
 # URL 취득 · 검증
 # ────────────────────────────────────────────
 
-def _webhook_url(env_key: str, prefixes: tuple[str, ...], label: str) -> str | None:
+def _common_problem(url: str, prefixes: tuple[str, ...]) -> str | None:
+    """벤더와 무관하게 확실히 틀린 값. 문제 설명(URL 미포함) 또는 None.
+
+    ★ `startswith` 만으로는 부족하다 — 실사용에서 이 값이 통과했다:
+        DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/https://discordapp.com/...
+      README 의 예시 줄(접두사) 뒤에 복사한 URL 을 이어 붙인 형태다. 앞 33자가 맞으니
+      검사를 통과해 `/api/alerts/config` 는 "설정됨"이라 보고했고, 오류는 한참 뒤
+      Discord 의 404 로만 드러났다. 시작 시점에 잡아야 하는 문제다.
+    """
+    if not url.startswith(prefixes):
+        return f"{' | '.join(prefixes)} 중 하나로 시작해야 합니다"
+    if any(ch.isspace() for ch in url):
+        return "값 안에 공백·줄바꿈이 섞여 있습니다"
+    if url.count("://") > 1:
+        return (
+            "URL 이 두 개 이어붙어 있습니다(`://` 가 2번 등장) — 앞쪽 템플릿 접두사를 "
+            "지우고 복사한 URL 하나만 남기세요"
+        )
+    return None
+
+
+def _discord_path_problem(url: str) -> str | None:
+    """Discord 웹훅 경로 형태 검사. 문제 설명(URL 미포함) 또는 None.
+
+    1차 출처: discord/discord-api-docs
+      · webhook.mdx L207 — `POST /webhooks/{webhook.id}/{webhook.token}`
+        (베이스가 `/api` 이므로 경로 조각은 api·webhooks·id·token 4개)
+      · webhook.mdx L23 — webhook `id` 의 타입은 `snowflake`
+      · reference.mdx L136 — snowflake 는 "up to 64 bits (e.g. a uint64)" 이고
+        HTTP API 에서는 항상 문자열로 온다 → 숫자로만 이루어진다
+    길이는 문서로 확인하지 못했으므로 고정하지 않는다.
+    """
+    segments = [s for s in urllib.parse.urlsplit(url).path.split("/") if s]
+    if len(segments) != 4 or segments[0] != "api" or segments[1] != "webhooks":
+        return (
+            f"경로가 /api/webhooks/{{id}}/{{token}} 형태가 아닙니다"
+            f"(조각 {len(segments)}개, 정상은 4개)"
+        )
+    webhook_id = segments[2]
+    # isascii() 를 함께 본다 — isdigit() 만으로는 아라비아-인도 숫자 등도 참이 된다.
+    if not (webhook_id.isascii() and webhook_id.isdigit()):
+        return "webhook id 자리가 숫자가 아닙니다(공식 문서: id 는 snowflake)"
+    return None
+
+
+def _webhook_url(
+    env_key: str,
+    prefixes: tuple[str, ...],
+    label: str,
+    extra_check: Callable[[str], str | None] | None = None,
+) -> str | None:
     url = os.environ.get(env_key, "").strip()
     if not url:
         return None
-    if not url.startswith(prefixes):
+    problem = _common_problem(url, prefixes)
+    if problem is None and extra_check is not None:
+        problem = extra_check(url)
+    if problem is not None:
         # URL 을 로그에 남기지 않는다 — 잘못된 값이라도 비밀일 수 있다.
-        logger.warning(
-            "[%s] %s 형식이 다릅니다(%s 중 하나로 시작해야 함) — 발송 비활성",
-            label, env_key, " | ".join(prefixes),
-        )
+        logger.warning("[%s] %s 값이 올바르지 않습니다 — %s. 발송 비활성",
+                       label, env_key, problem)
         return None
     return url
 
 
 def slack_webhook_url() -> str | None:
+    # Slack 은 경로 형태를 1차 출처로 확인하지 못했다(hooks.slack.com 문서가 이 환경에서
+    # 전부 차단). 확인한 것만 검사한다 — 없는 규격을 지어내면 정상 URL 을 막을 수 있다.
     return _webhook_url(SLACK_WEBHOOK_URL_ENV_KEY, _SLACK_WEBHOOK_PREFIXES, "slack")
 
 
 def discord_webhook_url() -> str | None:
-    return _webhook_url(DISCORD_WEBHOOK_URL_ENV_KEY, _DISCORD_WEBHOOK_PREFIXES, "discord")
+    return _webhook_url(
+        DISCORD_WEBHOOK_URL_ENV_KEY, _DISCORD_WEBHOOK_PREFIXES, "discord",
+        _discord_path_problem,
+    )
 
 
 def slack_enabled() -> bool:
