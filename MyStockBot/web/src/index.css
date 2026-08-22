@@ -2375,6 +2375,37 @@ select:focus-visible {
   color: var(--on-surface-variant);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+/* 체결 성격 표시("장부가"·"장외") — 실제 시장가 체결과 구별해야 하는 거래. */
+.paper-trade__flag {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* 매도 1건에서 확정된 실현손익. */
+.paper-trade__pnl {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* 실현손익 기록 이전 거래가 남아 있을 때의 안내. */
+.paper-hero__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--on-surface-variant);
 }
 
 /* ── 판정 백테스트 카드 ── */

@@ -188,6 +188,13 @@ class PaperAccountResponse(BaseModel):
     total_value: float         # 총 평가자산 = cash + holdings_value
     total_pnl: float           # 총 평가손익 = total_value - seed
     total_pnl_pct: float
+    # 총손익의 분해. 수수료·세금이 없으므로 realized + unrealized == total_pnl 이다
+    # (realized_unknown_trades 가 0 인 경우).
+    realized_pnl: float = 0.0    # 매도로 확정된 손익 누적
+    unrealized_pnl: float = 0.0  # 보유 평가금액 - 보유 원가
+    # 실현손익이 기록되기 전(마이그레이션 이전)의 매도 건수. 0 이 아니면 위 분해가
+    # 총손익과 맞지 않는다 — 숫자를 억지로 맞추지 않고 그 사실을 노출한다.
+    realized_unknown_trades: int = 0
     priced_incomplete: bool = False  # 일부 보유의 현재가 부재 → 평가금액은 장부가로 대체됨
     holdings: list[PaperHolding]
 
@@ -201,6 +208,13 @@ class PaperTrade(BaseModel):
     qty: int
     price: float
     amount: float
+    # 체결가 출처. "market" = 수집된 시세, "book" = 장부가(평균단가) 대체 체결.
+    # None = 이 기록이 도입되기 전의 거래(모른다 — 'market' 으로 채우지 않는다).
+    price_source: str | None = None
+    # 체결 시점의 장 상태("open"/"pre"/"closed"/"holiday"). None = 기록 전 거래.
+    market_status: str | None = None
+    # 매도에서 확정된 실현손익. 매수는 None, 기록 전 매도도 None.
+    realized_pnl: float | None = None
 
 
 class PaperTradesResponse(BaseModel):

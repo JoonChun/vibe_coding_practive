@@ -48,6 +48,27 @@ def _migrate_decision_alert_state(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE decision_alert_state")
 
 
+def _migrate_paper_trades(conn: sqlite3.Connection) -> None:
+    """paper_trades 에 price_source·market_status·realized_pnl 컬럼을 더한다.
+
+    `CREATE TABLE IF NOT EXISTS` 는 기존 테이블에 컬럼을 추가하지 않으므로 이 단계가
+    필요하다. **decision_alert_state 처럼 DROP 하지 않는다** — 이건 캐시가 아니라
+    사용자의 거래 기록이고, 버리면 되살릴 방법이 없다. ALTER TABLE ADD COLUMN 으로
+    더하고, 기존 행은 세 값이 NULL 로 남는다("기록되기 전의 거래" = 알 수 없음).
+    NULL 을 'market'/'open' 으로 채워 넣지 않는다 — 모르는 것을 안다고 적는 셈이다.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(paper_trades)")}
+    if not existing:  # 테이블이 아직 없다(방금 CREATE 된다) → 할 일 없음
+        return
+    for column, ddl in (
+        ("price_source", "ALTER TABLE paper_trades ADD COLUMN price_source TEXT"),
+        ("market_status", "ALTER TABLE paper_trades ADD COLUMN market_status TEXT"),
+        ("realized_pnl", "ALTER TABLE paper_trades ADD COLUMN realized_pnl REAL"),
+    ):
+        if column not in existing:
+            conn.execute(ddl)
+
+
 def init_db() -> None:
     conn = get_connection()
     try:
@@ -182,10 +203,23 @@ def init_db() -> None:
                 side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
                 qty INTEGER NOT NULL,
                 price REAL NOT NULL,
-                amount REAL NOT NULL
+                amount REAL NOT NULL,
+                -- 체결가가 어디서 왔는지. 'market' = 수집된 시세, 'book' = 장부가(평균단가)
+                -- 대체 체결. 이걸 남기지 않으면 시세가 없어 평균단가로 청산한 매도가 실제
+                -- 시장가 체결과 구별되지 않는다 — 즉 "그 가격에 팔렸다"가 사실이 아닌
+                -- 기록이 남는다. 성적 해석의 근거가 되는 값이라 반드시 구분해 둔다.
+                price_source TEXT,
+                -- 체결 시점의 장 상태('open'/'pre'/'closed'/'holiday'). 장외 체결은
+                -- 현실에서 불가능하므로, 성적을 볼 때 걸러낼 수 있어야 한다.
+                market_status TEXT,
+                -- 매도에서 확정된 실현손익 = (체결가 - 그 시점 평균단가) * 수량. 매수는 NULL.
+                -- 평균단가는 체결 트랜잭션 안에서만 정확히 알 수 있으므로 여기서 함께 남긴다
+                -- (나중에 거래내역만 보고 되계산하려면 평균단가 이력이 필요해 불가능하다).
+                realized_pnl REAL
             )
             """
         )
+        _migrate_paper_trades(conn)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_trades_ts ON paper_trades(ts DESC)"
         )
@@ -634,10 +668,23 @@ def _account_snapshot(conn: sqlite3.Connection) -> dict:
     holdings = conn.execute(
         "SELECT code, name, qty, avg_cost FROM paper_holdings WHERE qty > 0 ORDER BY code"
     ).fetchall()
+    # 실현손익 누적 = 매도에서 확정된 손익의 합. 마이그레이션 이전 거래는 realized_pnl 이
+    # NULL 이라 SUM 에서 자연히 제외된다(0 으로 세지 않는다 — 모르는 값이다).
+    realized = conn.execute(
+        "SELECT COALESCE(SUM(realized_pnl), 0.0) AS total FROM paper_trades"
+    ).fetchone()
+    # 실현손익을 계산할 수 없는 과거 거래가 남아 있는지. 있으면 실현/미실현 분해가
+    # 총손익과 맞지 않으므로 화면이 그 사실을 알려야 한다.
+    unknown = conn.execute(
+        "SELECT COUNT(*) AS n FROM paper_trades "
+        "WHERE side = 'sell' AND realized_pnl IS NULL"
+    ).fetchone()
     return {
         "cash": acct["cash"] if acct else 0.0,
         "seed": acct["seed"] if acct else 0.0,
         "holdings": [dict(h) for h in holdings],
+        "realized_pnl": round(realized["total"], 2),
+        "realized_unknown_trades": unknown["n"],
     }
 
 
@@ -657,7 +704,8 @@ def get_paper_trades(limit: int = 100) -> list[dict]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT id, ts, code, name, side, qty, price, amount "
+            "SELECT id, ts, code, name, side, qty, price, amount, "
+            "price_source, market_status, realized_pnl "
             "FROM paper_trades ORDER BY id DESC LIMIT ?",
             (safe_limit,),
         ).fetchall()
@@ -666,16 +714,27 @@ def get_paper_trades(limit: int = 100) -> list[dict]:
         conn.close()
 
 
+PRICE_SOURCES = ("market", "book")
+
+
 def execute_paper_order(
-    code, name: str, side: str, qty: int, price: float, seed_default: float
+    code, name: str, side: str, qty: int, price: float, seed_default: float,
+    *, price_source: str, market_status: str | None = None,
 ) -> dict:
     """시장가 즉시 체결 시뮬레이션. 잔액/보유 검증부터 갱신까지 단일 IMMEDIATE
     트랜잭션으로 원자화해 동시 주문 TOCTOU(초과매수·음수잔액·초과매도)를 방지한다.
     체결 성공 시 갱신된 계좌 스냅샷 반환.
+
+    `price_source` 는 필수 키워드다 — 기본값을 주면 호출부가 잊었을 때 조용히
+    'market' 으로 기록돼, 장부가 대체 체결이 실제 시장가 체결로 위장된다.
+    `realized_pnl`(매도)은 **이 트랜잭션 안에서** 계산한다. 평균단가는 체결 직전에만
+    정확히 알 수 있고, 나중에 거래내역만으로 되계산하려면 평균단가 이력이 필요해 불가능하다.
     """
     normalized = _normalize_code(code)
     if side not in ("buy", "sell"):
         raise InvalidOrderError(f"잘못된 주문 유형: {side}")
+    if price_source not in PRICE_SOURCES:
+        raise InvalidOrderError(f"알 수 없는 체결가 출처: {price_source}")
     if not isinstance(qty, int) or qty <= 0:
         raise InvalidOrderError("수량은 1 이상의 정수여야 합니다.")
     price_f = float(price)
@@ -696,6 +755,7 @@ def execute_paper_order(
             "SELECT qty, avg_cost FROM paper_holdings WHERE code = ?", (normalized,)
         ).fetchone()
 
+        realized_pnl = None
         if side == "buy":
             if amount > cash:
                 raise InsufficientFundsError(
@@ -722,6 +782,9 @@ def execute_paper_order(
                     f"보유 수량 부족: 매도 {qty}주 / 보유 {held}주"
                 )
             new_cash = cash + amount
+            # 실현손익 = (체결가 - 매도 시점 평균단가) * 수량. 평균이동원가 방식이므로
+            # 부분 매도 후에도 남은 보유의 평균단가는 그대로다(원가 basis 가 비례 감소).
+            realized_pnl = round((price_f - holding["avg_cost"]) * qty, 2)
             remaining = held - qty
             if remaining > 0:
                 conn.execute(
@@ -737,9 +800,11 @@ def execute_paper_order(
             (new_cash,),
         )
         conn.execute(
-            "INSERT INTO paper_trades (code, name, side, qty, price, amount) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (normalized, name, side, qty, price_f, amount),
+            "INSERT INTO paper_trades "
+            "(code, name, side, qty, price, amount, price_source, market_status, realized_pnl) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (normalized, name, side, qty, price_f, amount,
+             price_source, market_status, realized_pnl),
         )
         snapshot = _account_snapshot(conn)
         conn.commit()

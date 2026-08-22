@@ -146,6 +146,30 @@ export default function PaperTradingPage() {
               <span className="paper-hero__v">{won(account?.holdings_value)}</span>
             </div>
           </div>
+          {/*
+            총손익을 실현/미실현으로 쪼개 보여준다. 합계만 보면 "이미 확정된 손익"과
+            "아직 팔지 않아 변할 수 있는 손익"이 뭉개진다 — 성적 해석에서 전혀 다른 값이다.
+          */}
+          <div className="paper-hero__split">
+            <div>
+              <span className="paper-hero__k">실현손익</span>
+              <span className={`paper-hero__v ${pnlClass(account?.realized_pnl)}`}>
+                {account ? `${signed(account.realized_pnl)}원` : "—"}
+              </span>
+            </div>
+            <div>
+              <span className="paper-hero__k">미실현손익</span>
+              <span className={`paper-hero__v ${pnlClass(account?.unrealized_pnl)}`}>
+                {account ? `${signed(account.unrealized_pnl)}원` : "—"}
+              </span>
+            </div>
+          </div>
+          {account && account.realized_unknown_trades > 0 ? (
+            <p className="paper-hero__note">
+              ⓘ 실현손익 기록 이전의 매도 {account.realized_unknown_trades}건이 있어
+              실현·미실현 합이 총손익과 다를 수 있습니다.
+            </p>
+          ) : null}
         </section>
 
         {/* 주문 */}
@@ -246,11 +270,38 @@ export default function PaperTradingPage() {
                     {t.side === "buy" ? "매수" : "매도"}
                   </span>
                   <span className="paper-trade__info">
-                    <span className="paper-trade__name">{t.name}</span>
+                    <span className="paper-trade__name">
+                      {t.name}
+                      {/*
+                        장부가 대체 체결은 시장가 체결과 반드시 구별해 보여준다 —
+                        시세가 없어 평균단가로 청산한 것이므로 "그 값에 팔렸다"가 아니다.
+                      */}
+                      {t.price_source === "book" ? (
+                        <span
+                          className="paper-trade__flag"
+                          title="현재 시세가 없어 장부가(평균단가)로 체결했습니다. 실제 시장가 체결이 아닙니다."
+                        >
+                          장부가
+                        </span>
+                      ) : null}
+                      {t.market_status && t.market_status !== "open" ? (
+                        <span
+                          className="paper-trade__flag"
+                          title="장 시간 외 체결입니다. 실제 시장에서는 불가능합니다."
+                        >
+                          장외
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="paper-trade__ts">{t.ts}</span>
                   </span>
                   <span className="paper-trade__qty">
                     {t.qty}주 @ {won(t.price)}
+                    {t.realized_pnl !== null ? (
+                      <span className={`paper-trade__pnl ${pnlClass(t.realized_pnl)}`}>
+                        {signed(t.realized_pnl)}원
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               ))}

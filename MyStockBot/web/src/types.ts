@@ -181,8 +181,20 @@ export interface PaperAccount {
   total_value: number;
   total_pnl: number;
   total_pnl_pct: number;
+  /** 매도로 확정된 손익 누적 */
+  realized_pnl: number;
+  /** 보유 평가금액 - 보유 원가 */
+  unrealized_pnl: number;
+  /**
+   * 실현손익이 기록되기 전의 매도 건수. 0 이 아니면
+   * realized + unrealized 가 total_pnl 과 맞지 않는다.
+   */
+  realized_unknown_trades: number;
   holdings: PaperHolding[];
 }
+
+/** 체결가 출처. null = 이 기록이 도입되기 전의 거래(모름) */
+export type PaperPriceSource = "market" | "book";
 
 export interface PaperTrade {
   id: number;
@@ -193,6 +205,12 @@ export interface PaperTrade {
   qty: number;
   price: number;
   amount: number;
+  /** "market" = 수집된 시세 / "book" = 장부가(평균단가) 대체 체결 */
+  price_source: PaperPriceSource | null;
+  /** 체결 시점 장 상태 */
+  market_status: MarketStatusCode | null;
+  /** 매도에서 확정된 실현손익. 매수는 null */
+  realized_pnl: number | null;
 }
 
 export interface PaperTradesResponse {
