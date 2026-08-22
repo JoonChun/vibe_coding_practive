@@ -1,6 +1,7 @@
 # MyStockBot 디렉터리에서 실행: uvicorn server.main:app
 # (하위 sys.path 설정이 이 실행 위치를 전제로 함 — 다른 경로에서 실행 시 import 실패)
 import logging
+import sqlite3
 import sys
 import threading
 from contextlib import asynccontextmanager
@@ -32,6 +33,7 @@ import stock_master
 import watchlist_sync
 
 from .auth import auth_middleware, is_auth_enabled
+from .errors import sqlite_operational_error_handler
 from .routers import alerts, indices, market, paper, stream, watchlist, snapshot, stocks
 from .services import collector, kis_ws, scheduler
 
@@ -138,6 +140,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# SQLite 쓰기 경합(busy_timeout 초과)을 500 대신 429 + Retry-After 로 바꾼다.
+# 하위 클래스까지 잡히도록 OperationalError 에 등록한다(Starlette 는 MRO 로 조회한다).
+# 경합이 아닌 OperationalError 는 핸들러가 다시 던져 기존처럼 500 이 된다.
+app.add_exception_handler(sqlite3.OperationalError, sqlite_operational_error_handler)
 
 
 @app.get("/api/health")
