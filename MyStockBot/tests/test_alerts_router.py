@@ -189,3 +189,32 @@ def test_guard_allows_sequential_sends(db, slack_only, monkeypatch):
         response = Response()
         alerts_router.send_test_alert(response)
         assert response.status_code == 200
+
+
+# ── 실패 안내가 실제 로그 태그를 가리키는지 ──
+
+def test_failure_hint_points_at_the_real_log_tag(db, monkeypatch):
+    """이메일 실패 안내는 `[email]` 이 아니라 `[notifier]` 여야 한다.
+
+    이메일을 실제로 보내는 주체는 src/notifier.py 이고 그 로그 태그는 `[notifier]` 다.
+    `[email]` 태그는 로그에 존재하지 않으므로, 그대로 안내하면 사용자가 없는 태그를
+    grep 하며 원인을 못 찾는다.
+    """
+    import alert_channels
+    import notifier
+
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: False)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_discord", lambda *a, **k: False)
+    monkeypatch.setattr(notifier, "email_enabled", lambda: True)
+    monkeypatch.setattr(notifier, "send_html", lambda *a, **k: False)
+
+    body = alerts_router.send_test_alert(Response())
+
+    assert body["results"] == {"discord": False, "email": False}
+    assert "[notifier]" in body["detail"]
+    assert "[email]" not in body["detail"]
+    # 웹훅 채널은 채널명 그대로 찍힌다.
+    assert "[discord]" in body["detail"]
+    # 채널명 자체는 실패 목록에 남아 있어야 한다 — 무엇이 실패했는지는 채널명으로 읽는다.
+    assert "email" in body["detail"] and "discord" in body["detail"]

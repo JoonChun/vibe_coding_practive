@@ -546,3 +546,27 @@ def test_channel_registry_is_rebuilt_per_call(monkeypatch):
     monkeypatch.setattr(alert_channels, "discord_enabled", lambda: False)
 
     assert [c.name for c in alert_channels.enabled_channels()] == ["slack"]
+
+
+def test_failure_log_label_equals_channel_name(monkeypatch, caplog):
+    """웹훅 채널의 실패 로그 태그 == 채널명.
+
+    라우터의 실패 안내(`[discord] 경고 확인`)는 채널명을 그대로 태그로 쓴다
+    (server/services/alerts.py::log_tag 의 기본 분기). 그 동일성이 깨지면 안내가
+    로그에 없는 태그를 가리키게 되므로 여기서 잠근다.
+    """
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", WEBHOOK)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK)
+
+    def boom(request, timeout=None):
+        raise urllib.error.URLError(OSError("Name or service not known"))
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    for channel in alert_channels.all_channels():
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="alert_channels"):
+            assert channel.send("본문") is False
+        assert f"[{channel.name}]" in caplog.text, (
+            f"{channel.name} 채널의 실패 로그가 [{channel.name}] 태그로 찍히지 않는다"
+        )

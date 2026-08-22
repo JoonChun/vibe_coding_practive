@@ -481,6 +481,21 @@ def channels() -> list[str]:
     return names
 
 
+# 채널명 → **로그에 실제로 찍히는 태그**.
+#
+# 웹훅 채널은 이름 그대로 찍힌다(`[discord]` · `[slack]`) — _post_json 에 넘기는 label 이
+# 채널명과 같기 때문이고, tests/test_alert_channels.py 가 그 동일성을 잠근다.
+# 이메일만 다르다: 발송하는 주체가 src/notifier.py 이고 그쪽 로그 태그는 `[notifier]` 다.
+# 그래서 `[email]` 이라는 태그는 로그에 **존재하지 않는다**. 실패 안내에 채널명을 그대로
+# 쓰면 사용자가 없는 태그를 grep 하며 원인을 못 찾는다(실측으로 걸렸다).
+_LOG_TAGS = {"email": "notifier"}
+
+
+def log_tag(channel_name: str) -> str:
+    """그 채널의 실패 원인이 찍히는 로그 태그. 안내 문구용."""
+    return _LOG_TAGS.get(channel_name, channel_name)
+
+
 def dispatch(
     transitions: list[Transition], now: datetime, total: int | None = None
 ) -> dict[str, bool]:

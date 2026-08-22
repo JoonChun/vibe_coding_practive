@@ -115,6 +115,7 @@ def send_test_alert(response: Response):
 
     detail = f"성공: {', '.join(ok) or '없음'}"
     if failed:
-        hints = " · ".join(f"[{name}]" for name in failed)
+        # 채널명이 아니라 **로그 태그**로 안내한다(alerts.log_tag 주석 참고).
+        hints = " · ".join(f"[{alerts.log_tag(name)}]" for name in failed)
         detail += f" / 실패: {', '.join(failed)} (서버 로그의 {hints} 경고 확인)"
     return {"channels": configured, "results": results, "detail": detail}
