@@ -570,3 +570,64 @@ def test_failure_log_label_equals_channel_name(monkeypatch, caplog):
         assert f"[{channel.name}]" in caplog.text, (
             f"{channel.name} 채널의 실패 로그가 [{channel.name}] 태그로 찍히지 않는다"
         )
+
+
+# ── 상태별 조치 안내 ──
+
+def test_discord_404_log_says_what_to_do(discord, monkeypatch, caplog):
+    """404 는 "웹훅이 없다"는 뜻이라 조치가 정해져 있다 — 로그가 그걸 알려줘야 한다.
+
+    1차 출처: discord/discord-api-docs opcodes-and-status-codes.mdx
+      404 = "The resource at the location specified doesn't exist." / code 10015 =
+      "Unknown webhook". 원인만 찍고 조치를 안 알려주면 사용자가 다음 수를 못 찾는다.
+    """
+    def boom(request, timeout=None):
+        raise urllib.error.HTTPError(
+            DISCORD_WEBHOOK, 404, "Not Found", {},
+            io.BytesIO(b'{"message": "Unknown Webhook", "code": 10015}'),
+        )
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.send_discord("hi") is False
+
+    assert "404" in caplog.text
+    assert "10015" in caplog.text, "응답 본문(원인)이 사라졌다"
+    assert "웹훅" in caplog.text and "DISCORD_WEBHOOK_URL" in caplog.text, "조치 안내가 없다"
+
+
+def test_discord_hint_does_not_replace_retry_after(discord, monkeypatch, caplog):
+    """안내 문구를 붙여도 기존 Retry-After 정보를 밀어내지 않아야 한다."""
+    def boom(request, timeout=None):
+        raise urllib.error.HTTPError(
+            DISCORD_WEBHOOK, 429, "Too Many Requests",
+            {"Retry-After": "3.5"}, io.BytesIO(b'{"retry_after": 3.5}'),
+        )
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.send_discord("hi") is False
+
+    assert "Retry-After=3.5" in caplog.text
+
+
+def test_slack_has_no_invented_hints(webhook, monkeypatch, caplog):
+    """Slack 웹훅 오류 본문 목록은 1차 출처로 확인하지 못했다 — 문구를 지어내지 않는다.
+
+    없는 규격을 그럴듯하게 써 두면 잘못된 방향으로 디버깅을 보낸다. 이 저장소의
+    추측 금지 규칙을 코드로 잠근다.
+    """
+    def boom(request, timeout=None):
+        raise urllib.error.HTTPError(
+            WEBHOOK, 404, "Not Found", {}, io.BytesIO(b"no_service"),
+        )
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.send_slack("hi") is False
+
+    assert "404" in caplog.text and "no_service" in caplog.text
+    assert "—" not in caplog.text, "확인되지 않은 Slack 안내 문구가 붙었다"

@@ -215,10 +215,37 @@ def discord_enabled() -> bool:
 # 발송
 # ────────────────────────────────────────────
 
-def _post_json(url: str, payload: dict, label: str) -> tuple[int, str] | None:
+# HTTP 상태별 **조치** 안내.
+#
+# 왜 필요한가 — 원인만 찍어도(`HTTP 404 / {"message":"Unknown Webhook","code":10015}`)
+# 사용자는 그다음에 무엇을 해야 하는지 모른다. 실측으로 그 상황이 그대로 나왔다.
+#
+# 문구는 추측이 아니라 1차 출처 기준이다. discord/discord-api-docs 저장소,
+# docs/developers/topics/opcodes-and-status-codes.mdx:
+#   · L125 `404 (NOT FOUND)` = "The resource at the location specified doesn't exist."
+#   · L155 JSON code `10015` = "Unknown webhook"
+#   · L121 `400 (BAD REQUEST)` = "The request was improperly formatted, or the server
+#     couldn't understand it."
+# Slack 쪽은 웹훅 오류 본문 목록을 1차 출처로 확인하지 못했으므로 **표를 만들지 않는다** —
+# 그럴듯한 문구를 지어내면 잘못된 방향으로 디버깅을 보낸다.
+_DISCORD_STATUS_HINTS = {
+    404: (
+        "웹훅이 존재하지 않습니다(공식 문서: 404 = 지정한 리소스 없음, code 10015 = "
+        "Unknown webhook). Discord 채널 편집 → 연동 → 웹훅에서 새로 만들어 "
+        "DISCORD_WEBHOOK_URL 을 교체하세요. .env 값에 인라인 주석·따옴표·공백이 섞여도 "
+        "같은 404 가 납니다"
+    ),
+    400: "본문 형식 오류입니다(공식 문서: 400 = 요청 형식 오류). content 2000자 상한을 확인하세요",
+}
+
+
+def _post_json(
+    url: str, payload: dict, label: str, hints: dict[int, str] | None = None
+) -> tuple[int, str] | None:
     """JSON POST 1회. (status, body) 또는 실패 시 None. 예외를 밖으로 던지지 않는다.
 
     알림 실패가 수집 사이클을 멈추게 하면 안 되므로 전부 삼키고 로그만 남긴다.
+    `hints` 는 HTTP 상태 → 조치 안내(선택). 확인된 문구만 넣는다.
     """
     request = urllib.request.Request(
         url,
@@ -241,6 +268,9 @@ def _post_json(url: str, payload: dict, label: str) -> tuple[int, str] | None:
             pass
         retry_after = e.headers.get("Retry-After") if e.headers else None
         suffix = f" (Retry-After={retry_after})" if retry_after else ""
+        hint = (hints or {}).get(e.code)
+        if hint:
+            suffix += f" — {hint}"
         logger.warning("[%s] 발송 실패: HTTP %s / %s%s", label, e.code, body, suffix)
         return None
     except Exception as e:
@@ -296,7 +326,7 @@ def send_discord(text: str) -> bool:
         "allowed_mentions": {"parse": []},
     }
 
-    result = _post_json(target, payload, "discord")
+    result = _post_json(target, payload, "discord", _DISCORD_STATUS_HINTS)
     if result is None:
         return False
     status, body = result
