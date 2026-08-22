@@ -119,6 +119,9 @@ MyStockBot/
 | `KIS_MINUTE_BACKFILL_DAYS` | 웹앱 | KIS 분봉 초기 백필 거래일 수. 기본 `10` |
 | `KIS_HOLIDAY_MIN_REFRESH_HOURS` | 웹앱 | 휴장일 캐시 갱신 최소 간격. 기본 `20`(공식 "1일 1회" 요청 준수) |
 | `KIS_HOLIDAY_LOOKAHEAD_DAYS` | 웹앱 | 휴장일 1회 조회 시 확보할 일수. 기본 `400` |
+| `INDICES_CACHE_TTL_SECONDS` | 웹앱 | 지수 조회 **성공** 캐시 TTL. 기본 `60` |
+| `INDICES_ERROR_RETRY_SECONDS` | 웹앱 | 지수 조회 **실패** 후 재시도 간격. 기본 `10`. 성공 TTL 보다 길게 줘도 성공 TTL 로 조여진다 |
+| `INDICES_STALE_MAX_SECONDS` | 웹앱 | 조회 실패 시 직전 성공 값을 stale 로 내주는 최대 기간. 기본 `900`. 초과하면 값 대신 실패로 표시 |
 | `SPREADSHEET_ID` | 크론·동기화 | 대상 Google Sheets ID |
 | `GOOGLE_CREDENTIALS_JSON` | 크론·동기화 | 서비스 계정 JSON 전체 |
 | `SENDER_EMAIL` / `NOTIFY_EMAIL` / `GMAIL_APP_PASSWORD` | 크론·알림 | Gmail 리포트·판정 전환 알림 발송 (2FA 앱 비밀번호 필수) |

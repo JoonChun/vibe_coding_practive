@@ -54,6 +54,14 @@ export interface IndexItem {
   breadth: MarketBreadth | null;
   source: SnapshotSource | null;
   error: string | null;
+  /**
+   * 이번 조회는 실패했지만 직전 성공 값을 대신 받은 경우 true.
+   * 이때 value 가 있고 error 도 함께 온다 — error 만 보고 "데이터 없음"을 띄우면
+   * 멀쩡한 값을 버린다. 값을 그리고 낡음만 표시해야 한다.
+   */
+  stale: boolean;
+  /** 그 값을 받은 뒤 지난 시간(초). stale 이 아니면 null */
+  stale_age_seconds: number | null;
 }
 
 /** 장 운영 상태 (GET /api/market/status) */

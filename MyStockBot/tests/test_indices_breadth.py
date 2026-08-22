@@ -178,8 +178,10 @@ def test_fallback_to_yfinance_has_no_breadth(monkeypatch):
     assert source == "yfinance"
 
 
-def test_fetch_all_isolates_per_index_failure(monkeypatch):
+def test_per_index_failure_is_isolated(monkeypatch):
     """한 지수 실패가 다른 지수를 막지 않는다."""
+    monkeypatch.setattr(indices, "_cache", {})
+
     def selective(d):
         if d["code"] == "KOSPI":
             return 2650.0, 18.0, 0.7, {"up": 1, "flat": 0, "down": 0,
@@ -188,9 +190,8 @@ def test_fetch_all_isolates_per_index_failure(monkeypatch):
 
     monkeypatch.setattr(indices, "_fetch_one", selective)
 
-    items = indices._fetch_all()
+    by_code = {it["code"]: it for it in indices.get_indices()["items"]}
 
-    by_code = {it["code"]: it for it in items}
     assert by_code["KOSPI"]["error"] is None
     assert by_code["KOSPI"]["breadth"]["up"] == 1
     assert by_code["KOSDAQ"]["error"] is not None

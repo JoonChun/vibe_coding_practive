@@ -21,7 +21,12 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from config import INDICES_CACHE_TTL_SECONDS, TIMEZONE
+from config import (
+    INDICES_CACHE_TTL_SECONDS,
+    INDICES_ERROR_RETRY_SECONDS,
+    INDICES_STALE_MAX_SECONDS,
+    TIMEZONE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +41,61 @@ _INDEX_DEFS = [
 _KIS_CLOSE_KEYS = ["bstp_nmix_prpr", "stck_clpr", "ovrs_nmix_prpr", "bstp_nmix_clpr"]
 _KIS_DATE_KEYS = ["stck_bsop_date", "bsop_date"]
 
-_cache: dict = {"generated_at": None, "items": None, "fetched_at": 0.0}
+# ────────────────────────────────────────────
+# 캐시 — **지수별로** 따로 잡는다
+#
+# 예전 구현은 두 지수를 한 리스트로 묶어 캐시하고, 실패 항목도 성공과 같은 TTL(60초)로
+# 저장했다. 두 가지가 잘못됐다:
+#   ① 실패가 성공과 같은 수명을 가졌다 — 순간 장애 하나가 "데이터 없음"을 60초 고정
+#      시키고, 네트워크가 1초 뒤 복구돼도 남은 59초는 새로고침해도 실패가 나왔다.
+#   ② 실패가 직전의 성공 값을 밀어냈다 — 되돌릴 값이 있는데도 버렸다.
+#
+# 그래서 항목별로 "마지막 성공 값"과 "마지막 시도의 실패 사유"를 **따로** 들고 있는다.
+# 엔트리 구조:
+#   good        : 마지막으로 성공한 항목 payload(dict) 또는 None
+#   good_at     : 그 값을 받은 시각(monotonic)
+#   error       : 마지막 시도의 실패 사유(성공했으면 None)
+#   checked_at  : 마지막 시도 시각(monotonic) — TTL 기준
+_cache: dict[str, dict] = {}
 _cache_lock = threading.Lock()
+
+
+def _entry_ttl(entry: dict) -> float:
+    """이 엔트리를 재조회 없이 재사용할 수 있는 시간(초).
+
+    성공은 넉넉히, 실패는 짧게. 실패 재시도 간격은 성공 TTL 을 넘지 않게 조인다
+    (설정을 잘못 줘도 실패가 성공보다 오래 붙잡히지 않는다).
+    """
+    if entry.get("error") is None:
+        return max(0, INDICES_CACHE_TTL_SECONDS)
+    return max(1, min(INDICES_ERROR_RETRY_SECONDS, max(1, INDICES_CACHE_TTL_SECONDS)))
+
+
+def _render(entry: dict, definition: dict, now: float) -> dict:
+    """엔트리 → 응답 항목. stale 여부를 여기 한 곳에서만 판단한다."""
+    error = entry.get("error")
+    good = entry.get("good")
+
+    if error is None and good is not None:
+        return {**good, "stale": False, "stale_age_seconds": None}
+
+    # 실패 상태. 되돌릴 성공 값이 있고 너무 낡지 않았다면 그것을 stale 로 내준다.
+    if good is not None:
+        age = now - entry["good_at"]
+        if age <= max(0, INDICES_STALE_MAX_SECONDS):
+            return {
+                **good,
+                "error": error,
+                "stale": True,
+                "stale_age_seconds": round(age, 1),
+            }
+
+    return {
+        "code": definition["code"], "name": definition["name"],
+        "value": None, "change": None, "change_pct": None, "breadth": None,
+        "source": None, "error": error,
+        "stale": False, "stale_age_seconds": None,
+    }
 
 
 def _safe_float(val) -> float | None:
@@ -249,51 +307,73 @@ def _fetch_one(d: dict) -> tuple[float, float | None, float | None, dict | None,
     return value, change, pct, None, "yfinance"
 
 
-def _fetch_all() -> list[dict]:
-    items: list[dict] = []
-    for d in _INDEX_DEFS:
-        try:
-            value, change, change_pct, breadth, source = _fetch_one(d)
-            items.append({
-                "code": d["code"], "name": d["name"],
-                "value": value, "change": change, "change_pct": change_pct,
-                "breadth": breadth,
-                "source": source, "error": None,
-            })
-        except Exception as e:  # 한 지수 실패가 다른 지수를 막지 않도록 개별 격리
-            logger.warning(f"[indices] {d['code']} 조회 실패: {e}")
-            items.append({
-                "code": d["code"], "name": d["name"],
-                "value": None, "change": None, "change_pct": None,
-                "breadth": None,
-                "source": None, "error": str(e),
-            })
-    return items
+def _fetch_entry(definition: dict, previous: dict | None, now: float) -> dict:
+    """지수 1개를 조회해 캐시 엔트리를 만든다. 예외를 던지지 않는다.
+
+    **실패해도 직전의 성공 값(good)을 버리지 않는다** — 되돌릴 값이 있으면 stale 로
+    내주기 위해서다. 한 지수의 실패가 다른 지수를 막지 않도록 여기서 격리한다.
+    """
+    try:
+        value, change, change_pct, breadth, source = _fetch_one(definition)
+    except Exception as e:
+        logger.warning("[indices] %s 조회 실패: %s", definition["code"], e)
+        return {
+            "good": (previous or {}).get("good"),
+            "good_at": (previous or {}).get("good_at"),
+            "error": str(e),
+            "checked_at": now,
+        }
+
+    return {
+        "good": {
+            "code": definition["code"], "name": definition["name"],
+            "value": value, "change": change, "change_pct": change_pct,
+            "breadth": breadth, "source": source, "error": None,
+        },
+        "good_at": now,
+        "error": None,
+        "checked_at": now,
+    }
 
 
 def get_indices() -> dict:
-    """read-through 캐시. 신선하면 캐시 반환, stale/없으면 재조회 후 갱신.
+    """read-through 캐시. 지수별로 신선도를 따로 판단한다.
 
     fetch 는 락 밖에서 수행해 요청이 서로를 오래 블로킹하지 않게 한다(간헐적 중복
     조회는 허용 — 2개 심볼·TTL 고려 시 무해).
+
+    `cache_hit` 은 "이번 요청에서 조회를 한 번도 하지 않았다"는 뜻이다. 항목별로
+    갱신 시점이 다를 수 있으므로, 각 항목의 낡음은 stale·stale_age_seconds 로 읽는다.
     """
     now = time.monotonic()
-    with _cache_lock:
-        if (
-            _cache["items"] is not None
-            and (now - _cache["fetched_at"]) < INDICES_CACHE_TTL_SECONDS
-        ):
-            return {
-                "generated_at": _cache["generated_at"],
-                "cache_hit": True,
-                "items": _cache["items"],
-            }
 
-    items = _fetch_all()
-    generated_at = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
+    # 이전 엔트리 전체를 락 안에서 한 번에 떠 온다. 재사용 여부와 무관하게 필요하다 —
+    # 재조회가 실패하면 그 이전 엔트리의 `good` 을 stale 로 승계해야 한다.
     with _cache_lock:
-        _cache["items"] = items
-        _cache["generated_at"] = generated_at
-        _cache["fetched_at"] = time.monotonic()
+        previous = dict(_cache)
+    # _INDEX_DEFS 의 코드만 센다 — 정의가 바뀌어 남은 옛 엔트리가 cache_hit 을
+    # 부풀리지 않도록.
+    reusable = {
+        d["code"]: previous[d["code"]]
+        for d in _INDEX_DEFS
+        if d["code"] in previous
+        and (now - previous[d["code"]]["checked_at"]) < _entry_ttl(previous[d["code"]])
+    }
 
-    return {"generated_at": generated_at, "cache_hit": False, "items": items}
+    entries: dict[str, dict] = {}
+    for d in _INDEX_DEFS:
+        code = d["code"]
+        if code in reusable:
+            entries[code] = reusable[code]
+        else:
+            entries[code] = _fetch_entry(d, previous.get(code), time.monotonic())
+
+    with _cache_lock:
+        _cache.update(entries)
+
+    render_now = time.monotonic()
+    return {
+        "generated_at": datetime.now(ZoneInfo(TIMEZONE)).isoformat(),
+        "cache_hit": len(reusable) == len(_INDEX_DEFS),
+        "items": [_render(entries[d["code"]], d, render_now) for d in _INDEX_DEFS],
+    }

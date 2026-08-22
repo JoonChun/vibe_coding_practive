@@ -129,6 +129,19 @@ KIS_MINUTE_BACKFILL_DAYS = int(os.environ.get("KIS_MINUTE_BACKFILL_DAYS", "10"))
 # 지수는 개별 종목보다 갱신 빈도가 낮아도 되므로 넉넉히 둔다.
 INDICES_CACHE_TTL_SECONDS = int(os.environ.get("INDICES_CACHE_TTL_SECONDS", "60"))
 
+# ★ 실패는 성공과 같은 TTL 로 캐시하면 안 된다.
+# 예전 구현은 조회 실패 항목까지 60초 동안 그대로 재사용했다. 그래서 순간적인 네트워크
+# 장애 하나가 "데이터 없음" 화면을 60초 고정시키고, 네트워크가 1초 뒤 복구돼도 사용자는
+# 남은 59초를 계속 실패 화면으로 봤다(새로고침해도 캐시가 응답한다).
+# 실패 항목은 짧게만 붙잡고 곧 재시도한다.
+INDICES_ERROR_RETRY_SECONDS = int(os.environ.get("INDICES_ERROR_RETRY_SECONDS", "10"))
+
+# 조회가 실패했을 때 "마지막으로 성공한 값"을 stale 로 표시해 내주는 최대 기간(초).
+# 이 시간을 넘으면 낡은 값을 내주는 대신 실패로 표시한다 — 몇 시간 전 지수를 현재값처럼
+# 보여주는 것이 "데이터 없음"보다 나쁘기 때문이다. 응답에는 항상 stale 여부와 경과
+# 초(stale_age_seconds)를 함께 실어 화면이 낡음을 표시할 수 있게 한다.
+INDICES_STALE_MAX_SECONDS = int(os.environ.get("INDICES_STALE_MAX_SECONDS", "900"))
+
 # 모의투자(server/services/paper.py) 초기 가상 시드머니(원). 개인용 단일 계좌.
 PAPER_SEED_DEFAULT = int(os.environ.get("PAPER_SEED_DEFAULT", "10000000"))
 

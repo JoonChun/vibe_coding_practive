@@ -1867,6 +1867,15 @@ select:focus-visible {
   color: var(--outline);
 }
 
+/* 최신 조회가 실패해 직전 값을 대신 보여줄 때의 나이 표시("· 3분 전").
+   등락 색을 물려받지 않도록 색·굵기를 따로 준다 — 값 자체가 아니라 메타 정보다. */
+.index-card__stale {
+  color: var(--outline);
+  font-weight: 500;
+  font-size: 0.78rem;
+  cursor: help;
+}
+
 /* ── 시장 폭 (PRD §10.1 블록4) — 상승=빨강 / 하락=파랑 국내 관례 ── */
 .breadth {
   padding: 0.75rem 0.85rem;

@@ -103,6 +103,11 @@ class IndexItem(BaseModel):
     breadth: MarketBreadth | None = None
     source: str | None = None       # "kis" | "yfinance" | None(조회 실패)
     error: str | None = None
+    # 이번 조회는 실패했지만 직전 성공 값을 대신 실어 보낸 경우 True.
+    # 이때 value 는 있고 error 도 함께 있다 — 화면은 "값 + 낡음 표시"로 그려야 하고,
+    # error 가 있다는 이유만으로 "데이터 없음"을 띄우면 멀쩡한 값을 버리게 된다.
+    stale: bool = False
+    stale_age_seconds: float | None = None  # 그 값을 받은 뒤 지난 시간(초)
 
 
 class MarketStatusResponse(BaseModel):
@@ -159,6 +164,8 @@ class AlertTestResponse(BaseModel):
 
 class IndicesResponse(BaseModel):
     generated_at: str
+    # "이번 요청에서 외부 조회를 한 번도 하지 않았다". 항목별 갱신 시점이 다를 수 있으므로
+    # 개별 낡음은 IndexItem.stale / stale_age_seconds 로 읽는다.
     cache_hit: bool
     items: list[IndexItem]
 
