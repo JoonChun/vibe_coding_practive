@@ -1684,7 +1684,11 @@ select:focus-visible {
   bottom: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* 탭 개수를 하드코딩하지 않는다. 예전에는 repeat(3, 1fr) 이어서 4번째 탭(알림)을
+     추가하자 탭바가 2줄로 깨졌다 — tsc·DOM 검사로는 잡히지 않고 스크린샷에서만 보였다.
+     column 방향 자동 흐름이면 탭이 늘어도 한 줄을 유지한다. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.25rem;
   padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--surface-container-lowest) 92%, transparent);
@@ -3111,4 +3115,145 @@ select:focus-visible {
       background-color: #12203a;
     }
   }
+}
+
+/* ── 알림 진단 화면 (/alerts) ── */
+.alert-chips {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.alert-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.alert-test-btn {
+  margin-top: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.alert-test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alert-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+.alert-result {
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.6rem;
+  background: var(--surface-container);
+}
+
+.alert-result__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.alert-result__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.alert-ok { color: #16a34a; }
+.alert-fail { color: #dc2626; }
+
+/* 발송 조건 표 — dt/dd 를 한 줄씩. */
+.alert-facts {
+  margin: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.alert-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.alert-facts dt {
+  color: var(--on-surface-variant);
+  font-weight: 600;
+}
+
+.alert-facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 기준선 목록 */
+.alert-state {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.alert-state__row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 0.4rem 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.alert-state__code {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.alert-state__kind {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: var(--surface-container);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+.alert-state__view { font-weight: 700; }
+
+.alert-state__meta {
+  grid-column: 1 / -1;
+  font-size: 0.68rem;
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
 }

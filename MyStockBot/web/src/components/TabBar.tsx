@@ -37,9 +37,19 @@ const TABS: TabDef[] = [
       </svg>
     ),
   },
+  {
+    to: "/alerts",
+    label: "알림",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M18 8a6 6 0 10-12 0c0 6-2 8-2 8h16s-2-2-2-8" />
+        <path d="M10.5 20a2 2 0 003 0" />
+      </svg>
+    ),
+  },
 ];
 
-/** 하단 고정 탭 네비게이션 (메인 / 관심종목 / 모의투자). */
+/** 하단 고정 탭 네비게이션 (메인 / 관심종목 / 모의투자 / 알림). */
 export function TabBar() {
   return (
     <nav className="tabbar" aria-label="주요 화면">

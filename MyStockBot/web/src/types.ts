@@ -341,3 +341,39 @@ export interface CandlesResponse {
   source: SnapshotSource | null;
   items: CandleItem[];
 }
+
+/** GET /api/alerts/config — 판정 전환 알림 설정(읽기 전용, .env 로 바꾼다) */
+export interface AlertConfig {
+  enabled: boolean;
+  /** 실제로 인식된 채널. 값이 비어 있으면 설정이 안 됐거나 검증에서 거부됐다 */
+  channels: string[];
+  views: string[];
+  side_only: boolean;
+  confirm_cycles: number;
+  cooldown_minutes: number;
+  /** 지금이 알림 발송 시간대인가(장 시간 게이트) */
+  in_window: boolean;
+  /** 저장된 기준선 개수 = "마지막으로 알린 판정"을 아는 종목·종류 수 */
+  baselines: number;
+}
+
+/** GET /api/alerts/state 항목 — 오알림 진단용 기준선 */
+export interface AlertStateItem {
+  code: string;
+  view_kind: string;
+  view: string;
+  source: string | null;
+  notified_at: string | null;
+  updated_at: string;
+}
+
+export interface AlertStateResponse {
+  items: AlertStateItem[];
+}
+
+/** POST /api/alerts/test 결과 — 채널별 성공 여부 */
+export interface AlertTestResponse {
+  channels: string[];
+  results: Record<string, boolean>;
+  detail: string;
+}

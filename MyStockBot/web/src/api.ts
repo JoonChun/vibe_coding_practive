@@ -1,4 +1,7 @@
 import type {
+  AlertConfig,
+  AlertStateResponse,
+  AlertTestResponse,
   BacktestResponse,
   CandlesResponse,
   DcaResponse,
@@ -219,4 +222,22 @@ export function getCandles(
   return request<CandlesResponse>(
     `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
   );
+}
+
+/** 알림 설정 조회(읽기 전용 — 설정은 .env 로 바꾼다). 비밀은 응답에 실리지 않는다. */
+export function getAlertConfig(): Promise<AlertConfig> {
+  return request<AlertConfig>("/api/alerts/config");
+}
+
+/** 저장된 기준선("마지막으로 알린 판정") 조회 — 오알림 진단용. */
+export function getAlertState(): Promise<AlertStateResponse> {
+  return request<AlertStateResponse>("/api/alerts/state");
+}
+
+/**
+ * 테스트 발송. ENABLED 플래그와 장 시간대 게이트를 우회한다 — 설정을 켜기 전에
+ * 채널이 살아 있는지 확인하는 것이 목적이다. 서버가 동시 1건으로 제한한다(429).
+ */
+export function sendTestAlert(): Promise<AlertTestResponse> {
+  return request<AlertTestResponse>("/api/alerts/test", { method: "POST" });
 }
