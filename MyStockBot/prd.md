@@ -1076,7 +1076,8 @@ MyStockBot_PRD.md 항목을 표시하는 중입니다.
 * `[x]` **관심종목 단일 소스화** (신규) — 웹앱 SQLite ↔ 크론 Google Sheets `Dashboard` 이원화 해소. `src/watchlist_sync.py`: 앱→시트 즉시 미러(추가=upsert, 삭제=C열 `해제` 표시로 비파괴), 시트→앱 주기 임포트(부팅 + 평일 매시 :50, **추가 전용**), `POST /api/watchlist/sync` 수동 트리거. 자격증명 없으면 조용히 비활성.
 * `[x]` **hit_rate 신뢰구간·`_MAX_BARS` 캡 표기 (감사 MEDIUM)** — §19.2 참고.
 * `[x]` **KIS 호출 지연 이중 적용 제거** — `collector._fetch_daily` 의 `time.sleep(KIS_RATE_LIMIT_DELAY)` 삭제(호출 간격은 `kis_auth.kis_throttle()` 이 전역 보장).
-* `[~]` **P2 기술** (§16.3) — 휴장일 인지·KIS rate-limit 전역 조율·헬스 readiness·로깅 통일 완료. **배포 하드닝(컨테이너 비특권 유저·의존성 상한 핀)은 미착수.**
+* `[x]` **P2 기술** (§16.3) — 휴장일 인지·KIS rate-limit 전역 조율·헬스 readiness·로깅 통일,
+  그리고 배포 하드닝(컨테이너 비특권 유저·의존성 핀·이미지에 UI 포함)까지 완료(§20 참고).
 * `[~]` **P2 UX** (§17.3) — heading 계층·터치 타깃·카피 통일·백그라운드 폴링 정지 완료.
 * `[ ]` **배당 실제 반영 (DCA reinvest)** — 배당 시계열 데이터 소스 연동 필요(현재 미반영 고지만).
 * `[~]` **메인 대시보드 잔여 블록** (§10.1) — 시장 상태 줄·시장 폭 완료. **남은 것: 지수 스파크라인, 투자자 매매동향, 매크로 참고.**
@@ -1367,6 +1368,38 @@ MyStockBot_PRD.md 항목을 표시하는 중입니다.
   체결시켜 보지는 못했다.** 실서버로 확인한 것은 구버전 DB 마이그레이션(기존 거래 1건 보존,
   새 컬럼 NULL, `realized_unknown_trades: 1`)과 시세 부재 시 매수 거부(409)까지다.
   체결 로직 자체는 실제 SQLite 단위테스트로 검증했다.
+* `[x]` **배포 하드닝 — 이미지에 UI 포함 · non-root · 의존성 핀** (2026-08)
+  "지금 써볼 수 있나?" 라는 물음에 답하려고 실행 경로를 확인하다 **구멍을 찾았다:
+  `docker compose up` 을 하면 API 만 뜨고 화면이 없었다.** `.dockerignore` 가 `web/` 을
+  통째로 제외했고("handled by Vercel") 서버도 정적 파일을 서빙하지 않았다. Vercel 배포는
+  유효한 경로지만, 로컬에서 한 번에 띄워 보려는 사람에게는 쓸 수 없는 이미지였다.
+
+  1. **이미지가 UI 를 함께 빌드한다.** 멀티스테이지 — node 단계에서 `npm ci && npm run
+     build`, 산출물만 런타임 단계로 넘긴다(node·node_modules 는 남지 않는다).
+  2. **서버가 `web/dist` 를 `/` 에 마운트한다**(`server/static.py`). 두 함정을 각각 잠갔다:
+     · SPA 클라이언트 라우팅 — `/paper` 새로고침은 index.html 로 폴백해야 화면이 뜬다.
+     · **`/api` 404 를 HTML 로 덮지 않는다.** `/` 마운트는 모든 경로에 걸리므로 라우터에
+       없는 `/api/...` 까지 폴백에 걸려 HTML 200 이 나갈 수 있다. 그러면 "그 엔드포인트가
+       아직 없다"는 신호가 사라진다 — 실제로 사용자가 옛 커밋으로 서버를 띄웠을 때
+       `{"detail":"Not Found"}` 라는 404 **하나로** 원인을 짚었다. 그 진단 능력을 없애면
+       안 된다. 마운트가 라우터보다 **뒤에** 등록되는 것도 회귀로 잠갔다(앞이면 API 를 전부
+       가린다).
+  3. **non-root(uid 10001).** 쓰기가 필요한 경로는 `/app/data` 하나뿐이다(SQLite DB +
+     KIS 토큰 캐시 — 둘 다 `dirname(DB_PATH)` 아래). 코드는 root 소유 읽기전용으로 남긴다.
+     바인드 마운트한 `./data` 는 호스트 사용자 소유라 compose 가 `user:` 로 실행 uid 를
+     맞춘다 — 이걸 안 하면 `unable to open database file` 로 죽는다(chown 을 요구하는
+     것보다 uid 를 맞추는 편이 낫다).
+  4. **`requirements.lock.txt`.** 느슨한 `requirements.txt` 로 빌드하면 같은 커밋이라도
+     상위 버전이 딸려 들어와 어제 되던 이미지가 오늘 깨진다. 락파일은 추측이 아니라
+     **테스트 414건이 통과한 환경의 의존성 폐쇄집합**이다(직접 의존 + `uvicorn[standard]`
+     extra 를 따라가 계산, 51개).
+
+  검증: **Docker 데몬이 없어 이미지를 빌드하지는 못했다.** 대신 이미지 레이아웃을 그대로
+  재현해(코드 `dr-xr-xr-x root` 읽기전용 / `data` 만 uid 10001 소유) uid 10001 로 기동해
+  확인했다 — `/` 200 text/html, `/paper` 200(폴백), `/api/nope` 404 JSON,
+  `POST /api/watchlist` 201, DB 가 uid 10001 소유로 생성, 권한 오류 0건. 락파일은
+  `pip install --dry-run` 으로 51개가 버전 불일치 0·추가 유입 0 으로 재현되는 것을 확인했다.
+  `npm ci`·`apt tzdata`·이미지 안 `pip install` 은 미검증으로 남는다(README 에 명시).
 
 ## 21. 판정 엔진 자체의 한계 (2026-07 감사 추가 · 일부 해소)
 

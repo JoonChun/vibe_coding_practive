@@ -14,6 +14,26 @@ cd MyStockBot
 docker compose up -d --build
 ```
 
+이미지 하나에 **API + 웹 UI** 가 다 들어 있다. 빌드가 끝나면 `http://localhost:8000` 에서
+화면이 바로 뜬다(별도 프런트엔드 배포 없이). Vercel 배포도 그대로 유효한 경로다 — 그때는
+프런트에 `VITE_API_BASE` 로 백엔드 공개 URL 을 주면 된다.
+
+#### 알아둘 것
+- **non-root 로 돈다.** 이미지는 `uid 10001` 사용자를 만들고 쓰기가 필요한 `/app/data`
+  (SQLite DB + KIS 토큰 캐시)만 그 사용자 소유로 둔다. 코드는 root 소유 읽기전용이라
+  앱이 자기 코드를 고칠 수 없다.
+- **`user:` 로 실행 uid 를 호스트에 맞춘다.** `./data` 를 바인드 마운트하므로 호스트
+  사용자(보통 `1000`) 소유 디렉터리에 써야 한다. compose 가 `${UID:-1000}:${GID:-1000}`
+  으로 넘긴다. uid 가 1000 이 아니면:
+  ```bash
+  UID=$(id -u) GID=$(id -g) docker compose up -d --build
+  ```
+  이걸 안 맞추면 `unable to open database file` 로 죽는다.
+- **의존성은 `requirements.lock.txt` 로 고정한다.** `requirements.txt` 는 하한만 있는
+  느슨한 스펙이라, 같은 커밋을 다시 빌드해도 상위 버전이 딸려 들어와 어제 되던 이미지가
+  오늘 깨질 수 있다. 락파일은 테스트가 통과한 버전 집합이다.
+- 워커는 1개다. APScheduler 와 KIS 실시간 WS 가 프로세스 내 단일 인스턴스를 전제한다.
+
 ### 자동시작 설정
 재부팅 후 자동으로 서버가 실행되도록:
 1. Docker Desktop 설정 → "General" → "Start Docker Desktop when you log in" 체크

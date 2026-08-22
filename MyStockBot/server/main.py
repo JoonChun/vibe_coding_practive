@@ -34,6 +34,7 @@ import watchlist_sync
 
 from .auth import auth_middleware, is_auth_enabled
 from .errors import sqlite_operational_error_handler
+from .static import mount_web_ui
 from .routers import alerts, indices, market, paper, stream, watchlist, snapshot, stocks
 from .services import collector, kis_ws, scheduler
 
@@ -178,3 +179,7 @@ app.include_router(market.router)
 app.include_router(alerts.router)
 app.include_router(paper.router)
 app.include_router(stream.router)
+
+# ★ 반드시 라우터 등록 **뒤**. `/` 마운트는 모든 경로에 걸리므로 먼저 걸면 API 를 가린다
+#   (server/static.py 주석 참고). 빌드가 없으면 조용히 건너뛴다.
+mount_web_ui(app, _BASE_DIR / "web" / "dist")

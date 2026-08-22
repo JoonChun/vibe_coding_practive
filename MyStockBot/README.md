@@ -156,14 +156,32 @@ npm install
 npm run dev                            # http://localhost:5173
 ```
 
+### 한 프로세스로 (API + UI 함께)
+
+개발 중에는 위처럼 백엔드·프런트엔드를 따로 띄우지만(Vite dev 서버가 `/api` 를 프록시),
+**빌드해 두면 서버 하나가 화면까지 서빙**합니다. `web/dist` 가 있으면 자동으로 `/` 에
+마운트됩니다.
+
+```bash
+cd MyStockBot/web && npm install && npm run build
+cd .. && uvicorn server.main:app          # http://localhost:8000 에서 화면까지
+```
+
+빌드가 없으면 조용히 건너뛰고 API 만 뜹니다(로그에 안내). SPA 클라이언트 라우팅
+(`/paper` 새로고침)은 index.html 로 폴백하지만, **`/api/...` 의 404 는 404 로 남습니다** —
+"그 엔드포인트가 아직 없다"는 신호를 HTML 200 으로 덮지 않습니다.
+
 ### Docker
 
 ```bash
 cd MyStockBot
-docker compose up -d --build
+docker compose up -d --build              # http://localhost:8000 — API + UI
 ```
 
-자세한 배포(홈PC + 터널, PWA 설치)는 [DEPLOY.md](./DEPLOY.md) 참고.
+이미지가 웹 UI를 함께 빌드하고 **non-root(uid 10001)** 로 실행하며, 의존성은
+`requirements.lock.txt` 로 고정합니다. 호스트 uid 가 1000 이 아니면
+`UID=$(id -u) GID=$(id -g) docker compose up -d --build` 로 넘기세요(바인드 마운트한
+`./data` 에 쓰기 위해). 자세한 배포(홈PC + 터널, PWA 설치)는 [DEPLOY.md](./DEPLOY.md) 참고.
 
 ### 일일 배치 수동 실행
 
@@ -447,7 +465,10 @@ Gmail 은 크론 리포트와 같은 자격증명(`SENDER_EMAIL`/`NOTIFY_EMAIL`/
 - **Discord·Slack 실발송 미검증** — 개발 환경에서 두 벤더 도메인이 전부 차단돼 규격은
   1차 소스(공식 문서 저장소·공식 SDK)로만 확인했다. `POST /api/alerts/test` 로 각자 확인해야 한다
 - DCA 공유 카드·해외 종목 미지원, 모의투자 수수료·세금·슬리피지 미반영
-- 배포 하드닝 미착수 (컨테이너 root 실행, 의존성 상한 미고정)
+- **컨테이너 이미지를 실제로 빌드해 본 적은 없다** — 개발 환경에 Docker 데몬이 없다.
+  Dockerfile 의 가정(non-root 실행 + `/app/data` 만 쓰기 + 읽기전용 코드 + UI 서빙)은
+  같은 레이아웃을 uid 10001 로 재현해 확인했고, 락파일은 해석이 정확히 재현되는 것까지
+  확인했다. 하지만 `npm ci`·`apt tzdata`·이미지 안 `pip install` 은 미검증이다
 
 ## 라이선스
 

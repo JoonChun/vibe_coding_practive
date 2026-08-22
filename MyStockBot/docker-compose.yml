@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   mystockbot:
     build: .
-    container_name: mystockbot-api
+    container_name: mystockbot
     ports:
       - "8000:8000"
     env_file: .env
@@ -11,14 +9,22 @@ services:
       TZ: Asia/Seoul
       MYSTOCKBOT_DB_PATH: /app/data/mystockbot.db
     volumes:
-      # SQLite database persistence
+      # SQLite DB + KIS 토큰 캐시. 호스트에서 직접 열어볼 수 있게 바인드 마운트로 둔다.
       - ./data:/app/data
+    # ★ 컨테이너를 **호스트 사용자 권한으로** 돌린다.
+    #
+    #   이미지 기본값은 non-root(uid 10001)인데, 바인드 마운트한 ./data 는 호스트
+    #   사용자(보통 uid 1000) 소유다. 그대로 두면 컨테이너가 DB 파일을 만들 수 없어
+    #   "unable to open database file" 로 죽는다 — chown 을 요구하는 것보다 실행 uid 를
+    #   맞추는 편이 낫다(여전히 non-root 다).
+    #   uid 가 1000 이 아니면 `UID=$(id -u) GID=$(id -g) docker compose up -d` 로 넘긴다.
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
-    # Health check (slim 이미지에 curl이 없어 python 표준 라이브러리 사용)
-    # /api/health 는 인증 예외 경로 — API 토큰이 설정돼도 헬스체크는 계속 통과한다.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)"]
+      # slim 이미지에 curl 이 없어 파이썬 표준 라이브러리를 쓴다.
+      # /api/health 는 인증 예외 경로 — API 토큰이 설정돼도 헬스체크는 계속 통과한다.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s

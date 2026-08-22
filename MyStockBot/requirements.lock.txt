@@ -1,0 +1,65 @@
+# 정확히 고정된 의존성 — **컨테이너 이미지가 쓰는 파일.**
+#
+# requirements.txt 는 하한만 둔 느슨한 스펙이라, 같은 커밋을 다시 빌드해도 상위 버전이
+# 딸려 들어와 어제 되던 이미지가 오늘 깨질 수 있다(pandas·yfinance·starlette 는 마이너
+# 버전에서도 계약을 바꾼 이력이 있다). 재현 가능한 배포를 위해 여기서 못 박는다.
+#
+# 이 목록은 추측이 아니라 **테스트 398건이 실제로 통과한 환경**의 의존성 폐쇄집합이다
+# (직접 의존 + uvicorn[standard] extra 를 따라가 계산). 개발 편의를 위한 느슨한 스펙은
+# requirements.txt 에 그대로 남겨 둔다 — 둘의 역할이 다르다.
+#
+# 갱신 방법: 새 버전으로 테스트를 통과시킨 뒤 그 환경에서 폐쇄집합을 다시 뽑아 교체한다.
+# 개별 줄만 손으로 올리지 말 것 — 전이 의존이 어긋난다.
+#
+# tzdata 는 여기 없다. 컨테이너에서 apt 로 설치하는 시스템 tzdata 를 쓴다(Dockerfile).
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+APScheduler==3.11.3
+beautifulsoup4==4.15.0
+certifi==2026.2.25
+cffi==2.1.1
+charset-normalizer==3.4.6
+click==8.4.2
+colorama==0.4.6
+cryptography==41.0.7
+curl_cffi==0.16.0
+fastapi==0.141.1
+google-auth==2.56.3
+google-auth-oauthlib==1.4.0
+gspread==6.2.1
+h11==0.16.0
+httptools==0.8.0
+idna==3.11
+lxml==6.1.2
+multitasking==0.0.13
+numpy==2.4.6
+oauthlib==3.2.2
+pandas==3.0.5
+peewee==4.3.0
+platformdirs==4.11.3
+protobuf==7.35.1
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.3
+pytz==2026.3.post1
+PyYAML==6.0.1
+requests==2.33.1
+requests-oauthlib==2.0.0
+six==1.16.0
+soupsieve==2.9.2
+starlette==1.6.0
+ta==0.11.0
+typing_extensions==4.16.0
+typing-inspection==0.4.4
+tzlocal==5.4.4
+urllib3==2.6.3
+uvicorn==0.52.4
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==17.0.1
+yfinance==1.6.0

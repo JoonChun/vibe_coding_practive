@@ -3,10 +3,10 @@
 venv
 env
 
-# Database and data files
+# Database and data files (컨테이너는 볼륨으로 마운트한다)
 data/
 
-# Environment file (secrets managed separately)
+# Environment file (secrets managed separately — env_file 로 주입)
 .env
 .env.local
 
@@ -16,9 +16,15 @@ __pycache__
 *.pyo
 *.egg-info
 .pytest_cache
+.ruff_cache
 
-# Web frontend (handled by Vercel)
-web/
+# ── 웹 프런트엔드 ──
+# web/ 을 통째로 제외하지 않는다. 이미지의 1단계가 여기서 UI 를 빌드하기 때문이다
+# (예전에는 "handled by Vercel" 이라며 제외했고, 그래서 이미지에 화면이 없었다).
+# 대신 빌드에 필요 없거나 이미지 안에서 새로 만드는 것만 제외한다.
+web/node_modules
+web/dist
+node_modules
 
 # IDE and editor
 .vscode
@@ -29,20 +35,30 @@ web/
 # Git
 .git
 .gitignore
+.github
 
-# JSON key files (credentials)
+# 자격증명 JSON 을 이미지에 굽지 않는다(.gitignore 도 *.json 을 막고 있지만, 빌드
+# 컨텍스트는 작업 트리라서 커밋되지 않은 로컬 파일도 들어올 수 있다).
+#
+# `*.json` 이 루트만 매칭하는지 하위까지 매칭하는지에 기대지 않는다 — 웹 빌드에 필요한
+# JSON 은 명시적으로 되살려, 어느 해석에서도 빌드가 깨지지 않게 한다.
 *.json
+!web/package.json
+!web/package-lock.json
+!web/tsconfig.json
+!web/tsconfig.app.json
+!web/tsconfig.node.json
+!web/vercel.json
 
 # Documentation
 README.md
 prd.md
 DEPLOY.md
+example.html
+
+# 테스트 (런타임에 필요 없다)
+tests/
 
 # OS specific
 .DS_Store
 Thumbs.db
-
-# Node (if any frontend build artifacts)
-node_modules
-dist
-build
