@@ -37,6 +37,20 @@ def kis_throttle() -> None:
             now = time.monotonic()
         _kis_last_call[0] = now
 
+class MissingCredentialsError(RuntimeError):
+    """KIS_APP_KEY / KIS_APP_SECRET 이 없다 — **재시도해도 해결되지 않는** 실패.
+
+    자격증명은 프로세스 시작 시 `load_dotenv` 로 한 번 읽으므로 실행 중에 생길 수 없다.
+    그래서 이 실패를 다른 발급 실패(네트워크·rate-limit·응답 형식)와 **타입으로** 갈라
+    둔다. 호출부(server/services/kis_ws.py)는 이걸 받으면 재시도를 포기한다 —
+    구분하지 않으면 자격증명 없이 띄운 서버가 1분마다 영원히 경고를 찍는다(실측).
+
+    문구가 아니라 타입으로 가르는 이유: 메시지 문자열로 분기하면 문구를 다듬는 순간
+    조용히 오분류된다. `RuntimeError` 를 상속하므로 기존 `except RuntimeError`
+    호출부의 동작은 그대로다.
+    """
+
+
 _TOKEN_CACHE = {"access_token": None, "expires_at": None}
 # 토큰을 파일에도 영속화한다 — in-memory 캐시만 쓰면 서버 재시작(크래시 루프 포함)마다
 # 재발급을 시도해 KIS 발급 rate-limit(EGW00133, "1분당 1회")에 걸린다. 파일 캐시가
@@ -132,7 +146,10 @@ def get_token() -> str:
         app_secret = os.environ.get(KIS_APP_SECRET_ENV)
 
         if not app_key or not app_secret:
-            raise RuntimeError("KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다.")
+            # 전용 타입 — 호출부가 "재시도 무의미"를 알 수 있어야 한다.
+            raise MissingCredentialsError(
+                "KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다."
+            )
 
         payload = {
             "grant_type": "client_credentials",
@@ -229,7 +246,10 @@ def get_approval_key() -> str:
         app_secret = os.environ.get(KIS_APP_SECRET_ENV)
 
         if not app_key or not app_secret:
-            raise RuntimeError("KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다.")
+            # 전용 타입 — 호출부가 "재시도 무의미"를 알 수 있어야 한다.
+            raise MissingCredentialsError(
+                "KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다."
+            )
 
         payload = {
             "grant_type": "client_credentials",

@@ -523,6 +523,17 @@ async def _connection_loop() -> None:
     while not _stop_event.is_set():
         try:
             approval_key = await asyncio.to_thread(kis_auth.get_approval_key)
+        except kis_auth.MissingCredentialsError:
+            # ★ 재시도해도 성공할 수 없다 — 자격증명은 프로세스 시작 시 한 번 읽으므로
+            #   실행 중에 생기지 않는다. 예전에는 이 경우도 재시도해서, 자격증명 없이
+            #   띄운 서버가 백오프 상한(60초)에 걸린 뒤 **1분마다 영원히** 경고를 찍었다.
+            #   KIS 없이 yfinance 폴백으로 쓰는 정상 구성이 고장난 것처럼 보인다.
+            #   한 번만 알리고 루프를 끝낸다(실시간 틱은 표시 전용이라 판정에는 영향 없다).
+            logger.info(
+                "[kis_ws] KIS 자격증명(KIS_APP_KEY/KIS_APP_SECRET)이 없어 "
+                "실시간 시세를 사용하지 않습니다. 종가·판정은 yfinance 폴백으로 동작합니다."
+            )
+            return
         except Exception as e:
             logger.warning(
                 "[kis_ws] approval_key 발급 실패 — %d초 후 재시도: %s", backoff, e

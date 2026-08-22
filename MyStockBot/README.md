@@ -143,10 +143,15 @@ MyStockBot/
 ```bash
 pip install -r requirements.txt
 cd MyStockBot
-uvicorn server.main:app --reload      # http://localhost:8000
+python -m uvicorn server.main:app --reload     # http://localhost:8000
 ```
 
-> `server.main` 의 `sys.path` 설정은 `MyStockBot/` 디렉터리에서 실행하는 것을 전제로 합니다.
+> - `uvicorn` 이 아니라 **`python -m uvicorn`** 을 씁니다. 콘솔 스크립트가 PATH 에 없는
+>   환경이 흔하고, `-m` 은 그 파이썬에 설치돼 있으면 항상 동작합니다.
+> - `server.main` 의 `sys.path` 설정은 **`MyStockBot/` 디렉터리에서 실행**하는 것을
+>   전제로 합니다. 다른 위치에서 실행하면 `ModuleNotFoundError: No module named 'server'`.
+> - 이미 8000 포트를 쓰는 서버가 있으면 `[Errno 98] Address already in use` 가 납니다.
+>   `--port 8080` 으로 바꾸거나 기존 서버를 끄세요.
 
 ### 프론트엔드
 
@@ -156,20 +161,38 @@ npm install
 npm run dev                            # http://localhost:5173
 ```
 
-### 한 프로세스로 (API + UI 함께)
+### 한 프로세스로 (API + UI 함께) — 권장
 
 개발 중에는 위처럼 백엔드·프런트엔드를 따로 띄우지만(Vite dev 서버가 `/api` 를 프록시),
-**빌드해 두면 서버 하나가 화면까지 서빙**합니다. `web/dist` 가 있으면 자동으로 `/` 에
-마운트됩니다.
+**빌드해 두면 서버 하나가 화면까지 서빙**합니다.
 
 ```bash
-cd MyStockBot/web && npm install && npm run build
-cd .. && uvicorn server.main:app          # http://localhost:8000 에서 화면까지
+cd MyStockBot
+(cd web && npm install && npm run build)   # 처음 한 번
+./scripts/run_local.sh                     # → http://localhost:8000
 ```
 
-빌드가 없으면 조용히 건너뛰고 API 만 뜹니다(로그에 안내). SPA 클라이언트 라우팅
-(`/paper` 새로고침)은 index.html 로 폴백하지만, **`/api/...` 의 404 는 404 로 남습니다** —
-"그 엔드포인트가 아직 없다"는 신호를 HTML 200 으로 덮지 않습니다.
+`run_local.sh` 를 쓰는 이유는 **실행 전 점검**입니다. 그냥 `uvicorn server.main:app` 을
+치면 두 가지에서 막히는데, 둘 다 미리 알 수 있는 것입니다:
+
+| 증상 | 원인 | 스크립트가 하는 일 |
+|---|---|---|
+| `uvicorn: command not found` | 콘솔 스크립트가 PATH 에 없음 | `python -m uvicorn` 으로 실행(PATH 무관) |
+| `[Errno 98] Address already in use` | 이미 다른 서버가 그 포트를 쓰는 중 | 미리 감지해 `PORT=8080` 안내 후 종료 |
+| 화면이 안 뜸 | `web/dist` 빌드 없음 | 빌드 방법을 알려주고 API 만 기동 |
+| `ModuleNotFoundError: server` | `MyStockBot/` 밖에서 실행 | 실행 위치를 검사해 알려줌 |
+
+다른 포트로 띄우려면 `PORT=8080 ./scripts/run_local.sh`. 스크립트를 쓰지 않으려면
+`python -m uvicorn server.main:app --port 8000` 을 직접 쓰면 됩니다(`uvicorn` 대신
+`python -m uvicorn`).
+
+KIS 자격증명이 없으면 기동 로그에 한 줄만 남고 실시간 시세를 쓰지 않습니다 —
+`[kis_ws] KIS 자격증명 …이 없어 실시간 시세를 사용하지 않습니다`. 종가·판정·백테스트·
+모의투자는 yfinance 폴백으로 정상 동작합니다(실시간 틱은 화면 표시 전용이라 판정에
+쓰이지 않습니다).
+
+SPA 클라이언트 라우팅(`/paper` 새로고침)은 index.html 로 폴백하지만, **`/api/...` 의
+404 는 404 로 남습니다** — "그 엔드포인트가 아직 없다"는 신호를 HTML 200 으로 덮지 않습니다.
 
 ### Docker
 
