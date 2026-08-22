@@ -52,6 +52,132 @@ function check(name, ok, detail = "") {
   if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ""}`);
 }
 
+// 공유 카드 검증은 종목 상세에 있고, 캔들 이력이 있어야 계산이 돈다.
+// SMOKE_STOCK_CODE 로 데이터가 있는 종목을 지정한다(기본 삼성전자).
+const STOCK_CODE = process.env.SMOKE_STOCK_CODE ?? "005930";
+
+/**
+ * DCA 공유 카드(§15.2c) — 캔버스가 **실제로 그려졌는지**까지 본다.
+ *
+ * DOM 검사만으로는 부족하다: `<canvas>` 는 아무것도 안 그려도 존재하고 크기도 맞는다.
+ * 픽셀을 세지 않으면 "빈 카드를 공유하는" 결함이 전부 통과한다.
+ */
+async function checkShareCard(page) {
+  await page.goto(`${BASE}/stocks/${STOCK_CODE}`, { waitUntil: "domcontentloaded" });
+  const mounted = await page
+    .locator(".bt-card__title")
+    .first()
+    .waitFor({ timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  check(`종목 상세(/stocks/${STOCK_CODE}) 렌더`, mounted, "카드가 나타나지 않았다");
+  if (!mounted) return;
+
+  // 적립식 카드의 기간 버튼을 눌러 계산을 실행한다.
+  const dca = page.locator("section[aria-label='적립식 백테스트']");
+  await dca.getByRole("button", { name: "10년" }).click();
+
+  // 결과(수익률) 또는 실패 안내 중 하나가 나타난다. 시세 이력이 없는 서버(자격증명·
+  // 네트워크 없음)에서는 409 가 정상이므로 실패로 세지 않고 건너뛴다.
+  const ok = await dca
+    .locator(".dca-result__pct")
+    .waitFor({ timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!ok) {
+    const why = (await dca.locator(".panel__error").textContent().catch(() => null)) ?? "?";
+    console.log(`  ⓘ 적립식 이력이 없어 공유 카드 경로는 건너뜀 — ${why.trim().slice(0, 60)}`);
+    return;
+  }
+
+  const openBtn = dca.getByRole("button", { name: /공유 카드/ });
+  const hasOpen = (await openBtn.count()) > 0;
+  check("공유 카드 만들기 버튼 존재", hasOpen);
+  if (!hasOpen) return;
+  await openBtn.first().click();
+
+  const canvas = page.locator("canvas.dca-share__canvas");
+  const drawn = await canvas
+    .waitFor({ timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  check("공유 카드 캔버스 표시", drawn);
+  if (!drawn) return;
+
+  // 쇼츠 세로 포맷 — 백킹 해상도가 9:16 이어야 저장한 이미지가 릴스에 그대로 맞는다.
+  const size = await canvas.evaluate((c) => ({ w: c.width, h: c.height }));
+  check("카드가 9:16 세로 포맷", Math.abs(size.h / size.w - 16 / 9) < 0.01,
+        `${size.w}×${size.h}`);
+
+  // ★ 픽셀 검사 — 캔버스에 실제로 뭔가 그려졌는가.
+  //
+  //   처음엔 "서로 다른 색의 개수"로 셌는데 **판별력이 없었다**: 배경이 그라디언트라
+  //   아무것도 안 그려도 색이 수백 종이다(뮤테이션으로 확인 — 배경만 칠한 카드가
+  //   통과했다). 카드는 어두운 배경 + 밝은 글자/CTA 알약이므로 **밝은 픽셀의 비율**을
+  //   본다. 배경만 있으면 0%, 정상 카드는 CTA 알약(560×108)만으로도 2% 를 넘는다.
+  const brightPct = await canvas.evaluate((c) => {
+    const g = c.getContext("2d");
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    let bright = 0;
+    let total = 0;
+    for (let i = 0; i < d.length; i += 4 * 37) {  // 성능상 희소 샘플링
+      total += 1;
+      if (d[i] + d[i + 1] + d[i + 2] > 450) bright += 1;
+    }
+    return total ? (bright / total) * 100 : 0;
+  });
+  check("카드에 실제로 그려진 내용 있음", brightPct > 0.5,
+        `밝은 픽셀 ${brightPct.toFixed(2)}% — 사실상 배경만 있는 카드`);
+
+  // 캔버스는 스크린리더에 보이지 않는다 → 대체 텍스트가 카드의 핵심을 담아야 한다.
+  // (동시에 "무엇이 그려졌는가"를 검증할 수 있는 유일한 텍스트 경로다.)
+  const alt = (await canvas.getAttribute("aria-label")) ?? "";
+  for (const [what, re] of [
+    ["수익률", /%/],
+    ["원금", /원금/],
+    ["기간", /\d{4}-\d{2}/],
+    ["면책", /보장하지 않/],
+  ]) {
+    check(`카드 대체 텍스트에 ${what}`, re.test(alt), `aria-label="${alt.slice(0, 80)}"`);
+  }
+
+  // 원탭 저장/공유. 헤드리스에는 navigator.share 가 없어 다운로드 경로로 떨어진다 —
+  // 그 경로가 실제로 PNG 를 만들어 내는지 본다(canvas 오염 시 toBlob 이 던진다).
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 20000 }).catch(() => null),
+    page.locator(".dca-share__save").click(),
+  ]);
+  check("카드 이미지 저장(PNG) 동작", download !== null && /\.png$/.test(download.suggestedFilename()),
+        download ? `파일명 ${download.suggestedFilename()}` : "다운로드가 발생하지 않았다");
+
+  const status = await page
+    .locator("[data-testid='dca-share-status']")
+    .textContent({ timeout: 10000 })
+    .catch(() => null);
+  check("저장 결과 안내 표시", !!status && status.trim().length > 0,
+        "결과를 알려주지 않는다");
+
+  // ★ 최악 조건에서 작은 글씨가 잘리지 않는지.
+  //   가정·한계 문구 수는 조건에 따라 늘어난다(분기 근사 + 배당 재투자 요청 + 기간
+  //   잘림). 기본 조건만 보면 통과하고 실제 사용 조건에서 면책이 잘려 나간다 —
+  //   처음 렌더한 카드가 정확히 그 상태였다(마지막 줄이 CTA 알약에 잘림).
+  await dca.locator("select[aria-label='매수 주기']").selectOption("quarterly");
+  await dca.getByRole("checkbox", { name: /배당 재투자/ }).check();
+  await page.waitForTimeout(1200); // 자동 재계산 디바운스(350ms) + 조회
+  await canvas.waitFor();
+  const worst = await page.evaluate(() => {
+    const c = document.querySelector("canvas.dca-share__canvas");
+    return {
+      fit: c?.getAttribute("data-fit"),
+      notes: document.querySelectorAll(".dca-notes li").length,
+    };
+  });
+  check("최악 조건에서도 가정·한계가 카드에 다 들어감", worst.fit === "ok",
+        `data-fit=${worst.fit} (문구 ${worst.notes}개)`);
+  check("최악 조건에서 문구가 실제로 늘어남", worst.notes >= 6,
+        `${worst.notes}개 — 최악 조건이 재현되지 않아 위 검사가 무의미하다`);
+}
+
 async function main() {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 430, height: 900 } });
@@ -198,6 +324,8 @@ async function main() {
         check("테스트 발송 결과 표시", shown, "결과 영역이 나타나지 않았다");
       }
     }
+
+    await checkShareCard(page);
 
     check("브라우저 콘솔 에러 없음", consoleErrors.length === 0,
           consoleErrors.slice(0, 3).join(" | "));

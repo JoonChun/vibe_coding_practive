@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, getDca } from "../api";
 import type { DcaResponse } from "../types";
-
-/** 큰 금액 축약(억/만) — 좁은 카드 셀 넘침 방지. */
-const wonC = (n: number): string => {
-  const a = Math.abs(Math.round(n));
-  const s = n < 0 ? "-" : "";
-  if (a >= 1e8) return `${s}${a / 1e8 >= 10 ? (a / 1e8).toFixed(1) : (a / 1e8).toFixed(2)}억`;
-  if (a >= 1e4) return `${s}${Math.round(a / 1e4).toLocaleString("ko-KR")}만`;
-  return `${s}${a.toLocaleString("ko-KR")}`;
-};
+import { wonCompact as wonC } from "../utils/dcaShare";
+import { DcaShareCard } from "./DcaShareCard";
 
 /** 평가금액(면적) vs 누적 원금(점선) 미니 차트. */
 function DcaCurve({ data }: { data: DcaResponse["curve"] }) {
@@ -52,7 +45,7 @@ const FREQ_WORD: Record<Freq, string> = { weekly: "매주", monthly: "매월", q
  * 정량(주수)/정액(금액)·주기·기간·배당 재투자 선택. 최초 실행 후 컨트롤 변경 시 자동 재계산.
  * (배당 재투자는 백엔드 미연동이라 응답 notes 로 미반영을 고지한다.)
  */
-export function DcaCard({ code }: { code: string }) {
+export function DcaCard({ code, name }: { code: string; name?: string }) {
   const [mode, setMode] = useState<Mode>("qty");
   const [per, setPer] = useState("1");
   const [months, setMonths] = useState(120);
@@ -61,6 +54,7 @@ export function DcaCard({ code }: { code: string }) {
   const [data, setData] = useState<DcaResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const hasRun = useRef(false);
 
   async function run(
@@ -238,6 +232,18 @@ export function DcaCard({ code }: { code: string }) {
             {data.start_date && data.end_date ? `${data.start_date} ~ ${data.end_date} · ` : ""}
             과거 성과는 미래를 보장하지 않습니다.
           </p>
+
+          {/* 공유 카드는 9:16 세로라 화면을 크게 차지한다 — 기본은 접어두고, 누르면
+              그린다(필요할 때까지 캔버스 렌더 자체를 하지 않는다). */}
+          <button
+            type="button"
+            className="dca-share__toggle"
+            aria-expanded={shareOpen}
+            onClick={() => setShareOpen((v) => !v)}
+          >
+            {shareOpen ? "공유 카드 닫기" : "공유 카드 만들기"}
+          </button>
+          {shareOpen ? <DcaShareCard data={data} name={name ?? code} /> : null}
         </div>
       ) : (
         <p className="bt-card__hint">기간을 선택하면 정기 매수 결과를 계산합니다.</p>

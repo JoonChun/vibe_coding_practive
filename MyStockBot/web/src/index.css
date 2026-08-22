@@ -2765,6 +2765,69 @@ select:focus-visible {
   stroke-linejoin: round;
 }
 
+/* ── 공유 카드(§15.2c) ── */
+.dca-share__toggle {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  width: 100%;
+  margin-top: 0.75rem;
+  color: var(--on-primary);
+  background: var(--primary-container);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 0.65rem 0.9rem;
+  min-height: 44px; /* 터치 타깃 */
+  cursor: pointer;
+}
+
+.dca-share {
+  margin-top: 0.75rem;
+}
+
+/* 캔버스의 백킹 해상도는 1080×1920 고정(저장물). 화면에서는 폭에 맞춰 축소한다 —
+   `height: auto` 로 두면 내재 비율(9:16)이 그대로 유지된다. */
+.dca-share__canvas {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  margin: 0 auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--outline-variant);
+}
+
+.dca-share__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+.dca-share__save {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0.6rem 1.4rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.dca-share__save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dca-share__status {
+  margin: 0.5rem 0 0;
+  font-size: 0.74rem;
+  text-align: center;
+  color: var(--on-surface-variant);
+}
+
 /* ── UX 개선: 연결 재시도 · 토큰 온보딩 ── */
 .banner--error {
   display: flex;

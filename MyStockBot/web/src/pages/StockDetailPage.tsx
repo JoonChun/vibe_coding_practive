@@ -229,7 +229,7 @@ export default function StockDetailPage() {
         </div>
 
         <BacktestCard code={code} />
-        <DcaCard code={code} />
+        <DcaCard code={code} name={name} />
       </main>
 
       <footer className="app-footer">
