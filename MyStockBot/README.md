@@ -45,7 +45,7 @@
 | `/stocks/:code` | 상세 | 팩터 분해, 볼린저·RSI·MACD, 멀티 타임프레임 캔들차트, 백테스트·DCA |
 
 ### 알림
-- **판정 전환 알림** — 관심종목의 판정이 바뀌면 Slack·Gmail 로 알린다.
+- **판정 전환 알림** — 관심종목의 판정이 바뀌면 Discord·Slack·Gmail 로 알린다(동시 가능).
   오알림을 막는 게이트가 핵심이다(판정 없음 무시·측 변화만·히스테리시스·쿨다운·
   장 시간대 한정·발송 성공 시에만 기준선 이동) → [아래](#판정-전환-알림).
   **기본 비활성**
@@ -93,7 +93,7 @@ MyStockBot/
 │   ├── sheets.py            #   Google Sheets 연동
 │   ├── stock_master.py      #   전 종목 마스터 다운로드·파싱(검색용)
 │   ├── notifier.py          #   Gmail HTML 리포트·알림 발송
-│   ├── alert_channels.py    #   Slack Incoming Webhook 발송
+│   ├── alert_channels.py    #   Discord·Slack 웹훅 발송 + 마크업 방언
 │   └── pipeline.py          #   배치 수집 오케스트레이션
 ├── web/                     # React PWA
 ├── tests/                   # pytest
@@ -122,6 +122,7 @@ MyStockBot/
 | `SPREADSHEET_ID` | 크론·동기화 | 대상 Google Sheets ID |
 | `GOOGLE_CREDENTIALS_JSON` | 크론·동기화 | 서비스 계정 JSON 전체 |
 | `SENDER_EMAIL` / `NOTIFY_EMAIL` / `GMAIL_APP_PASSWORD` | 크론·알림 | Gmail 리포트·판정 전환 알림 발송 (2FA 앱 비밀번호 필수) |
+| `DISCORD_WEBHOOK_URL` | 알림 | Discord Webhook URL. **이 URL 자체가 비밀** — [주의사항](#판정-전환-알림) |
 | `SLACK_WEBHOOK_URL` | 알림 | Slack Incoming Webhook URL. **이 URL 자체가 비밀** — [주의사항](#판정-전환-알림) |
 | `DECISION_ALERT_ENABLED` | 알림 | 판정 전환 알림 켜기. **기본 off** |
 | `DECISION_ALERT_VIEWS` | 알림 | 감시할 판정. 허용값 `short`·`long`(대소문자·공백 무관, 콤마 구분). 기본 둘 다. 알 수 없는 값은 경고를 남기고 무시하며, 남는 값이 없으면 기본값으로 되돌린다 |
@@ -258,23 +259,45 @@ KIS_MINUTE_BACKFILL_DAYS=10     # 초기 백필 거래일 수(기본 10)
 
 ## 판정 전환 알림
 
-관심종목의 판정이 바뀌면 Slack·Gmail 로 알린다. **기본 비활성**
+관심종목의 판정이 바뀌면 Discord·Slack·Gmail 로 알린다. **기본 비활성**
 (`DECISION_ALERT_ENABLED=1` 로 켠다).
 
 수집 루프가 이미 전 종목 판정을 주기적으로 산출하므로, 사이클마다 판정을 비교해 전환을
 찾는다. 발송은 수집 스레드에서 `collector._state_lock` **밖에서** 하고, 이 경로에서 KIS 를
 다시 부르지 않는다(전역 스로틀이 0.5초씩 잡아 사이클을 늘리기 때문).
 
-### Slack 연결 (권장)
+### 어느 채널을 쓸까
 
-토큰이 없어 갱신 로직이 필요 없다 — PRD 가 카카오톡 알림을 접었던 이유(토큰 갱신 부담)가
-Incoming Webhook 에는 아예 존재하지 않는다.
+**Discord 를 권한다** — 개인 서버를 즉시 만들 수 있어 워크스페이스 관리자 승인이나 앱 생성
+절차가 없고, 멘션 차단이 **구조적으로** 된다(아래). Slack 은 이미 쓰는 워크스페이스가 있을 때
+유리하다. 둘 다 켜도 되고, 이메일과도 병행된다.
+
+두 채널 모두 **토큰이 없어** 갱신 로직이 필요 없다 — PRD 가 카카오톡 알림을 접었던
+이유(토큰 갱신 부담)가 웹훅에는 아예 존재하지 않는다.
+
+| | Discord | Slack |
+|---|---|---|
+| 웹훅 만들기 | 채널 설정 → 연동 → 웹훅 (앱 생성 없음) | 앱 생성 → Incoming Webhooks 활성화 → 채널 선택 |
+| 본문 필드 | `content` (**최대 2000자**) | `text` |
+| 성공 판정 | HTTP 200 (`?wait=true`) / 204 | HTTP 200 **AND** 본문 `ok` |
+| 멘션 주입 차단 | `allowed_mentions:{"parse":[]}` — **구조적** | 이스케이프 — 텍스트 수준 |
+| 굵게 문법 | `**굵게**` | `*굵게*` |
+
+> Discord 쪽이 멘션 차단에서 더 강하다. 텍스트 이스케이프는 문자 조합으로 우회를 시도할 수
+> 있지만 `allowed_mentions` 는 서버가 파싱 자체를 하지 않으므로 우회 대상이 없다.
+> 그리고 `?wait=true` 를 붙이는 이유가 있다 — 공식 문서에 `wait=false` 면
+> *"a message that is not saved does not return an error"* 라고 적혀 있어서, 조용히 버려진
+> 메시지를 성공으로 읽으면 "발송 성공 시에만 기준선 이동" 규칙이 그 전환을 영구 유실시킨다.
+
+### 연결 절차
 
 ```bash
-# 1) Slack 앱 생성 → Incoming Webhooks 활성화 → 채널 선택 → Webhook URL 복사
-#    (api.slack.com/apps → "Create New App" → "Incoming Webhooks")
+# 1) 웹훅 URL 만들기 (원하는 쪽만 해도 된다)
+#    Discord: 서버 → 채널 설정(⚙) → 연동 → 웹훅 → 새 웹훅 → URL 복사
+#    Slack  : api.slack.com/apps → Create New App → Incoming Webhooks → 채널 선택
 
 # 2) .env 에 추가 — 이 URL 자체가 자격증명이다. 절대 커밋하지 말 것(.env 는 gitignore 됨)
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/.../...
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
 DECISION_ALERT_ENABLED=1
 
@@ -282,7 +305,7 @@ DECISION_ALERT_ENABLED=1
 #    (이 엔드포인트는 ENABLED 플래그와 장 시간대 게이트를 우회한다)
 curl -X POST localhost:8000/api/alerts/test \
      -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
-# → {"channels":["slack"],"results":{"slack":true},"detail":"성공: slack"}
+# → {"channels":["discord"],"results":{"discord":true},"detail":"성공: discord"}
 
 # 4) 설정·기준선 확인
 curl localhost:8000/api/alerts/config -H "Authorization: Bearer $MYSTOCKBOT_API_TOKEN"
@@ -294,12 +317,19 @@ SMTP 30초를 순차로 블로킹하는 동기 핸들러라, 제한이 없으면
 다른 동기 엔드포인트(`/api/health`·`/api/watchlist` 등)까지 함께 멈춘다.
 
 > ⚠️ **실발송 미검증.** 이 저장소는 Slack 도메인(`hooks.slack.com`·`api.slack.com`·
-> `docs.slack.dev`)이 이그레스 프록시에서 **전부 403 CONNECT 로 막힌** 환경에서 개발되었다.
-> 그래서 공식 문서 페이지도 열 수 없었고 실제 발송도 해보지 못했다. 규격은 Slack 이 직접
-> 배포하는 SDK **소스 코드**에서 교차 확인했다(`slackapi/python-slack-sdk` 의
-> `webhook/internal_utils.py` → 인증 헤더 없음·Content-Type,
-> `slackapi/java-slack-sdk` → 성공 판정은 HTTP 200 + 본문 문자열 `ok`).
-> 위 3번 테스트 발송이 **유일한 실검증 경로**다.
+> `docs.slack.dev`)과 **Discord 도메인(`discord.com`·`discord.dev`)이** 이그레스 프록시에서
+> **전부 403 CONNECT 로 막힌** 환경에서 개발되었다.
+> 그래서 공식 문서 페이지도 열 수 없었고 실제 발송도 해보지 못했다. 규격은 각 벤더의
+> **1차 소스**에서 교차 확인했다:
+> - Slack — 공식 SDK 소스(`slackapi/python-slack-sdk` `webhook/internal_utils.py` → 인증
+>   헤더 없음·Content-Type, `slackapi/java-slack-sdk` → 성공 = HTTP 200 + 본문 `ok`)
+> - Discord — 공식 문서 저장소(`discord/discord-api-docs`
+>   `developers/resources/webhook.mdx` → `content` 2000자·`wait` 파라미터·204,
+>   `.../message.mdx` → `allowed_mentions` 기본값과 `{"parse":[]}`)
+>
+> 서버를 실제로 띄워 **요청을 시도하는 것까지는 확인했다** — 두 채널 모두 채널로 인식되고
+> POST 를 보내며, 프록시 차단으로 실패할 때 그 이유를 로그에 남기고 웹훅 URL 은 새지 않는다.
+> 남은 건 메시지가 실제로 도착하는지이고, 위 3번 테스트 발송이 **유일한 실검증 경로**다.
 
 Gmail 은 크론 리포트와 같은 자격증명(`SENDER_EMAIL`/`NOTIFY_EMAIL`/`GMAIL_APP_PASSWORD`)을
 쓴다. 둘 다 설정하면 두 채널로 모두 보내고, 하나라도 성공하면 발송으로 간주한다.
@@ -373,8 +403,8 @@ Gmail 은 크론 리포트와 같은 자격증명(`SENDER_EMAIL`/`NOTIFY_EMAIL`/
 - 메인 대시보드 잔여 블록: 지수 스파크라인, 투자자 매매동향, 매크로 참고(환율·나스닥)
 - 단일 사용자·단일 공유 토큰 구조 (다중 사용자 불가)
 - **웹푸시 미구현** — 판정 전환 알림은 Slack·Gmail 로만 간다(브라우저 푸시 없음)
-- **Slack 실발송 미검증** — 개발 환경에서 Slack 도메인이 전부 차단돼 규격은 공식 SDK
-  소스로만 확인했다. `POST /api/alerts/test` 로 각자 확인해야 한다
+- **Discord·Slack 실발송 미검증** — 개발 환경에서 두 벤더 도메인이 전부 차단돼 규격은
+  1차 소스(공식 문서 저장소·공식 SDK)로만 확인했다. `POST /api/alerts/test` 로 각자 확인해야 한다
 - DCA 공유 카드·해외 종목 미지원, 모의투자 실현손익·수수료 미반영
 - 배포 하드닝 미착수 (컨테이너 root 실행, 의존성 상한 미고정)
 

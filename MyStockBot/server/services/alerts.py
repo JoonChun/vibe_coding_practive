@@ -324,33 +324,93 @@ def _price_suffix(t: Transition) -> str:
     return f" · {text}" if text else ""
 
 
-def render_slack_text(
-    transitions: list[Transition], now: datetime, total: int | None = None
+def render_text(
+    transitions: list[Transition],
+    now: datetime,
+    total: int | None = None,
+    dialect: alert_channels.Dialect = alert_channels.SLACK_DIALECT,
 ) -> str:
-    """Slack mrkdwn 본문. **굵게는 `*한쪽별표*`** 다 — 마크다운의 `**` 가 아니다.
+    """채널 본문. 마크업 문법은 `dialect` 가 결정한다.
+
+    **굵게 문법이 채널마다 다르다** — Slack mrkdwn 은 `*굵게*`(별표 하나), Discord 는
+    표준 마크다운의 `**굵게**`. 서로 바꿔 보내면 별표가 글자로 보인다. 그래서 렌더러가
+    문법을 하드코딩하지 않고 방언에서 받아 쓴다.
 
     `transitions` 는 **이미 잘린(발송 대상) 목록**이고 `total` 은 이번 사이클의 전체
     전환 수다. 여기서 자르지 않는 이유: 예전에는 렌더러가 잘랐는데 호출부는 전체 목록으로
     기준선을 옮겨서, 어느 채널에도 실린 적 없는 전환이 '알린 판정'으로 기록되고 다시는
     보고되지 않았다(게이트 ⑧ 위반). 자르는 주체를 호출부 하나로 모았다.
 
-    보간되는 값은 전부 `escape_mrkdwn` 을 통과한다 — 종목명이 외부 입력이고 `<!channel>`
-    이 실제 멘션 제어 시퀀스라서다(alert_channels.escape_mrkdwn 주석 참고).
-    의도한 `*굵게*`·`_기울임_` 마크업은 이스케이프 대상이 아니므로 줄 단위로 감싸지 않는다.
+    보간되는 값은 전부 방언의 이스케이프를 통과한다 — 종목명이 외부 입력이기 때문이다.
+    의도한 굵게·기울임 마크업은 이스케이프 대상이 아니므로 줄 단위로 감싸지 않는다.
+
+    마지막 방어선으로 `dialect.max_chars` 를 넘으면 잘라낸다. 넘긴 채로 보내면 Discord 는
+    400 을 주고, 알림 엔진은 실패를 재시도하므로 **사이클마다 영구히 실패**한다.
+    정상 경로에서는 호출부가 행 수를 미리 맞추므로(`fit_rows`) 여기까지 오지 않는다.
     """
-    esc = alert_channels.escape_mrkdwn
+    text = _render_raw(transitions, now, total, dialect)
+    if dialect.max_chars is not None and len(text) > dialect.max_chars:
+        logger.warning(
+            "[alerts] %s 본문이 상한(%d자)을 넘어 잘라 보냅니다 — 전환 %d건",
+            dialect.name, dialect.max_chars, len(transitions),
+        )
+        text = text[: dialect.max_chars - 1] + "…"
+    return text
+
+
+def _render_raw(
+    transitions: list[Transition],
+    now: datetime,
+    total: int | None,
+    dialect: alert_channels.Dialect,
+) -> str:
+    """길이 상한을 적용하지 **않은** 본문.
+
+    `fit_rows` 가 이걸 쓴다. `render_text` 를 쓰면 그쪽이 이미 잘라서 돌려주므로
+    `len(...) <= max_chars` 가 **항상 참**이 되어 넘침을 영원히 감지하지 못한다
+    (실제로 그렇게 짰다가 테스트에서 잡혔다 — 안전장치가 계측을 무력화한 경우다).
+    """
+    esc = dialect.escape
+    bold = dialect.bold
     total = len(transitions) if total is None else total
-    lines = [f"*MyStockBot 판정 전환* {total}건 · {now.strftime('%m/%d %H:%M')}"]
+
+    lines = [f"{bold('MyStockBot 판정 전환')} {total}건 · {now.strftime('%m/%d %H:%M')}"]
     for t in transitions:
         lines.append(
-            f"• *{esc(t.name)}*({esc(t.code)}) {esc(t.kind_label)} "
-            f"{esc(t.before)} → *{esc(t.after)}*{esc(_price_suffix(t))}"
+            f"• {bold(esc(t.name))}({esc(t.code)}) {esc(t.kind_label)} "
+            f"{esc(t.before)} → {bold(esc(t.after))}{esc(_price_suffix(t))}"
         )
     remaining = total - len(transitions)
     if remaining > 0:
         lines.append(f"… 나머지 {remaining}건은 다음 사이클에 이어서 알립니다")
-    lines.append(f"_{_INTRADAY_CAVEAT}_")
+    lines.append(dialect.italic(_INTRADAY_CAVEAT))
     return "\n".join(lines)
+
+
+def fit_rows(
+    transitions: list[Transition],
+    now: datetime,
+    total: int,
+    dialect: alert_channels.Dialect,
+    cap: int,
+) -> int:
+    """`dialect.max_chars` 안에 들어가는 최대 행 수(최소 1, 최대 `cap`).
+
+    Discord 의 2000자 제한이 실제로 걸린다: 상한 30건 × 행당 60자면 넘는다. 넘기면 400
+    이고, 실패한 발송은 다음 사이클에 재시도되므로 **고칠 때까지 계속 실패**한다.
+    행 수를 미리 줄여 보내면 넘친 만큼은 다음 사이클로 자연 이월된다.
+    """
+    if dialect.max_chars is None or cap <= 0:
+        return max(0, cap)
+    fitted = 0
+    for k in range(1, cap + 1):
+        if len(_render_raw(transitions[:k], now, total, dialect)) <= dialect.max_chars:
+            fitted = k
+        else:
+            break
+    # 1건조차 넘치는 병리적 경우(비정상적으로 긴 종목명)에도 1건은 보낸다 —
+    # render_text 가 마지막에 잘라내므로 400 은 나지 않는다.
+    return max(1, fitted)
 
 
 def render_email(
@@ -358,7 +418,7 @@ def render_email(
 ) -> tuple[str, str]:
     """(제목, HTML 본문). 종목명은 외부 입력이라 이스케이프한다.
 
-    `render_slack_text` 와 동일하게 **자르지 않는다** — 호출부가 자른 목록을 받는다.
+    `render_text` 와 동일하게 **자르지 않는다** — 호출부가 자른 목록을 받는다.
     """
     total = len(transitions) if total is None else total
     shown = transitions
@@ -415,9 +475,7 @@ def render_email(
 
 def channels() -> list[str]:
     """설정된 알림 채널 이름 목록."""
-    names = []
-    if alert_channels.slack_enabled():
-        names.append("slack")
+    names = [c.name for c in alert_channels.enabled_channels()]
     if notifier.email_enabled():
         names.append("email")
     return names
@@ -430,11 +488,14 @@ def dispatch(
 
     `transitions` 는 **실제로 실어 보낼 목록**이고 `total` 은 이번 사이클 전체 건수다
     (잘린 경우 본문에 잔여 안내를 넣기 위함). 자르는 주체는 호출부 하나다.
+
+    채널마다 마크업 방언이 달라 본문을 각각 렌더링하지만, **실어 보내는 전환 목록은 같다** —
+    채널별로 다르게 자르면 어느 채널에 무엇이 갔는지가 갈라져 기준선 이동 판단이 모호해진다.
     """
     results: dict[str, bool] = {}
-    if alert_channels.slack_enabled():
-        results["slack"] = alert_channels.send_slack(
-            render_slack_text(transitions, now, total)
+    for channel in alert_channels.enabled_channels():
+        results[channel.name] = channel.send(
+            render_text(transitions, now, total, channel.dialect)
         )
     if notifier.email_enabled():
         subject, html_body = render_email(transitions, now, total)
@@ -491,7 +552,14 @@ def process_cycle(items: list[dict], now: datetime | None = None) -> dict:
     #     이제 잘린 꼬리는 _pending 에 count>=confirm 상태로 남고 notified_at 도
     #     건드려지지 않으므로 다음 사이클에 그대로 발화한다 = 자연 페이지네이션.
     total = len(transitions)
-    shown = transitions[:DECISION_ALERT_MAX_ROWS] if DECISION_ALERT_MAX_ROWS > 0 else transitions
+    cap = DECISION_ALERT_MAX_ROWS if DECISION_ALERT_MAX_ROWS > 0 else total
+    cap = min(cap, total)
+    # 채널마다 본문 길이 상한이 다르므로(Discord 2000자) **가장 빡빡한 쪽**에 맞춘다.
+    # 채널별로 다르게 자르면 어느 채널에 무엇이 실렸는지가 갈라져, 기준선을 어디까지
+    # 옮겨야 하는지 판단할 수 없게 된다. 자르는 지점은 끝까지 이 한 곳이다.
+    for channel in alert_channels.enabled_channels():
+        cap = min(cap, fit_rows(transitions, now, total, channel.dialect, cap))
+    shown = transitions[:cap]
 
     results = dispatch(shown, now, total)
     delivered = [name for name, ok in results.items() if ok]

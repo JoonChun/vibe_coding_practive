@@ -301,3 +301,248 @@ def test_os_error_reason_carrying_a_url_is_dropped(monkeypatch, webhook, caplog)
 
     assert "hooks.slack.com" not in caplog.text
     assert WEBHOOK.rsplit("/", 1)[-1] not in caplog.text
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Discord Webhook — 규격은 discord/discord-api-docs 원문으로 확인했다
+# (developers/resources/webhook.mdx · .../message.mdx). 상세 근거는
+# src/alert_channels.py 모듈 주석 참고.
+# ══════════════════════════════════════════════════════════════════════
+
+# 가짜 값. Slack 쪽과 같은 이유로 리터럴을 피해 조립한다(푸시 보호 + 실수 방지).
+DISCORD_WEBHOOK = "/".join([
+    "https://discord.com/api/webhooks", "1" * 19, "d" * 68,
+])
+
+
+@pytest.fixture
+def discord(monkeypatch):
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK)
+
+
+def _capture_discord(monkeypatch, captured):
+    def fake_urlopen(request, timeout=None):
+        captured["url"] = request.full_url
+        captured["method"] = request.method
+        captured["headers"] = {k.lower(): v for k, v in request.header_items()}
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return _Resp(204, "")
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", fake_urlopen)
+
+
+# ── URL 검증 ──
+
+def test_discord_disabled_without_env(monkeypatch):
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    assert alert_channels.discord_enabled() is False
+    assert alert_channels.send_discord("hi") is False
+
+
+def test_discord_enabled_with_valid_url(discord):
+    assert alert_channels.discord_enabled() is True
+
+
+def test_discord_accepts_legacy_discordapp_host(monkeypatch):
+    """discordapp.com 은 구 도메인이지만 예전에 만든 웹훅 URL 이 여전히 동작한다."""
+    monkeypatch.setenv(
+        "DISCORD_WEBHOOK_URL",
+        DISCORD_WEBHOOK.replace("discord.com", "discordapp.com"),
+    )
+    assert alert_channels.discord_enabled() is True
+
+
+@pytest.mark.parametrize("bad", [
+    "https://evil.example.com/api/webhooks/1/2",
+    "https://discord.com/oauth2/authorize",          # 호스트는 맞지만 웹훅 경로가 아니다
+    "http://discord.com/api/webhooks/1/2",           # 평문 HTTP
+])
+def test_discord_rejects_wrong_url(monkeypatch, caplog, bad):
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", bad)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.discord_enabled() is False
+    assert "evil.example.com" not in caplog.text
+
+
+# ── 요청 형식(검증된 규격) ──
+
+def test_discord_request_shape(discord, monkeypatch):
+    captured = {}
+    _capture_discord(monkeypatch, captured)
+
+    assert alert_channels.send_discord("판정 전환 1건") is True
+
+    assert captured["method"] == "POST"
+    # 공식 문서: "this call does not require authentication" — 토큰이 URL 경로에 있다.
+    assert "authorization" not in captured["headers"]
+    assert captured["headers"]["content-type"] == "application/json;charset=utf-8"
+    # 본문 필드는 content 다 (Slack 의 text 가 아니다).
+    assert captured["body"]["content"] == "판정 전환 1건"
+    assert "text" not in captured["body"]
+
+
+def test_discord_always_sends_wait_true(discord, monkeypatch):
+    """wait=false 면 "a message that is not saved does not return an error" —
+    조용히 버려진 메시지를 성공으로 읽으면 그 전환이 영구 유실된다."""
+    captured = {}
+    _capture_discord(monkeypatch, captured)
+
+    alert_channels.send_discord("hi")
+
+    assert "wait=true" in captured["url"]
+
+
+def test_discord_preserves_existing_query_string(monkeypatch):
+    """사용자가 thread_id 등을 붙여 둔 URL 도 깨지지 않아야 한다."""
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK + "?thread_id=123")
+    captured = {}
+    _capture_discord(monkeypatch, captured)
+
+    alert_channels.send_discord("hi")
+
+    assert "thread_id=123" in captured["url"]
+    assert "wait=true" in captured["url"]
+
+
+def test_discord_blocks_all_mentions_structurally(discord, monkeypatch):
+    """★ 이게 Discord 경로의 핵심 보안 장치다.
+
+    웹훅 기본값은 {"parse": ["users"]} 라서 종목명에 섞인 유저 멘션이 실제로 핑을 보낸다.
+    {"parse": []} 는 텍스트 이스케이프와 달리 문자 조합으로 우회할 수 없다.
+    공식 문서도 user-generated string 에 allowed_mentions 사용을 권한다.
+    """
+    captured = {}
+    _capture_discord(monkeypatch, captured)
+
+    alert_channels.send_discord("@everyone <@1234> @here 다 눌러도 안 된다")
+
+    assert captured["body"]["allowed_mentions"] == {"parse": []}
+
+
+# ── 성공/실패 판정 ──
+
+@pytest.mark.parametrize("status,expected", [
+    (204, True),   # wait 가 무시된 경우 (관용 허용)
+    (200, True),   # wait=true 의 정상 응답
+    (400, False),
+    (404, False),
+])
+def test_discord_success_codes(discord, monkeypatch, status, expected):
+    monkeypatch.setattr(
+        alert_channels.urllib.request, "urlopen",
+        lambda request, timeout=None: _Resp(status, "" if status == 204 else "{}"),
+    )
+
+    assert alert_channels.send_discord("hi") is expected
+
+
+def test_discord_http_error_logs_rate_limit_hint(discord, monkeypatch, caplog):
+    """429 는 Retry-After 헤더 + JSON retry_after 로 온다(공식 rate-limits 문서)."""
+    def boom(request, timeout=None):
+        raise urllib.error.HTTPError(
+            DISCORD_WEBHOOK, 429, "Too Many Requests",
+            {"Retry-After": "64.57"}, io.BytesIO(b'{"retry_after": 64.57, "global": false}'),
+        )
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.WARNING):
+        assert alert_channels.send_discord("hi") is False
+
+    assert "429" in caplog.text
+    assert "Retry-After=64.57" in caplog.text
+
+
+def test_discord_network_error_returns_false(discord, monkeypatch):
+    def boom(request, timeout=None):
+        raise urllib.error.URLError(OSError("Tunnel connection failed: 403 Forbidden"))
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    assert alert_channels.send_discord("hi") is False
+
+
+# ── 보안: Discord 웹훅 URL 도 로그로 새지 않는다 ──
+
+@pytest.mark.parametrize("failure", ["http", "url", "generic"])
+def test_discord_webhook_url_never_appears_in_logs(discord, monkeypatch, caplog, failure):
+    """웹훅 URL 의 마지막 조각이 토큰이다 — 노출되면 그 채널에 누구나 보낼 수 있다."""
+    token = DISCORD_WEBHOOK.rsplit("/", 1)[-1]
+
+    def boom(request, timeout=None):
+        if failure == "http":
+            raise urllib.error.HTTPError(
+                DISCORD_WEBHOOK, 403, "Forbidden", {}, io.BytesIO(b"nope")
+            )
+        if failure == "url":
+            raise urllib.error.URLError(OSError(f"cannot reach {DISCORD_WEBHOOK}"))
+        raise RuntimeError(f"boom {DISCORD_WEBHOOK}")
+
+    monkeypatch.setattr(alert_channels.urllib.request, "urlopen", boom)
+
+    with caplog.at_level(logging.DEBUG):
+        alert_channels.send_discord("hi")
+
+    assert token not in caplog.text
+    assert "discord.com" not in caplog.text
+
+
+# ── 마크다운 이스케이프 (표시 위생 — 보안은 allowed_mentions 가 담당) ──
+
+@pytest.mark.parametrize("raw,expected", [
+    ("**굵게**", "\\*\\*굵게\\*\\*"),
+    ("||스포||", "\\|\\|스포\\|\\|"),
+    ("`코드`", "\\`코드\\`"),
+    ("a_b_c", "a\\_b\\_c"),
+    ("~취소~", "\\~취소\\~"),
+])
+def test_escape_markdown(raw, expected):
+    assert alert_channels.escape_markdown(raw) == expected
+
+
+def test_escape_markdown_backslash_first():
+    """`\\` 를 먼저 처리해야 한다 — 나중이면 앞서 넣은 백슬래시를 다시 이스케이프한다."""
+    assert alert_channels.escape_markdown("a\\*b") == "a\\\\\\*b"
+    assert alert_channels.escape_markdown(None) == ""
+
+
+# ── 방언: 굵게 문법이 채널마다 다르다 ──
+
+def test_dialects_use_different_bold_syntax():
+    """서로 바꿔 보내면 별표가 글자로 보인다 — 조용히 못생겨지는 종류의 버그."""
+    assert alert_channels.SLACK_DIALECT.bold("x") == "*x*"
+    assert alert_channels.DISCORD_DIALECT.bold("x") == "**x**"
+
+
+def test_discord_dialect_declares_the_verified_char_cap():
+    """공식 문서 webhook.mdx: content "up to 2000 characters"."""
+    assert alert_channels.DISCORD_DIALECT.max_chars == 2000
+    # Slack 상한은 1차 출처로 확인하지 못했다 — 추측한 숫자를 넣지 않는다.
+    assert alert_channels.SLACK_DIALECT.max_chars is None
+
+
+# ── 채널 레지스트리 ──
+
+def test_enabled_channels_reflects_env(monkeypatch):
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    assert alert_channels.enabled_channels() == ()
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK)
+    assert [c.name for c in alert_channels.enabled_channels()] == ["discord"]
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", WEBHOOK)
+    assert [c.name for c in alert_channels.enabled_channels()] == ["slack", "discord"]
+
+
+def test_channel_registry_is_rebuilt_per_call(monkeypatch):
+    """모듈 상수로 두면 import 시점 함수 객체를 붙잡아 교체가 조용히 무효화된다.
+
+    이 저장소가 반복해서 물린 패턴이라 회귀로 잠근다.
+    """
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: False)
+
+    assert [c.name for c in alert_channels.enabled_channels()] == ["slack"]

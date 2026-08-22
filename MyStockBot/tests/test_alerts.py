@@ -449,7 +449,7 @@ def test_alert_path_never_calls_kis(monkeypatch, wired):
 def test_slack_text_uses_single_asterisk_bold():
     """Slack mrkdwn 의 굵게는 `*bold*` 다. `**bold**` 는 별표가 그대로 보인다."""
     t = alerts.Transition("005930", "삼성전자", "long", dr.VIEW_HOLD, dr.VIEW_BUY, 71200.0, 1.83)
-    text = alerts.render_slack_text([t], NOW)
+    text = alerts.render_text([t], NOW)
 
     assert "**" not in text
     assert "*삼성전자*(005930) 장기 관망 → *매수*" in text
@@ -467,7 +467,7 @@ def test_slack_text_reports_total_and_deferred_count():
         alerts.Transition(f"00000{i}", f"종목{i}", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
         for i in range(2)
     ]
-    text = alerts.render_slack_text(ts, NOW, total=5)
+    text = alerts.render_text(ts, NOW, total=5)
 
     assert "판정 전환* 5건" in text
     assert text.count("•") == 2
@@ -488,7 +488,7 @@ def test_email_escapes_stock_names():
 def test_missing_price_renders_without_crashing():
     t = alerts.Transition("005930", "삼성전자", "short", dr.VIEW_BUY, dr.VIEW_SELL, None, None)
 
-    assert "삼성전자" in alerts.render_slack_text([t], NOW)
+    assert "삼성전자" in alerts.render_text([t], NOW)
     subject, html_body = alerts.render_email([t], NOW)
     assert "판정 전환 1건" in subject
     assert "단기" in html_body
@@ -626,7 +626,7 @@ def test_renderers_do_not_slice_on_their_own():
         alerts.Transition(f"00000{i}", f"종목{i}", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
         for i in range(5)
     ]
-    text = alerts.render_slack_text(ts, NOW, total=5)
+    text = alerts.render_text(ts, NOW, total=5)
 
     assert text.count("•") == 5, "렌더러가 자체적으로 잘랐다"
     assert "다음 사이클" not in text
@@ -643,7 +643,7 @@ def test_slack_escapes_mention_control_sequence():
     t = alerts.Transition(
         "005930", "삼성전자<!channel>", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None
     )
-    text = alerts.render_slack_text([t], NOW)
+    text = alerts.render_text([t], NOW)
 
     assert "<!channel>" not in text
     assert "&lt;!channel&gt;" in text
@@ -651,7 +651,7 @@ def test_slack_escapes_mention_control_sequence():
 
 def test_slack_escapes_ampersand():
     t = alerts.Transition("012450", "S&T모티브", "long", dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
-    text = alerts.render_slack_text([t], NOW)
+    text = alerts.render_text([t], NOW)
 
     assert "S&amp;T모티브" in text
 
@@ -659,7 +659,7 @@ def test_slack_escapes_ampersand():
 def test_slack_keeps_intended_markup():
     """이스케이프가 의도한 `*굵게*` 마크업 구조를 무너뜨리지 않아야 한다."""
     t = alerts.Transition("005930", "삼성전자", "long", dr.VIEW_HOLD, dr.VIEW_BUY, 71200.0, 1.83)
-    text = alerts.render_slack_text([t], NOW)
+    text = alerts.render_text([t], NOW)
 
     assert "*삼성전자*(005930)" in text
     assert "*매수*" in text
@@ -678,9 +678,184 @@ def test_escape_mrkdwn_order():
 ])
 def test_non_finite_prices_do_not_leak_into_messages(close, pct):
     t = alerts.Transition("005930", "삼성전자", "long", dr.VIEW_HOLD, dr.VIEW_BUY, close, pct)
-    text = alerts.render_slack_text([t], NOW)
+    text = alerts.render_text([t], NOW)
     _, html_body = alerts.render_email([t], NOW)
 
     for out in (text, html_body):
         assert "nan" not in out.lower()
         assert "inf" not in out.lower()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 다중 채널 (Slack + Discord) — 방언 차이와 길이 상한
+# ══════════════════════════════════════════════════════════════════════
+
+def _transitions(n, name="종목"):
+    return [
+        alerts.Transition(f"{i:06d}", f"{name}{i}", "long",
+                          dr.VIEW_HOLD, dr.VIEW_BUY, 71200.0, 1.83)
+        for i in range(n)
+    ]
+
+
+def test_discord_dialect_uses_double_asterisk_bold():
+    """Slack 은 `*굵게*`, Discord 는 `**굵게**` — 바꿔 보내면 별표가 글자로 보인다."""
+    t = _transitions(1, "삼성전자")[0]
+
+    slack = alerts.render_text([t], NOW, dialect=alert_channels.SLACK_DIALECT)
+    discord = alerts.render_text([t], NOW, dialect=alert_channels.DISCORD_DIALECT)
+
+    assert "*삼성전자0*(000000)" in slack and "**삼성전자0**" not in slack
+    assert "**삼성전자0**(000000)" in discord
+
+
+def test_discord_escapes_markdown_not_html_entities():
+    """채널마다 이스케이프 규칙이 다르다 — Slack 엔티티를 Discord 에 보내면 글자로 보인다."""
+    t = alerts.Transition("012450", "S&T*모티브*", "long",
+                          dr.VIEW_HOLD, dr.VIEW_BUY, None, None)
+
+    slack = alerts.render_text([t], NOW, dialect=alert_channels.SLACK_DIALECT)
+    discord = alerts.render_text([t], NOW, dialect=alert_channels.DISCORD_DIALECT)
+
+    assert "S&amp;T" in slack            # Slack: HTML 엔티티
+    assert "&amp;" not in discord        # Discord: 엔티티가 아니라 백슬래시
+    assert "S&T\\*모티브\\*" in discord
+
+
+def test_discord_body_stays_within_2000_chars():
+    """상한을 넘기면 400 이고, 실패한 발송은 재시도되므로 사이클마다 계속 실패한다."""
+    text = alerts.render_text(
+        _transitions(30, "아주아주긴종목명" * 4), NOW, total=30,
+        dialect=alert_channels.DISCORD_DIALECT,
+    )
+
+    assert len(text) <= 2000
+
+
+def test_fit_rows_shrinks_for_discord_but_not_slack():
+    ts = _transitions(30, "종목명이좀긴편" * 3)
+
+    discord_rows = alerts.fit_rows(ts, NOW, 30, alert_channels.DISCORD_DIALECT, 30)
+    slack_rows = alerts.fit_rows(ts, NOW, 30, alert_channels.SLACK_DIALECT, 30)
+
+    assert discord_rows < 30, "Discord 2000자 상한이 행 수를 줄이지 못했다"
+    assert discord_rows >= 1
+    # Slack 상한은 확인하지 못해 None 이므로 cap 을 그대로 쓴다.
+    assert slack_rows == 30
+
+
+def test_fit_rows_always_allows_at_least_one():
+    """1건조차 넘치는 병리적 종목명에서도 0건을 반환하면 알림이 영구 정지한다."""
+    absurd = [alerts.Transition("000000", "가" * 5000, "long",
+                                dr.VIEW_HOLD, dr.VIEW_BUY, None, None)]
+
+    assert alerts.fit_rows(absurd, NOW, 1, alert_channels.DISCORD_DIALECT, 1) == 1
+    # render 가 마지막에 잘라내므로 400 은 나지 않는다.
+    assert len(alerts.render_text(absurd, NOW, 1, alert_channels.DISCORD_DIALECT)) <= 2000
+
+
+def test_dispatch_sends_each_channel_its_own_dialect(monkeypatch, wired):
+    sent = {}
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_slack",
+                        lambda text, **k: sent.__setitem__("slack", text) or True)
+    monkeypatch.setattr(alert_channels, "send_discord",
+                        lambda text: sent.__setitem__("discord", text) or True)
+
+    results = alerts.dispatch(_transitions(1, "삼성전자"), NOW, total=1)
+
+    assert results == {"slack": True, "discord": True}
+    assert "*삼성전자0*" in sent["slack"] and "**삼성전자0**" not in sent["slack"]
+    assert "**삼성전자0**" in sent["discord"]
+
+
+def test_both_channels_receive_the_same_transitions(monkeypatch, wired):
+    """채널별로 다르게 자르면 어느 채널에 무엇이 갔는지 갈라져 기준선 판단이 모호해진다.
+
+    본문은 방언 때문에 다르지만 **실린 전환 목록은 같아야** 한다.
+    """
+    monkeypatch.setattr(alerts, "DECISION_ALERT_MAX_ROWS", 5)
+    sent = {}
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_slack",
+                        lambda text, **k: sent.__setitem__("slack", text) or True)
+    monkeypatch.setattr(alert_channels, "send_discord",
+                        lambda text: sent.__setitem__("discord", text) or True)
+
+    codes = [f"{i:06d}" for i in range(5)]
+    wired.state = {
+        (c, "long"): {
+            "view": dr.VIEW_HOLD, "fund_mask": 0b111, "source": "kis",
+            "notified_at": None,
+            "updated_at": NOW.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        for c in codes
+    }
+    items = [_item(code=c, name=f"종목{c}", long=dr.VIEW_BUY) for c in codes]
+
+    result = alerts.process_cycle(items, NOW)
+
+    assert result["sent"] == 5
+    # 두 본문 모두 같은 5개 종목코드를 담고 있다.
+    for code in codes:
+        assert code in sent["slack"], f"slack 에 {code} 누락"
+        assert code in sent["discord"], f"discord 에 {code} 누락"
+
+
+def test_tighter_channel_limit_drives_the_shared_cap(monkeypatch, wired):
+    """Discord 2000자가 걸리면 Slack 도 같은 수만 받는다(자르는 지점은 한 곳)."""
+    monkeypatch.setattr(alerts, "DECISION_ALERT_MAX_ROWS", 30)
+    sent = {}
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_slack",
+                        lambda text, **k: sent.__setitem__("slack", text) or True)
+    monkeypatch.setattr(alert_channels, "send_discord",
+                        lambda text: sent.__setitem__("discord", text) or True)
+
+    long_name = "아주아주긴종목명" * 4
+    codes = [f"{i:06d}" for i in range(30)]
+    wired.state = {
+        (c, "long"): {
+            "view": dr.VIEW_HOLD, "fund_mask": 0b111, "source": "kis",
+            "notified_at": None,
+            "updated_at": NOW.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        for c in codes
+    }
+    items = [_item(code=c, name=long_name, long=dr.VIEW_BUY) for c in codes]
+
+    result = alerts.process_cycle(items, NOW)
+
+    assert result["transitions"] == 30
+    assert result["sent"] < 30, "Discord 상한이 공유 cap 을 줄이지 못했다"
+    assert result["deferred"] == 30 - result["sent"]
+    # 기준선은 실제로 실린 건수만 이동한다 — 나머지는 다음 사이클로 이월.
+    assert len(wired.upserts) == result["sent"]
+    assert len(sent["discord"]) <= 2000
+    # 두 채널이 받은 행 수가 같다.
+    assert sent["slack"].count("•") == sent["discord"].count("•") == result["sent"]
+
+
+def test_channels_lists_both_webhooks_and_email(monkeypatch):
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(notifier, "email_enabled", lambda: True)
+
+    assert alerts.channels() == ["slack", "discord", "email"]
+
+
+def test_discord_only_setup_works(monkeypatch, wired):
+    """Slack 없이 Discord 만 붙여도 동작해야 한다."""
+    sent = []
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: False)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_discord", lambda text: sent.append(text) or True)
+
+    result = alerts.process_cycle([_item(long=dr.VIEW_BUY)], NOW)
+
+    assert result["channels"] == ["discord"]
+    assert result["sent"] == 1
+    assert "**매수**" in sent[0]

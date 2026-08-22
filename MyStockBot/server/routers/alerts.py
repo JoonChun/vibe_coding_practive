@@ -87,7 +87,7 @@ def send_test_alert(response: Response):
         return {
             "channels": [], "results": {},
             "detail": (
-                "설정된 채널이 없습니다. SLACK_WEBHOOK_URL 또는 "
+                "설정된 채널이 없습니다. DISCORD_WEBHOOK_URL · SLACK_WEBHOOK_URL 또는 "
                 "SENDER_EMAIL·GMAIL_APP_PASSWORD·NOTIFY_EMAIL 을 .env 에 설정하세요."
             ),
         }
@@ -115,5 +115,6 @@ def send_test_alert(response: Response):
 
     detail = f"성공: {', '.join(ok) or '없음'}"
     if failed:
-        detail += f" / 실패: {', '.join(failed)} (서버 로그의 [slack]·[notifier] 경고 확인)"
+        hints = " · ".join(f"[{name}]" for name in failed)
+        detail += f" / 실패: {', '.join(failed)} (서버 로그의 {hints} 경고 확인)"
     return {"channels": configured, "results": results, "detail": detail}

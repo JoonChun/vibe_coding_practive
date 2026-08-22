@@ -1,76 +1,107 @@
-"""알림 채널 — Slack Incoming Webhook.
+"""알림 채널 — Slack / Discord Incoming Webhook.
 
-## 왜 Slack 인가
-prd.md 가 카카오톡 알림을 접은 이유는 "액세스 토큰 갱신 부담"이었다. Slack Incoming
-Webhook 은 **토큰이 없다** — 인증 헤더를 쓰지 않고 URL 자체가 자격증명이라, 갱신 로직이
-구조적으로 필요하지 않다. 카카오톡을 접게 만든 그 이유가 여기엔 존재하지 않는다.
+## 왜 웹훅인가
+prd.md 가 카카오톡 알림을 접은 이유는 "액세스 토큰 갱신 부담"이었다. 두 채널 모두
+**토큰이 없다** — 인증 헤더를 쓰지 않고 URL 자체가 자격증명이라 갱신 로직이 구조적으로
+필요하지 않다. 카카오톡을 접게 만든 그 이유가 여기엔 존재하지 않는다.
 
 ## 규격 출처 (이 저장소 규칙: 추측 금지)
-이 개발 환경에서는 slack.com · api.slack.com · docs.slack.dev · hooks.slack.com 이
-전부 이그레스 프록시에서 403 CONNECT 로 막혀 있다. 따라서
-  · 공식 문서 페이지를 열어 확인할 수 없었고,
-  · **실제 발송으로 검증하지도 못했다.**
-그래서 Slack 이 직접 배포하는 SDK 소스 코드에서 규격을 교차 확인했다(문서가 아니라 구현):
 
-  · slackapi/python-slack-sdk
-      - `slack_sdk/webhook/client.py`         : POST 본문 구성, 응답 처리
-      - `slack_sdk/webhook/internal_utils.py` : `_build_request_headers()` —
-            `Content-Type: application/json;charset=utf-8` + User-Agent 만 붙이고
-            **Authorization 헤더를 넣지 않는다.**
-      - 본문 허용 키: text / blocks / attachments / unfurl_links / unfurl_media / metadata
-  · slackapi/java-slack-sdk
-      - 성공 판정이 HTTP 200 + **본문 문자열 `ok`** (JSON 이 아니다).
-      - 실패는 400/403/404 + `invalid_payload` / `channel_not_found` /
-        `channel_is_archived`, 유량제한은 429 + `Retry-After`.
+### Slack
+slack.com · api.slack.com · docs.slack.dev · hooks.slack.com 이 이 개발 환경의
+이그레스 프록시에서 전부 403 CONNECT 로 막혀 있다. 공식 문서 페이지를 열 수 없었고
+**실제 발송으로 검증하지도 못했다.** 그래서 Slack 이 직접 배포하는 SDK 소스에서 확인했다:
+  · slackapi/python-slack-sdk `slack_sdk/webhook/internal_utils.py`
+      `_build_request_headers()` — `Content-Type: application/json;charset=utf-8` +
+      User-Agent 만 붙이고 **Authorization 헤더를 넣지 않는다.**
+      본문 허용 키: text / blocks / attachments / unfurl_links / unfurl_media / metadata
+  · slackapi/java-slack-sdk — 성공 판정이 HTTP 200 + **본문 문자열 `ok`**(JSON 아님).
+      실패는 400/403/404 + invalid_payload / channel_not_found / channel_is_archived.
 
-이 구현이 `requests` 도 `slack_sdk` 도 쓰지 않는 이유:
+### Discord
+discord.com · discord.dev 도 똑같이 차단되어 있다. 그래서 Discord **공식 문서 저장소**
+(`discord/discord-api-docs`, `developers/resources/webhook.mdx` · `.../message.mdx`)를
+클론해 원문으로 확인했다:
+  · Execute Webhook: `POST /webhooks/{webhook.id}/{webhook.token}`
+  · "Same as above, except this call does not require authentication."(L204)
+      → **Authorization 헤더 없음** (토큰이 URL 경로에 있다)
+  · 본문 필드는 `content` (**최대 2000자**). content/embeds/components/file/poll 중
+      최소 하나는 필수.
+  · "Returns a message or `204 No Content` depending on the `wait` query parameter."
+      `wait` 기본값은 `false`.
+  · ★ `wait=false` 일 때 **"a message that is not saved does not return an error"** —
+      조용히 버려진 메시지를 성공으로 읽게 된다. 이 저장소의 알림 엔진은 "발송 성공 시에만
+      기준선 이동" 규칙을 지키므로, 그걸 성공으로 읽으면 그 전환이 **영구 유실**된다.
+      → 그래서 항상 `?wait=true` 를 붙이고 200 을 기대한다(204 도 관용적으로 허용).
+  · 유량제한: HTTP 429 + `Retry-After` 헤더 및 JSON 본문의 `retry_after`(float, 초).
+  · ★ 멘션 차단은 **구조적으로** 가능하다 — 공식 경고문:
+      "If you are passing user-generated strings into message content, consider
+       sanitizing the data ... and using `allowed_mentions` to prevent unexpected
+       mentions."
+      웹훅의 기본값은 `{"parse": ["users"]}` 라서 @everyone/@here 는 기본 미파싱이지만
+      **유저 멘션은 파싱된다.** `{"parse": []}` 로 보내면 어떤 멘션도 파싱되지 않는다.
+      텍스트 이스케이프와 달리 문자 조합으로 우회할 수 없다 — Slack 경로보다 강한 보장이다.
+
+`requests` 도 `slack_sdk` 도 쓰지 않는 이유:
   1. 의존성 추가 없이 stdlib(`urllib.request`)로 충분하다 — 요청 1개, 헤더 2개다.
   2. `slack_sdk` 는 DEBUG 레벨에서 **웹훅 URL 전체를 로그에 찍는다.** 그 URL 이 비밀이다.
 
 ## 보안
-웹훅 URL 그 자체가 자격증명이고, Slack 은 공개된 곳에서 발견된 URL 을 자동 폐기한다.
-→ **URL 을 로그·예외 메시지·API 응답에 절대 싣지 않는다.** 아래 코드가 URL 을 문자열로
-   내보내는 경로는 없다(에러 메시지에는 상태코드와 Slack 이 준 오류 코드만 담는다).
+웹훅 URL 그 자체가 자격증명이다(Slack 은 공개된 URL 을 자동 폐기하는데, 안전해지는 게
+아니라 알림이 조용히 죽는다).
+→ **URL 을 로그·예외 메시지·API 응답에 절대 싣지 않는다.** 아래 코드에 URL 을 문자열로
+   내보내는 경로는 없고, 그 성질을 테스트로 잠갔다(tests/test_alert_channels.py).
 """
 import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
+from dataclasses import dataclass
+from typing import Callable
 
-from config import SLACK_WEBHOOK_URL_ENV_KEY
+from config import DISCORD_WEBHOOK_URL_ENV_KEY, SLACK_WEBHOOK_URL_ENV_KEY
 
 logger = logging.getLogger(__name__)
 
-# 검증된 규격: 이 접두어의 URL 만 허용한다.
-# 오타나 잘못 붙여넣은 값으로 임의 호스트에 POST 하지 않기 위한 방어선이다.
-_SLACK_WEBHOOK_PREFIX = "https://hooks.slack.com/"
-
 _TIMEOUT_SECONDS = 15
-_SUCCESS_BODY = "ok"
+_USER_AGENT = "MyStockBot/1.0 (+github.com/JoonChun/vibe_coding_practive)"
 
+# 검증된 규격의 호스트만 허용한다 — 오타나 잘못 붙여넣은 값으로 임의 호스트에
+# POST 하지 않기 위한 방어선이다.
+_SLACK_WEBHOOK_PREFIXES = ("https://hooks.slack.com/",)
+# discordapp.com 은 discord.com 이전의 구 도메인이고 여전히 동작한다(예전에 만든 웹훅 URL).
+_DISCORD_WEBHOOK_PREFIXES = (
+    "https://discord.com/api/webhooks/",
+    "https://discordapp.com/api/webhooks/",
+)
+
+_SLACK_SUCCESS_BODY = "ok"
+
+
+# ────────────────────────────────────────────
+# 이스케이프 — 채널마다 제어 문자가 다르다
+# ────────────────────────────────────────────
 
 def escape_mrkdwn(value) -> str:
-    """Slack 메시지 본문에 **보간되는 값**을 안전하게 만든다.
+    """Slack 본문에 **보간되는 값**을 안전하게 만든다.
 
     왜 필요한가 — 종목명은 Google Sheets·외부 API 에서 오는 미검증 문자열이고,
     `<` 는 Slack 의 제어 시퀀스 시작 문자다. 종목명에 `<!channel>` 이 들어가면 알림이
     나갈 때마다 채널 전원에게 푸시가 간다.
 
-    확인한 것(추측 금지 — Slack 도메인이 이 환경에서 차단되어 SDK 소스로 교차 확인):
-      · `slackapi/python-slack-sdk` tests/web/classes/test_objects.py —
-        `ChannelLink()` → `"<!channel|channel>"`, `HereLink()` → `"<!here|here>"`,
-        `EveryoneLink()` → `"<!everyone|everyone>"`.
-        즉 `<!...>` 가 실제로 Slack 의 멘션 제어 시퀀스임이 Slack 자체 코드로 확인된다.
-      · `slackapi/java-slack-sdk` slack-api-model/.../model/Field.java —
-        마크업을 담을 수 있는 `value` 는 "must be escaped as normal"(L24), 반면 마크업을
-        담을 수 없는 `title` 은 "will be escaped for you"(L19).
-        → 마크업 필드의 이스케이프는 **호출자 책임**이고 SDK 가 대신 해주지 않는다.
+    확인한 것: `slackapi/python-slack-sdk` tests/web/classes/test_objects.py 에서
+    `ChannelLink()` → `"<!channel|channel>"`, `HereLink()` → `"<!here|here>"` —
+    즉 `<!...>` 가 실제 멘션 제어 시퀀스임이 Slack 자체 코드로 확인된다.
+    그리고 `slackapi/java-slack-sdk` Field.java 는 마크업을 담는 `value` 를
+    "must be escaped as normal"(L24), 마크업이 없는 `title` 만 "will be escaped for
+    you"(L19) 라고 적어 **이스케이프가 호출자 책임**임을 밝힌다.
 
-    확인하지 못한 것: `& < >` → `&amp; &lt; &gt;` 라는 **정확한 엔티티 대응**을 Slack 소유
-    코드에서 문장으로 찾지는 못했다(문서 사이트가 차단됨). 이 치환을 택한 이유는 위에서
-    확인된 주입 경로를 확실히 무력화하기 때문이고, 혹시 Slack 의 매핑이 세부에서 다르더라도
-    실패 모드는 `&amp;` 가 글자로 보이는 **표시상의 문제**이지 멘션 주입이 아니다.
+    확인하지 못한 것: `& < >` → `&amp; &lt; &gt;` 라는 정확한 엔티티 대응을 Slack 소유
+    코드에서 문장으로 찾지는 못했다(문서 사이트 차단). 이 치환을 택한 이유는 위에서 확인된
+    주입 경로를 확실히 무력화하기 때문이고, 매핑이 세부에서 다르더라도 실패 모드는
+    `&amp;` 가 글자로 보이는 **표시상의 문제**이지 멘션 주입이 아니다.
 
     `&` 를 **먼저** 치환해야 한다 — 나중에 하면 `&lt;` 의 `&` 를 다시 이스케이프한다.
     """
@@ -82,30 +113,145 @@ def escape_mrkdwn(value) -> str:
     )
 
 
-def slack_webhook_url() -> str | None:
-    """설정된 웹훅 URL. 미설정이거나 형식이 다르면 None."""
-    url = os.environ.get(SLACK_WEBHOOK_URL_ENV_KEY, "").strip()
+# Discord 마크다운에서 서식 의미를 갖는 문자들. 백슬래시 이스케이프가 관례다.
+# `\` 를 **먼저** 처리해야 한다(나중에 하면 앞서 넣은 백슬래시를 다시 이스케이프한다).
+_DISCORD_MD_CHARS = ("\\", "`", "*", "_", "~", "|", ">")
+
+
+def escape_markdown(value) -> str:
+    """Discord 본문에 보간되는 값의 **표시**를 보호한다.
+
+    ★ 이건 보안 장치가 아니다. 멘션 차단은 `allowed_mentions: {"parse": []}` 가
+    구조적으로 처리하고(위 모듈 주석 참고), 이 함수는 종목명에 `**`·`||`·`` ` `` 같은
+    문자가 섞여 메시지 서식이 깨지는 것을 막는 **표시 위생**일 뿐이다.
+    공식 문서도 "characters which cause unexpected message formatting" 을 경고한다.
+    """
+    text = str("" if value is None else value)
+    for ch in _DISCORD_MD_CHARS:
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
+# ────────────────────────────────────────────
+# 마크업 방언 — 렌더러가 채널별 문법을 하드코딩하지 않도록
+# ────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Dialect:
+    """채널의 마크업 문법 + 길이 제한.
+
+    굵게 문법이 채널마다 다른 것이 함정이다 — Slack mrkdwn 은 `*굵게*`(별표 하나),
+    Discord 는 표준 마크다운의 `**굵게**` 다. 서로 바꿔 보내면 별표가 글자로 보인다.
+    """
+    name: str
+    bold_wrap: str
+    italic_wrap: str
+    escape: Callable[[object], str]
+    # 본문 최대 길이. None 은 "이 저장소가 1차 출처로 확인하지 못했다"는 뜻이고
+    # "무제한"이라는 주장이 아니다(추측 금지 — 확인 못 한 숫자를 적지 않는다).
+    max_chars: int | None = None
+
+    def bold(self, text) -> str:
+        return self.bold_wrap.format(text)
+
+    def italic(self, text) -> str:
+        return self.italic_wrap.format(text)
+
+
+SLACK_DIALECT = Dialect(
+    name="slack",
+    bold_wrap="*{}*",
+    italic_wrap="_{}_",
+    escape=escape_mrkdwn,
+    max_chars=None,   # Slack 웹훅 text 상한을 1차 출처로 확인하지 못했다
+)
+
+DISCORD_DIALECT = Dialect(
+    name="discord",
+    bold_wrap="**{}**",
+    italic_wrap="_{}_",
+    escape=escape_markdown,
+    # 공식 문서 webhook.mdx L237: content "up to 2000 characters".
+    # 초과하면 400 이고, 알림 엔진은 실패한 발송을 재시도하므로 사이클마다 계속 실패한다.
+    max_chars=2000,
+)
+
+
+# ────────────────────────────────────────────
+# URL 취득 · 검증
+# ────────────────────────────────────────────
+
+def _webhook_url(env_key: str, prefixes: tuple[str, ...], label: str) -> str | None:
+    url = os.environ.get(env_key, "").strip()
     if not url:
         return None
-    if not url.startswith(_SLACK_WEBHOOK_PREFIX):
+    if not url.startswith(prefixes):
         # URL 을 로그에 남기지 않는다 — 잘못된 값이라도 비밀일 수 있다.
         logger.warning(
-            "[slack] SLACK_WEBHOOK_URL 형식이 다릅니다(%s 로 시작해야 함) — 발송 비활성",
-            _SLACK_WEBHOOK_PREFIX,
+            "[%s] %s 형식이 다릅니다(%s 중 하나로 시작해야 함) — 발송 비활성",
+            label, env_key, " | ".join(prefixes),
         )
         return None
     return url
+
+
+def slack_webhook_url() -> str | None:
+    return _webhook_url(SLACK_WEBHOOK_URL_ENV_KEY, _SLACK_WEBHOOK_PREFIXES, "slack")
+
+
+def discord_webhook_url() -> str | None:
+    return _webhook_url(DISCORD_WEBHOOK_URL_ENV_KEY, _DISCORD_WEBHOOK_PREFIXES, "discord")
 
 
 def slack_enabled() -> bool:
     return slack_webhook_url() is not None
 
 
+def discord_enabled() -> bool:
+    return discord_webhook_url() is not None
+
+
+# ────────────────────────────────────────────
+# 발송
+# ────────────────────────────────────────────
+
+def _post_json(url: str, payload: dict, label: str) -> tuple[int, str] | None:
+    """JSON POST 1회. (status, body) 또는 실패 시 None. 예외를 밖으로 던지지 않는다.
+
+    알림 실패가 수집 사이클을 멈추게 하면 안 되므로 전부 삼키고 로그만 남긴다.
+    """
+    request = urllib.request.Request(
+        url,
+        method="POST",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            # 두 채널 모두 Authorization 헤더를 쓰지 않는다(위 모듈 주석의 1차 출처 참고).
+            "Content-Type": "application/json;charset=utf-8",
+            "User-Agent": _USER_AGENT,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
+            return response.status, response.read().decode("utf-8", errors="replace").strip()
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="replace").strip()[:300]
+        except Exception:
+            pass
+        retry_after = e.headers.get("Retry-After") if e.headers else None
+        suffix = f" (Retry-After={retry_after})" if retry_after else ""
+        logger.warning("[%s] 발송 실패: HTTP %s / %s%s", label, e.code, body, suffix)
+        return None
+    except Exception as e:
+        logger.warning("[%s] 발송 실패: %s%s", label, type(e).__name__, _safe_reason(e, url))
+        return None
+
+
 def send_slack(text: str, blocks: list[dict] | None = None) -> bool:
-    """Incoming Webhook 으로 메시지 1건 발송. 성공하면 True.
+    """Slack Incoming Webhook 으로 1건 발송. 성공하면 True.
 
     `text` 는 blocks 를 쓰더라도 항상 넣는다 — 알림 미리보기·접근성 폴백에 쓰인다.
-    예외를 밖으로 던지지 않는다(알림 실패가 수집 사이클을 멈추게 하지 않도록).
     """
     url = slack_webhook_url()
     if url is None:
@@ -115,39 +261,50 @@ def send_slack(text: str, blocks: list[dict] | None = None) -> bool:
     if blocks:
         payload["blocks"] = blocks
 
-    request = urllib.request.Request(
-        url,
-        method="POST",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            # 검증된 헤더 구성(python-slack-sdk internal_utils._build_request_headers).
-            # Authorization 헤더는 **없다** — 웹훅은 토큰을 쓰지 않는다.
-            "Content-Type": "application/json;charset=utf-8",
-            "User-Agent": "MyStockBot/1.0 (+github.com/JoonChun/vibe_coding_practive)",
-        },
-    )
+    result = _post_json(url, payload, "slack")
+    if result is None:
+        return False
+    status, body = result
+    # 검증된 규격: 성공 = HTTP 200 **AND** 본문 문자열 "ok" (JSON 이 아니다).
+    if status == 200 and body == _SLACK_SUCCESS_BODY:
+        return True
+    logger.warning("[slack] 발송 실패: HTTP %s / %s", status, body[:200])
+    return False
 
-    try:
-        with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
-            body = response.read().decode("utf-8", errors="replace").strip()
-            if response.status == 200 and body == _SUCCESS_BODY:
-                return True
-            logger.warning("[slack] 발송 실패: HTTP %s / %s", response.status, body[:200])
-            return False
-    except urllib.error.HTTPError as e:
-        # Slack 은 실패 이유를 본문 문자열로 준다(invalid_payload · channel_not_found 등).
-        body = ""
-        try:
-            body = e.read().decode("utf-8", errors="replace").strip()[:200]
-        except Exception:
-            pass
-        retry_after = e.headers.get("Retry-After") if e.headers else None
-        suffix = f" (Retry-After={retry_after})" if retry_after else ""
-        logger.warning("[slack] 발송 실패: HTTP %s / %s%s", e.code, body, suffix)
+
+def send_discord(text: str) -> bool:
+    """Discord Webhook 으로 1건 발송. 성공하면 True.
+
+    `?wait=true` 를 붙이는 이유는 모듈 주석 참고 — 붙이지 않으면 저장되지 않은 메시지도
+    오류 없이 204 로 돌아와, "발송 성공 시에만 기준선 이동" 규칙이 그 전환을 영구 유실시킨다.
+    """
+    url = discord_webhook_url()
+    if url is None:
         return False
-    except Exception as e:
-        logger.warning("[slack] 발송 실패: %s%s", type(e).__name__, _safe_reason(e, url))
+
+    # 사용자가 이미 쿼리스트링을 붙여 둔 URL 도 깨지지 않게 병합한다.
+    parts = urllib.parse.urlsplit(url)
+    query = dict(urllib.parse.parse_qsl(parts.query))
+    query["wait"] = "true"
+    target = urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
+
+    payload = {
+        "content": text,
+        # ★ 멘션을 구조적으로 차단한다. 웹훅 기본값은 {"parse": ["users"]} 라서
+        #   종목명에 섞인 유저 멘션이 실제로 핑을 보낸다. 텍스트 이스케이프와 달리
+        #   문자 조합으로 우회할 수 없다.
+        "allowed_mentions": {"parse": []},
+    }
+
+    result = _post_json(target, payload, "discord")
+    if result is None:
         return False
+    status, body = result
+    # wait=true 면 200 + 메시지 JSON. 204 는 wait 가 무시된 경우를 위한 관용 허용.
+    if status in (200, 204):
+        return True
+    logger.warning("[discord] 발송 실패: HTTP %s / %s", status, body[:200])
+    return False
 
 
 def _safe_reason(exc: Exception, url: str) -> str:
@@ -167,7 +324,44 @@ def _safe_reason(exc: Exception, url: str) -> str:
     if not isinstance(reason, OSError):
         return ""
     text = str(reason)[:200]
-    secret = url.rsplit("/", 1)[-1]
-    if "hooks.slack.com" in text or (secret and secret in text):
+    host = urllib.parse.urlsplit(url).netloc
+    # 마지막 두 경로 조각(Discord 는 id/token, Slack 은 B…/시크릿)을 비밀로 취급한다.
+    secrets = [seg for seg in url.rsplit("/", 2)[1:] if seg]
+    if (host and host in text) or any(s in text for s in secrets):
         return ""
     return f": {text}"
+
+
+# ────────────────────────────────────────────
+# 채널 레지스트리 — 알림 엔진이 채널 목록을 하드코딩하지 않도록
+# ────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Channel:
+    name: str
+    dialect: Dialect
+    is_enabled: Callable[[], bool]
+    send: Callable[[str], bool]
+
+
+CHANNEL_NAMES: tuple[str, ...] = ("slack", "discord")
+
+
+def all_channels() -> tuple[Channel, ...]:
+    """전체 웹훅 채널. **모듈 상수가 아니라 함수인 이유가 있다.**
+
+    상수 튜플로 두면 `Channel` 이 import 시점의 함수 객체를 붙잡아서, 나중에
+    `alert_channels.slack_enabled` 를 바꿔도(테스트의 monkeypatch 든 런타임 교체든)
+    **아무 효과가 없으면서 아무도 실패하지 않는다.** 이 저장소가 반복해서 물린 바로 그
+    패턴이다(판정 규칙 3중 복제, 가짜 락 테스트, import 시점에 고정된 diff 기본값).
+    호출 시점에 모듈 전역을 다시 읽도록 함수로 둔다.
+    """
+    return (
+        Channel("slack", SLACK_DIALECT, slack_enabled, send_slack),
+        Channel("discord", DISCORD_DIALECT, discord_enabled, send_discord),
+    )
+
+
+def enabled_channels() -> tuple[Channel, ...]:
+    """설정이 갖춰진 웹훅 채널만. 이메일은 notifier 가 따로 관리한다."""
+    return tuple(c for c in all_channels() if c.is_enabled())
