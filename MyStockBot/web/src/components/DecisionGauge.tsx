@@ -10,6 +10,12 @@ interface DecisionGaugeProps {
   weak: number;
   /** "방금" / "3초 전" 등 상대 시간 문자열 */
   relativeTime: string;
+  /**
+   * 지표 봉이 모자라 판정을 아직 믿을 수 없는 구간(단기 탭에서 60분봉 35봉 미만).
+   * score 가 0(=관망)으로 내려오지만 그건 시장 판단이 아니라 데이터 부재이므로,
+   * 기존 '판정 보류' 회색 경로를 그대로 재사용한다.
+   */
+  warming?: boolean;
 }
 
 // 5단계 시맨틱 컬러 (SignalChip.tsx·DistributionStrip.tsx와 동일 값 유지)
@@ -59,8 +65,9 @@ export function DecisionGauge({
   threshold,
   weak,
   relativeTime,
+  warming = false,
 }: DecisionGaugeProps) {
-  const insufficient = view === null || view === "데이터부족" || score === null;
+  const insufficient = warming || view === null || view === "데이터부족" || score === null;
 
   const clampedScore = insufficient ? 0 : Math.max(-threshold, Math.min(threshold, score));
   const needleAngle = insufficient
@@ -112,7 +119,11 @@ export function DecisionGauge({
           <div className="gauge-card__label" style={{ color: labelColor }}>
             판정 보류
           </div>
-          <p className="gauge-card__caption">데이터 부족</p>
+          <p className="gauge-card__caption">
+            {warming
+              ? "60분봉 축적 중 — 35개가 모이면 판정이 시작됩니다"
+              : "데이터 부족"}
+          </p>
         </div>
       ) : (
         <div className="gauge-card__body">

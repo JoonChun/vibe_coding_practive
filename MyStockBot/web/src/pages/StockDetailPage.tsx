@@ -13,6 +13,7 @@ import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import { useTickStream } from "../hooks/useTickStream";
 import type { DecisionRules } from "../types";
+import { isShortViewWarming } from "../utils/decision";
 
 type AnalysisTab = "short" | "long";
 
@@ -200,6 +201,7 @@ export default function StockDetailPage() {
                   threshold={threshold}
                   weak={rules.weak}
                   relativeTime={relativeUpdatedAt || "방금"}
+                  warming={tab === "short" && isShortViewWarming(item?.factors)}
                 />
               </div>
               <div className="detail-grid__factors">

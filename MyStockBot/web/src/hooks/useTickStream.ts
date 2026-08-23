@@ -26,6 +26,13 @@ export interface UseTickStreamResult {
   connected: boolean;
   /** 서버 ↔ KIS 실시간 시세 연결 상태(status 이벤트 기준). 장외엔 서버가 KIS에 연결돼 있어도 틱이 없는 게 정상 */
   kisConnected: boolean;
+  /**
+   * KIS 세션 구독 한도(41건)에 걸려 실시간에서 제외된 종목 코드.
+   * 관심종목이 추가 순으로 잘리므로 **가장 최근에 추가한 종목**이 여기 들어간다.
+   * 연결이 끊겨도 비우지 않는다 — 제외 사실 자체는 여전히 참이고, 재연결마다
+   * 안내가 깜빡이는 편이 더 혼란스럽다.
+   */
+  excludedCodes: Set<string>;
 }
 
 const INITIAL_BACKOFF_MS = 1_000;
@@ -72,6 +79,7 @@ export function useTickStream(): UseTickStreamResult {
   const [ticks, setTicks] = useState<Record<string, TickData>>({});
   const [connected, setConnected] = useState(false);
   const [kisConnected, setKisConnected] = useState(false);
+  const [excludedCodes, setExcludedCodes] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -136,6 +144,19 @@ export function useTickStream(): UseTickStreamResult {
           setTicks((prev) => ({ ...prev, [tick.code]: tick }));
         } else if (data.type === "status") {
           setKisConnected(Boolean(data.kis_connected));
+          // excluded 는 구버전 서버엔 없다 — 배열일 때만 반영한다.
+          if (Array.isArray(data.excluded)) {
+            const next: string[] = data.excluded.filter(
+              (c: unknown): c is string => typeof c === "string"
+            );
+            setExcludedCodes((prev) => {
+              // 내용이 같으면 같은 참조를 유지해 불필요한 리렌더를 막는다.
+              if (prev.size === next.length && next.every((c) => prev.has(c))) {
+                return prev;
+              }
+              return new Set(next);
+            });
+          }
         }
       };
 
@@ -187,5 +208,5 @@ export function useTickStream(): UseTickStreamResult {
     };
   }, []);
 
-  return { ticks, connected, kisConnected };
+  return { ticks, connected, kisConnected, excludedCodes };
 }

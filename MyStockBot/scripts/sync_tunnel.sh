@@ -165,6 +165,13 @@ start_new_tunnel() {
 
     log INFO "메트릭 포트로 $metrics_port 사용"
 
+    # 로그 회전 — 아래 리다이렉트(>)가 기존 로그를 지우므로, 직전 세션 로그를 .1 로
+    # 한 세대만 남긴다(터널이 왜 죽었는지 보려면 직전 로그가 필요하다).
+    # 장기 실행 중의 성장은 이것으로 못 막는다 — DEPLOY.md 의 logrotate 설정 참고.
+    if [ -f "$LOG_FILE" ]; then
+        mv -f "$LOG_FILE" "${LOG_FILE}.1" 2>/dev/null || true
+    fi
+
     # cloudflared 기동
     nohup cloudflared tunnel --url http://localhost:8000 --no-autoupdate --metrics "127.0.0.1:${metrics_port}" >"$LOG_FILE" 2>&1 &
     local pid=$!

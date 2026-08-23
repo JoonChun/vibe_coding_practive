@@ -12,6 +12,14 @@ export interface UseSnapshotResult {
   errorStatus: number | null;
   /** 폴링 실패 후에도 마지막으로 성공한 데이터를 유지 중일 때 true */
   stale: boolean;
+  /**
+   * 서버는 살아서 응답했지만 **첫 수집 사이클이 아직 끝나지 않은** 상태.
+   *
+   * 백엔드가 이미 구분해 보내주고 있다 — 관심종목이 0개면 상태가 채워져 cache_hit=true
+   * (빈 목록이 정답), 부팅 직후 첫 사이클 전이면 cache_hit=false 다. 이 둘을 같은
+   * "데이터 없음"으로 렌더하면 정상 워밍업이 설정 오류처럼 읽힌다.
+   */
+  warmingUp: boolean;
   lastUpdatedAt: Date | null;
   refresh: () => void;
 }
@@ -86,5 +94,7 @@ export function useSnapshot(): UseSnapshotResult {
     void fetchSnapshot();
   }, [fetchSnapshot]);
 
-  return { data, loading, error, errorStatus, stale, lastUpdatedAt, refresh };
+  const warmingUp = data !== null && data.cache_hit === false;
+
+  return { data, loading, error, errorStatus, stale, warmingUp, lastUpdatedAt, refresh };
 }

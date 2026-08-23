@@ -18,6 +18,7 @@ _FACTOR_KEYS = [
     "bb_upper", "bb_mid", "bb_lower",
     "per", "pbr", "roe",
     "short_score", "long_score",
+    "bars_60m",
 ]
 
 

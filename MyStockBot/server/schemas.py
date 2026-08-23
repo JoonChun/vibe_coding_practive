@@ -60,6 +60,10 @@ class FactorDetail(BaseModel):
     roe: float | None = None
     short_score: int | None = None
     long_score: int | None = None
+    # 단기 판정에 쓰인 60분봉 개수. MACD 에 35봉이 필요한데 모자라면 지표가
+    # '데이터부족'이 아니라 0점=관망을 내므로, 화면이 그 사실을 구분할 수 있게 함께
+    # 내려보낸다(additive — 구버전 응답에는 없어 None).
+    bars_60m: int | None = None
     breakdown_short: list[FactorRow] = []   # 단기(60분봉) 기여요인 — MACD·RSI
     breakdown_long: list[FactorRow] = []    # 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE
 

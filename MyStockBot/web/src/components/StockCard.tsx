@@ -16,6 +16,10 @@ export interface StockCardData {
   longView: SignalView | null;
   source: SnapshotSource | null;
   market?: string | null;
+  /** 60분봉이 아직 35개 미만 — 단기 판정을 신뢰할 수 없는 구간 */
+  shortWarming?: boolean;
+  /** KIS 구독 한도(41건)에 걸려 실시간 시세에서 제외된 종목 */
+  realtimeExcluded?: boolean;
 }
 
 interface StockCardProps {
@@ -32,7 +36,7 @@ const MARKET_BADGE_CLASS: Record<string, string> = {
 
 export function StockCard({ row, onDelete, tick }: StockCardProps) {
   const [pending, setPending] = useState(false);
-  const { code, name, shortView, longView, source, market } = row;
+  const { code, name, shortView, longView, source, market, shortWarming, realtimeExcluded } = row;
   const marketLabel = market ?? "KRX";
   const marketBadgeClass = MARKET_BADGE_CLASS[marketLabel] ?? "market-badge";
 
@@ -117,11 +121,21 @@ export function StockCard({ row, onDelete, tick }: StockCardProps) {
         <Sparkline code={code} trendUp={isUp} trendDown={isDown} />
 
         <div className="stock-card__chips">
-          <SignalChip label={shortView} kind="단기" />
+          <SignalChip label={shortView} kind="단기" warming={shortWarming} />
           <SignalChip label={longView} kind="장기" />
         </div>
 
-        <SourceBadge source={source} />
+        <div className="stock-card__badges">
+          <SourceBadge source={source} />
+          {realtimeExcluded ? (
+            <span
+              className="source-badge source-badge--yfinance"
+              title="KIS 세션 구독 한도(41건)를 넘어 실시간 시세에서 제외된 종목입니다 — 판정·종가는 정상 수집됩니다"
+            >
+              실시간 제외
+            </span>
+          ) : null}
+        </div>
       </Link>
     </li>
   );

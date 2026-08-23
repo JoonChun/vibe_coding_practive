@@ -3,7 +3,8 @@
 공개 인터페이스(server/routers/stream.py 등 호출측이 이 계약대로 사용):
     - start() / stop(): FastAPI lifespan 에서 각 1회 호출. 내부에서 asyncio 태스크
       (연결 유지 + 60초 구독 갱신)를 기동/정리한다.
-    - get_status() -> {"kis_connected": bool, "subscribed": list[str]}
+    - get_status() -> {"kis_connected": bool, "subscribed": list[str],
+                       "excluded": list[str], "subscription_limit": int}
     - add_listener(queue) / remove_listener(queue): 브라우저 WS 핸들러가 자기 전용
       asyncio.Queue(maxsize 등은 호출측이 결정)를 등록/해제해 tick/status 이벤트를
       pull 방식으로 받는다. 등록된 큐가 가득 차면 가장 오래된 항목을 버리고 최신
@@ -12,7 +13,9 @@
 발행 이벤트(dict, 큐로 push):
     {"type": "tick", "code": str, "price": float, "change": float,
      "change_pct": float, "volume": int | None, "time": "HH:MM:SS"}
-    {"type": "status", "kis_connected": bool, "subscribed": list[str]}  (연결 상태 변화 시)
+    {"type": "status", "kis_connected": bool, "subscribed": list[str],
+     "excluded": list[str], "subscription_limit": int}
+      (연결 상태 변화 시 + 41건 캡으로 제외된 종목 목록이 바뀔 때)
 
 동작 개요:
     1) 연결 태스크(_connection_loop): approval_key 발급(kis_auth.get_approval_key) →
@@ -23,7 +26,8 @@
     2) 구독 갱신 태스크(_subscription_refresh_loop): 60초마다 db.load_watchlist() 를
        다시 읽어 활성 종목 목록과 현재 목표 목록(diff)만 등록(tr_type="1")/해제
        (tr_type="2") 프레임을 전송한다. 세션당 구독 한도 41건 — 초과분은 앞 41개만
-       유지하고 경고 로그를 남긴다.
+       유지하고 경고 로그를 남기며, 잘려나간 코드를 status 프레임의 excluded 로
+       내보낸다(watchlist 가 추가 순이라 **최근 추가한 종목**이 잘린다).
     3) 수신 프레임 파싱: 첫 글자가 '0'(평문) 또는 '1'(암호화, H0STCNT0 은 KIS 정책상
        평문만 사용되므로 이 모듈은 암호화 프레임은 무시·로그만 남김) → 데이터 프레임.
        그 외 → JSON 제어 메시지(PINGPONG 에코, 구독 등록 rt_cd 로그).
@@ -133,6 +137,10 @@ _MAX_SUBSCRIPTIONS = 41
 _ws = None  # 현재 연결(websockets ClientConnection) — 없으면 None
 _connected = False
 _target_codes: list[str] = []  # 구독 목표 목록(입력 순서 유지, 41건 캡 적용 후)
+# 41건 캡에 걸려 구독에서 잘려나간 종목 코드. watchlist 가 추가 순(ORDER BY w.id)이라
+# **가장 최근에 추가한 종목**이 여기 들어간다 — 사용자가 방금 넣은, 제일 관심 있는
+# 종목이 조용히 실시간에서 빠지는 구조라 화면이 알 수 있어야 한다.
+_excluded_codes: list[str] = []
 _listeners: set[asyncio.Queue] = set()
 _tasks: list[asyncio.Task] = []
 _stop_event: asyncio.Event | None = None
@@ -173,7 +181,17 @@ async def stop() -> None:
 
 
 def get_status() -> dict:
-    return {"kis_connected": _connected, "subscribed": list(_target_codes)}
+    """WS 클라이언트에 보내는 status 프레임의 본문.
+
+    excluded/subscription_limit 은 additive — 기존 kis_connected·subscribed 계약은
+    그대로 두어 구버전 프론트가 깨지지 않는다.
+    """
+    return {
+        "kis_connected": _connected,
+        "subscribed": list(_target_codes),
+        "excluded": list(_excluded_codes),
+        "subscription_limit": _MAX_SUBSCRIPTIONS,
+    }
 
 
 def add_listener(queue: asyncio.Queue) -> None:
@@ -415,19 +433,31 @@ async def _refresh_subscriptions() -> None:
             seen.add(code)
             codes.append(code)
 
+    global _excluded_codes
     if len(codes) > _MAX_SUBSCRIPTIONS:
         logger.warning(
             "[kis_ws] 관심종목 %d건이 세션 구독 한도(%d건)를 초과 — 앞 %d개만 구독",
             len(codes), _MAX_SUBSCRIPTIONS, _MAX_SUBSCRIPTIONS,
         )
+        excluded = codes[_MAX_SUBSCRIPTIONS:]
         codes = codes[:_MAX_SUBSCRIPTIONS]
+    else:
+        excluded = []  # 한도 아래로 내려오면 반드시 비운다 — 안 그러면 경고가 영구히 남는다
 
     previous = set(_target_codes)
     current = set(codes)
     added = current - previous
     removed = previous - current
+    excluded_changed = excluded != _excluded_codes
 
     _target_codes = codes
+    _excluded_codes = excluded
+
+    # 제외 목록이 바뀌면 연결 상태와 무관하게 알린다 — 아래 미연결/무변경 조기 return
+    # 앞에 두어야 한다. 예전에는 여기서 브로드캐스트가 없어, 42번째 종목을 추가해도
+    # 이미 열려 있는 탭은 새로고침 전까지 아무것도 몰랐다.
+    if excluded_changed:
+        await _broadcast_status()
 
     ws = _ws
     if ws is None or not _connected:

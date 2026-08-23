@@ -437,6 +437,32 @@ cloudflared tunnel info <tunnel-name>
 **주의**: 백업이 같은 디스크에 있다 — 디스크가 통째로 죽는 시나리오는 못 막는다.
 분기 1회 정도 `data/backups/` 최신 파일을 다른 기기·클라우드에 복사해 둘 것.
 
+### 7-1b. 로그 관리
+
+**컨테이너 로그**는 `docker-compose.yml` 의 `logging` 설정으로 **10MB × 3세대**에 묶여 있다
+(기본 json-file 드라이버는 무제한이라, 30초마다 도는 수집 루프가 디스크를 조용히 먹는다).
+별도 조치 불필요.
+
+**터널 로그**(`data/cloudflared.log`)는 `sync_tunnel.sh` 가 터널을 새로 띄울 때마다
+직전 로그를 `.1` 로 한 세대 보존하고 새로 시작한다. 터널을 며칠씩 켜 두면 그 사이에도
+자라므로, 장기 실행한다면 호스트 logrotate 를 걸어 둔다:
+
+```bash
+sudo tee /etc/logrotate.d/mystockbot-tunnel >/dev/null <<'EOF'
+/home/joon/vibe_ws/MyStockBot/data/cloudflared.log {
+    size 10M
+    rotate 3
+    copytruncate
+    missingok
+    notifempty
+    compress
+}
+EOF
+```
+
+`copytruncate` 가 핵심이다 — cloudflared 가 파일을 연 채로 돌고 있으므로, 파일을 옮기면
+프로세스가 계속 지워진 inode 에 쓴다(로그가 사라진다).
+
 ### 7-2. 모니터링 (서버 다운·데이터 강등 감지)
 `/api/health` 는 무인증이다. 외부 uptime 체커(Healthchecks.io, UptimeRobot 등 무료 플랜)에
 터널 URL 기준으로 등록하면 서버·터널이 죽었을 때 메일/푸시를 받는다:
