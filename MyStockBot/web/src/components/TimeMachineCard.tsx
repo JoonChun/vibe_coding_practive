@@ -13,11 +13,23 @@ const AMOUNTS = [
   { label: "1천만원", value: 10_000_000 },
 ];
 
-/** 오늘로부터 n년 전 날짜(YYYY-MM-DD, KST 기준 로컬 계산). */
+/**
+ * Date → 'YYYY-MM-DD' (KST 기준).
+ *
+ * toISOString() 은 UTC 기준이라 쓰면 안 된다 — 서버는 날짜를 KST 자정으로 해석하므로,
+ * 해외(예: UTC-5)에서 접속하면 로컬 '오늘'이 UTC 로는 내일이 되어 서버가 미래 날짜로
+ * 보고 422 를 준다. 항상 서울 시간대로 포맷해 서버 해석과 축을 맞춘다.
+ */
+function toKstDateString(d: Date): string {
+  // en-CA 로케일이 YYYY-MM-DD 를 내준다(date input 이 요구하는 형식).
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
+/** 오늘로부터 n년 전 날짜(YYYY-MM-DD, KST 기준). */
 function yearsAgo(n: number): string {
   const d = new Date();
   d.setFullYear(d.getFullYear() - n);
-  return d.toISOString().slice(0, 10);
+  return toKstDateString(d);
 }
 
 const PRESETS = [
@@ -26,9 +38,9 @@ const PRESETS = [
   { label: "5년 전", years: 5 },
 ];
 
-/** 오늘(YYYY-MM-DD) — date input 의 max. 미래 날짜는 서버가 422 로 막지만 UI 에서 먼저 막는다. */
+/** 오늘(KST, YYYY-MM-DD) — date input 의 max. 미래 날짜는 서버도 422 로 막지만 UI 에서 먼저 막는다. */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toKstDateString(new Date());
 }
 
 /**
