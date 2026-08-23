@@ -497,7 +497,8 @@ def log_tag(channel_name: str) -> str:
 
 
 def dispatch(
-    transitions: list[Transition], now: datetime, total: int | None = None
+    transitions: list[Transition], now: datetime, total: int | None = None,
+    reasons: dict[str, str] | None = None,
 ) -> dict[str, bool]:
     """설정된 모든 채널로 발송. {채널명: 성공여부}.
 
@@ -506,15 +507,25 @@ def dispatch(
 
     채널마다 마크업 방언이 달라 본문을 각각 렌더링하지만, **실어 보내는 전환 목록은 같다** —
     채널별로 다르게 자르면 어느 채널에 무엇이 갔는지가 갈라져 기준선 이동 판단이 모호해진다.
+
+    `reasons` 에 dict 를 주면 실패한 채널의 사유가 채워진다(비밀은 지운 상태). 수집
+    사이클은 이걸 쓰지 않는다 — 사유가 필요한 곳은 진단 엔드포인트뿐이고, 사이클은
+    성공/실패만으로 기준선 이동을 판단한다.
     """
     results: dict[str, bool] = {}
     for channel in alert_channels.enabled_channels():
+        sink: dict = {}
         results[channel.name] = channel.send(
-            render_text(transitions, now, total, channel.dialect)
+            render_text(transitions, now, total, channel.dialect), out=sink
         )
+        if reasons is not None and not results[channel.name] and sink.get("reason"):
+            reasons[channel.name] = sink["reason"]
     if notifier.email_enabled():
         subject, html_body = render_email(transitions, now, total)
-        results["email"] = notifier.send_html(subject, html_body)
+        sink = {}
+        results["email"] = notifier.send_html(subject, html_body, out=sink)
+        if reasons is not None and not results["email"] and sink.get("reason"):
+            reasons["email"] = sink["reason"]
     return results
 
 

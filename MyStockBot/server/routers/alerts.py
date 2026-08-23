@@ -121,7 +121,12 @@ def send_test_alert(response: Response):
             code="000000", name="[테스트] 발송 확인", kind="long",
             before="관망", after="매수", close=71200.0, change_pct=1.83,
         )
-        results = alerts.dispatch([sample], now)
+        # ★ 실패 사유를 함께 받는다. 이 엔드포인트는 진단 도구이므로 bool 만 주고
+        #   "로그를 보세요"로 끝내면 목적을 달성하지 못한다 — 실제로 사용자가 로그에
+        #   닿지 못해(다른 터미널의 포그라운드 프로세스) 원인 규명에 여러 왕복을 썼다.
+        #   사유는 비밀(웹훅 URL·앱 비밀번호)을 지운 뒤 담긴다(alert_channels.scrub).
+        reasons: dict[str, str] = {}
+        results = alerts.dispatch([sample], now, reasons=reasons)
     finally:
         _test_lock.release()
 
@@ -130,7 +135,13 @@ def send_test_alert(response: Response):
 
     detail = f"성공: {', '.join(ok) or '없음'}"
     if failed:
-        # 채널명이 아니라 **로그 태그**로 안내한다(alerts.log_tag 주석 참고).
-        hints = " · ".join(f"[{alerts.log_tag(name)}]" for name in failed)
-        detail += f" / 실패: {', '.join(failed)} (서버 로그의 {hints} 경고 확인)"
-    return {"channels": configured, "results": results, "detail": detail}
+        detail += f" / 실패: {', '.join(failed)}"
+        # 사유를 못 얻은 채널만 로그를 안내한다(태그는 alerts.log_tag 주석 참고).
+        unexplained = [name for name in failed if not reasons.get(name)]
+        if unexplained:
+            hints = " · ".join(f"[{alerts.log_tag(name)}]" for name in unexplained)
+            detail += f" (서버 로그의 {hints} 경고 확인)"
+    return {
+        "channels": configured, "results": results,
+        "reasons": reasons, "detail": detail,
+    }

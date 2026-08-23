@@ -151,15 +151,22 @@ def email_enabled() -> bool:
     return _email_config() is not None
 
 
-def send_html(subject: str, body_html: str) -> bool:
+def send_html(subject: str, body_html: str, *, out: dict | None = None) -> bool:
     """HTML 본문 메일 1건 발송. 성공하면 True.
 
     반환값이 있어야 하는 이유: 판정 전환 알림은 **발송이 성공했을 때만** 기준선을
     갱신한다. 실패를 성공으로 착각해 기준선을 옮기면 그 전환은 영구히 유실된다.
+
+    `out` 에 dict 를 주면 실패 시 `out["reason"]` 에 사유가 담긴다(진단 엔드포인트용).
+    **앱 비밀번호는 지운다** — 사유는 API 응답으로 나가고 화면에 표시된다.
     """
     config = _email_config()
     if config is None:
         logger.warning("[notifier] 이메일 환경변수 누락 — 알림 발송 건너뜀")
+        if out is not None:
+            out["reason"] = (
+                "SENDER_EMAIL · GMAIL_APP_PASSWORD · NOTIFY_EMAIL 환경변수가 누락됐습니다"
+            )
         return False
     sender, password, recipients = config
 
@@ -178,6 +185,14 @@ def send_html(subject: str, body_html: str) -> bool:
         return True
     except Exception as e:
         logger.warning(f"[notifier] 이메일 발송 실패: {e}")
+        if out is not None:
+            # 앱 비밀번호를 지운다. 공백 있는 형태("abcd efgh …")와 없는 형태 둘 다
+            # — Gmail 은 표시할 때 공백을 넣고 사용자는 그대로 붙여넣는 경우가 있다.
+            detail = str(e)[:200]
+            for secret in (password, password.replace(" ", "")):
+                if secret:
+                    detail = detail.replace(secret, "***")
+            out["reason"] = f"{type(e).__name__}: {detail}".strip()
         return False
 
 

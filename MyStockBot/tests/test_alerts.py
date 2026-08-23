@@ -761,7 +761,7 @@ def test_dispatch_sends_each_channel_its_own_dialect(monkeypatch, wired):
     monkeypatch.setattr(alert_channels, "send_slack",
                         lambda text, **k: sent.__setitem__("slack", text) or True)
     monkeypatch.setattr(alert_channels, "send_discord",
-                        lambda text: sent.__setitem__("discord", text) or True)
+                        lambda text, **k: sent.__setitem__("discord", text) or True)
 
     results = alerts.dispatch(_transitions(1, "삼성전자"), NOW, total=1)
 
@@ -782,7 +782,7 @@ def test_both_channels_receive_the_same_transitions(monkeypatch, wired):
     monkeypatch.setattr(alert_channels, "send_slack",
                         lambda text, **k: sent.__setitem__("slack", text) or True)
     monkeypatch.setattr(alert_channels, "send_discord",
-                        lambda text: sent.__setitem__("discord", text) or True)
+                        lambda text, **k: sent.__setitem__("discord", text) or True)
 
     codes = [f"{i:06d}" for i in range(5)]
     wired.state = {
@@ -813,7 +813,7 @@ def test_tighter_channel_limit_drives_the_shared_cap(monkeypatch, wired):
     monkeypatch.setattr(alert_channels, "send_slack",
                         lambda text, **k: sent.__setitem__("slack", text) or True)
     monkeypatch.setattr(alert_channels, "send_discord",
-                        lambda text: sent.__setitem__("discord", text) or True)
+                        lambda text, **k: sent.__setitem__("discord", text) or True)
 
     long_name = "아주아주긴종목명" * 4
     codes = [f"{i:06d}" for i in range(30)]
@@ -852,7 +852,7 @@ def test_discord_only_setup_works(monkeypatch, wired):
     sent = []
     monkeypatch.setattr(alert_channels, "slack_enabled", lambda: False)
     monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
-    monkeypatch.setattr(alert_channels, "send_discord", lambda text: sent.append(text) or True)
+    monkeypatch.setattr(alert_channels, "send_discord", lambda text, **k: sent.append(text) or True)
 
     result = alerts.process_cycle([_item(long=dr.VIEW_BUY)], NOW)
 

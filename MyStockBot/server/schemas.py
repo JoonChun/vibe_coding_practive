@@ -182,6 +182,11 @@ class AlertTestResponse(BaseModel):
     """
     channels: list[str]         # 설정된 채널
     results: dict[str, bool]    # 채널별 성공 여부
+    # 실패한 채널의 사유(성공한 채널은 없음). **비밀은 지운 상태로만 담긴다** —
+    # 웹훅 URL 과 Gmail 앱 비밀번호는 그 자체가 자격증명이라 응답에 실리면 안 된다
+    # (alert_channels.scrub / notifier.send_html 참고). 사유를 응답에 넣는 이유는
+    # 이 엔드포인트가 진단 도구인데 bool 만 주면 사용자가 로그를 찾아 헤매기 때문이다.
+    reasons: dict[str, str] = {}
     detail: str
 
 

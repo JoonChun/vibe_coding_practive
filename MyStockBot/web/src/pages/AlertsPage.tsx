@@ -166,14 +166,22 @@ export default function AlertsPage() {
           ) : testResult ? (
             <div className="alert-result" data-testid="alert-test-result">
               <ul className="alert-result__list">
-                {Object.entries(testResult.results).map(([name, ok]) => (
-                  <li key={name} className="alert-result__row">
-                    <span>{CHANNEL_LABELS[name] ?? name}</span>
-                    <span className={ok ? "alert-ok" : "alert-fail"}>
-                      {ok ? "성공" : `실패 — 서버 로그의 [${logTag(name)}] 경고 확인`}
-                    </span>
-                  </li>
-                ))}
+                {Object.entries(testResult.results).map(([name, ok]) => {
+                  // 서버가 사유를 주면 그걸 보여준다. 못 주는 경우(가짜 채널·예상 못 한
+                  // 경로)에만 로그를 찾아보라고 안내한다 — 로그에 닿지 못해 원인 규명이
+                  // 막히는 일이 실제로 있었다.
+                  const reason = testResult.reasons?.[name];
+                  return (
+                    <li key={name} className="alert-result__row">
+                      <span>{CHANNEL_LABELS[name] ?? name}</span>
+                      <span className={ok ? "alert-ok" : "alert-fail"}>
+                        {ok
+                          ? "성공"
+                          : (reason ?? `실패 — 서버 로그의 [${logTag(name)}] 경고 확인`)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
               <p className="alert-note">{testResult.detail}</p>
             </div>

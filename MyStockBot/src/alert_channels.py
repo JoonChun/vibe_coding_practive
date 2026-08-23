@@ -295,14 +295,28 @@ _DISCORD_STATUS_HINTS = {
 }
 
 
+def _note(out: dict | None, reason: str) -> None:
+    """실패 사유를 호출자가 준 sink 에 적는다(주면 적고, 안 주면 아무 일도 없다).
+
+    반환값을 bool 로 유지한 이유: `send_slack`/`send_discord` 의 bool 계약에 기대는
+    호출부·테스트가 이미 여러 곳이고, 발송 성공/실패 판단에는 bool 이면 충분하다.
+    사유가 필요한 곳은 **진단 엔드포인트 하나**뿐이라 선택적 out 파라미터로 둔다.
+    """
+    if out is not None:
+        out["reason"] = reason
+
+
 def _post_json(
-    url: str, payload: dict, label: str, hints: dict[int, str] | None = None
+    url: str, payload: dict, label: str, hints: dict[int, str] | None = None,
+    out: dict | None = None,
 ) -> tuple[int, str] | None:
     """JSON POST 1회. (status, body) 또는 실패 시 None. 예외를 밖으로 던지지 않는다.
 
     알림 실패가 수집 사이클을 멈추게 하면 안 되므로 전부 삼키고 로그만 남긴다.
     `hints` 는 HTTP 상태 → 조치 안내(선택). 확인된 문구만 넣는다.
+    `out` 은 실패 사유 sink(선택) — **비밀을 지운 뒤** 넣는다.
     """
+    secrets = url_secrets(url)
     request = urllib.request.Request(
         url,
         method="POST",
@@ -328,26 +342,33 @@ def _post_json(
         if hint:
             suffix += f" — {hint}"
         logger.warning("[%s] 발송 실패: HTTP %s / %s%s", label, e.code, body, suffix)
+        _note(out, f"HTTP {e.code}: {scrub(body, secrets)}{suffix}".strip())
         return None
     except Exception as e:
         logger.warning("[%s] 발송 실패: %s%s", label, type(e).__name__, _safe_reason(e, url))
+        detail = scrub(str(getattr(e, "reason", "") or e), secrets)
+        _note(out, f"{type(e).__name__}: {detail}" if detail else type(e).__name__)
         return None
 
 
-def send_slack(text: str, blocks: list[dict] | None = None) -> bool:
+def send_slack(
+    text: str, blocks: list[dict] | None = None, *, out: dict | None = None
+) -> bool:
     """Slack Incoming Webhook 으로 1건 발송. 성공하면 True.
 
     `text` 는 blocks 를 쓰더라도 항상 넣는다 — 알림 미리보기·접근성 폴백에 쓰인다.
+    `out` 에 dict 를 주면 실패 시 `out["reason"]` 에 비밀을 지운 사유가 담긴다.
     """
     url = slack_webhook_url()
     if url is None:
+        _note(out, "SLACK_WEBHOOK_URL 이 없거나 형식 검사에서 거부됐습니다")
         return False
 
     payload: dict = {"text": text}
     if blocks:
         payload["blocks"] = blocks
 
-    result = _post_json(url, payload, "slack")
+    result = _post_json(url, payload, "slack", out=out)
     if result is None:
         return False
     status, body = result
@@ -355,17 +376,20 @@ def send_slack(text: str, blocks: list[dict] | None = None) -> bool:
     if status == 200 and body == _SLACK_SUCCESS_BODY:
         return True
     logger.warning("[slack] 발송 실패: HTTP %s / %s", status, body[:200])
+    _note(out, f"HTTP {status}: {scrub(body, url_secrets(url))}".strip())
     return False
 
 
-def send_discord(text: str) -> bool:
+def send_discord(text: str, *, out: dict | None = None) -> bool:
     """Discord Webhook 으로 1건 발송. 성공하면 True.
 
     `?wait=true` 를 붙이는 이유는 모듈 주석 참고 — 붙이지 않으면 저장되지 않은 메시지도
     오류 없이 204 로 돌아와, "발송 성공 시에만 기준선 이동" 규칙이 그 전환을 영구 유실시킨다.
+    `out` 에 dict 를 주면 실패 시 `out["reason"]` 에 비밀을 지운 사유가 담긴다.
     """
     url = discord_webhook_url()
     if url is None:
+        _note(out, "DISCORD_WEBHOOK_URL 이 없거나 형식 검사에서 거부됐습니다")
         return False
 
     # 사용자가 이미 쿼리스트링을 붙여 둔 URL 도 깨지지 않게 병합한다.
@@ -382,7 +406,7 @@ def send_discord(text: str) -> bool:
         "allowed_mentions": {"parse": []},
     }
 
-    result = _post_json(target, payload, "discord", _DISCORD_STATUS_HINTS)
+    result = _post_json(target, payload, "discord", _DISCORD_STATUS_HINTS, out=out)
     if result is None:
         return False
     status, body = result
@@ -390,7 +414,47 @@ def send_discord(text: str) -> bool:
     if status in (200, 204):
         return True
     logger.warning("[discord] 발송 실패: HTTP %s / %s", status, body[:200])
+    _note(out, f"HTTP {status}: {scrub(body, url_secrets(target))}".strip())
     return False
+
+
+def url_secrets(url: str) -> list[str]:
+    """이 URL 에서 비밀로 취급할 조각들 — 호스트 + 마지막 두 경로 조각.
+
+    Discord 는 `/webhooks/{id}/{token}`, Slack 은 `/services/…/B…/{secret}` 이라
+    마지막 두 조각이 곧 자격증명이다. 호스트도 넣는 이유는 "어느 서비스로 보내려다
+    실패했는가"조차 응답으로 흘리지 않기 위함이다(채널명으로 이미 알 수 있다).
+
+    ★ **경로에서 자른다.** 원본 URL 문자열에서 `rsplit("/")` 하면 Discord 처럼
+    쿼리(`?wait=true`)가 붙은 경우 마지막 조각이 `{token}?wait=true` 가 되어 본문에
+    등장하는 **맨 토큰과 일치하지 않는다** — 즉 스크러빙이 통과된다. 기존 로그
+    스크러빙(`_safe_reason`)이 이 구멍을 갖고 있었고, 사유를 응답에 실으면서
+    테스트로 드러났다.
+    """
+    parts = urllib.parse.urlsplit(url)
+    segments = [seg for seg in parts.path.split("/") if seg]
+    out = segments[-2:]
+    if parts.netloc:
+        out.append(parts.netloc)
+    return out
+
+
+def scrub(text: str, secrets: list[str], limit: int = 200) -> str:
+    """진단 문구에서 비밀 조각을 **지운다**(문구 전체를 버리지 않는다).
+
+    통째로 버리는 방식(`_safe_reason` 의 기존 정책)은 로그에는 안전하지만 응답으로
+    사유를 돌려줄 때는 쓸 수 없다 — 상류가 본문에 URL 을 되돌려주는 순간 사유가
+    빈 문자열이 되어 "왜 실패했는지 모른다"로 되돌아간다. 그래서 조각만 마스킹하고
+    상태코드·에러코드 같은 진단 가치는 남긴다.
+
+    긴 조각부터 지운다 — 짧은 조각(호스트)을 먼저 지우면 긴 조각(URL 전체) 안의
+    부분만 사라져 남은 잔여물이 통과할 수 있다.
+    """
+    result = text[:limit]
+    for secret in sorted(secrets, key=len, reverse=True):
+        if secret:
+            result = result.replace(secret, "***")
+    return result.strip()
 
 
 def _safe_reason(exc: Exception, url: str) -> str:
@@ -410,10 +474,9 @@ def _safe_reason(exc: Exception, url: str) -> str:
     if not isinstance(reason, OSError):
         return ""
     text = str(reason)[:200]
-    host = urllib.parse.urlsplit(url).netloc
-    # 마지막 두 경로 조각(Discord 는 id/token, Slack 은 B…/시크릿)을 비밀로 취급한다.
-    secrets = [seg for seg in url.rsplit("/", 2)[1:] if seg]
-    if (host and host in text) or any(s in text for s in secrets):
+    # 비밀 조각 판정은 url_secrets 하나로 모았다 — 쿼리스트링이 붙은 URL 에서 조각을
+    # 잘못 자르던 구멍이 여기에도 있었다(그 함수 주석 참고).
+    if any(s in text for s in url_secrets(url)):
         return ""
     return f": {text}"
 

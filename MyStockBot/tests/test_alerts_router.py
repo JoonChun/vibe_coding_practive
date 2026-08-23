@@ -218,3 +218,66 @@ def test_failure_hint_points_at_the_real_log_tag(db, monkeypatch):
     assert "[discord]" in body["detail"]
     # 채널명 자체는 실패 목록에 남아 있어야 한다 — 무엇이 실패했는지는 채널명으로 읽는다.
     assert "email" in body["detail"] and "discord" in body["detail"]
+
+
+# ── 실패 사유를 응답에 담는다 (진단 엔드포인트의 목적) ────────────────────
+
+def test_test_send_returns_failure_reason(monkeypatch):
+    """실패 사유가 `reasons` 로 나오고, 사유가 있으면 로그 안내를 붙이지 않는다.
+
+    사용자가 `{"discord": false}` 만 받고 "로그를 보세요"라는 안내를 따라갔는데 로그에
+    닿지 못했다(서버가 다른 터미널의 포그라운드 프로세스였다). 진단 엔드포인트가
+    bool 만 주는 것이 그 왕복의 원인이었다.
+    """
+    import alert_channels
+    import notifier
+
+    def failing_discord(text, **kwargs):
+        out = kwargs.get("out")
+        if out is not None:
+            out["reason"] = "HTTP 404: Unknown Webhook (code 10015)"
+        return False
+
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: False)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_discord", failing_discord)
+    monkeypatch.setattr(notifier, "email_enabled", lambda: False)
+
+    body = alerts_router.send_test_alert(Response())
+
+    assert body["results"] == {"discord": False}
+    assert "10015" in body["reasons"]["discord"]
+    assert "실패: discord" in body["detail"]
+    # 사유를 이미 줬으므로 로그를 찾아보라고 하지 않는다.
+    assert "서버 로그" not in body["detail"]
+
+
+def test_log_hint_remains_when_reason_is_unavailable(monkeypatch):
+    """사유를 못 얻은 채널에는 로그 안내가 그대로 남아야 한다(폴백 유지)."""
+    import alert_channels
+    import notifier
+
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: False)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_discord", lambda *a, **k: False)
+    monkeypatch.setattr(notifier, "email_enabled", lambda: False)
+
+    body = alerts_router.send_test_alert(Response())
+
+    assert body["reasons"] == {}
+    assert "[discord]" in body["detail"]
+
+
+def test_successful_channel_gets_no_reason(monkeypatch):
+    import alert_channels
+    import notifier
+
+    monkeypatch.setattr(alert_channels, "slack_enabled", lambda: False)
+    monkeypatch.setattr(alert_channels, "discord_enabled", lambda: True)
+    monkeypatch.setattr(alert_channels, "send_discord", lambda *a, **k: True)
+    monkeypatch.setattr(notifier, "email_enabled", lambda: False)
+
+    body = alerts_router.send_test_alert(Response())
+
+    assert body["results"] == {"discord": True}
+    assert body["reasons"] == {}

@@ -375,6 +375,8 @@ export interface AlertStateResponse {
 export interface AlertTestResponse {
   channels: string[];
   results: Record<string, boolean>;
+  /** 실패한 채널의 사유(비밀은 지운 상태). 성공한 채널은 키가 없다. */
+  reasons?: Record<string, string>;
   detail: string;
 }
 

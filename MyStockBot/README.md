@@ -387,7 +387,11 @@ DECISION_ALERT_ENABLED=1
 TOKEN=$(sed -n 's/^MYSTOCKBOT_API_TOKEN=//p' .env | head -1 \
         | sed 's/[[:space:]]*#.*$//' | tr -d '"'"'"'\r')
 curl -X POST localhost:8000/api/alerts/test -H "Authorization: Bearer $TOKEN"
-# → {"channels":["discord"],"results":{"discord":true},"detail":"성공: discord"}
+# 성공 → {"channels":["discord"],"results":{"discord":true},"reasons":{},"detail":"성공: discord"}
+# 실패 → "reasons" 에 **사유가 그대로 담긴다.** 로그를 찾아가지 않아도 된다:
+#   {"results":{"discord":false},
+#    "reasons":{"discord":"HTTP 404: {\"message\":\"Unknown Webhook\",\"code\":10015} — …"}}
+#   웹훅 URL·앱 비밀번호는 사유에서 지워진다(그 자체가 자격증명이므로).
 
 # 4) 설정·기준선 확인
 curl localhost:8000/api/alerts/config -H "Authorization: Bearer $TOKEN"
