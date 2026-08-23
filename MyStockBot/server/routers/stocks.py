@@ -15,7 +15,10 @@ _DEFAULT_SEARCH_LIMIT = 10
 _MAX_SEARCH_LIMIT = 30
 
 _DEFAULT_CANDLES_COUNT = 150
-_MAX_CANDLES_COUNT = 300
+# Query 단계에서는 전 tf 공통 상한(1d/1w/60m/120m/240m의 확장 상한 1000)만 검증한다.
+# tf별 실제 상한(1d/1w/60m/120m/240m=1000, 그 외=300)은 candles.get_candles() 내부에서
+# 조용히 clamp한다(기존 계약).
+_MAX_CANDLES_COUNT = 1000
 
 # 화이트리스트 겸 FastAPI/Pydantic 자동 422 검증용 Literal.
 CandleTf = Literal["1m", "5m", "15m", "30m", "60m", "120m", "240m", "1d", "1w", "1M", "1y"]
@@ -37,6 +40,9 @@ async def get_stock_candles(
     code: str,
     tf: CandleTf = Query(default="1d"),
     count: int = Query(default=_DEFAULT_CANDLES_COUNT, ge=1, le=_MAX_CANDLES_COUNT),
+    # before: 이 epoch(초) 미만(t < before)의 과거 구간만 조회 — 차트 왼쪽 스크롤
+    # 무한 로딩용 커서. 프론트가 이미 가진 가장 오래된 봉의 t 를 그대로 넘긴다.
+    before: int | None = Query(default=None, ge=1),
 ):
     # tf 는 CandleTf(Literal)로 FastAPI가 이미 화이트리스트 검증(위반 시 자동 422)한다.
     try:
@@ -45,7 +51,7 @@ async def get_stock_candles(
         raise HTTPException(status_code=422, detail=str(e))
 
     # KIS/yfinance 네트워크 호출은 블로킹이므로 스레드로 넘겨 이벤트루프를 막지 않는다.
-    result = await asyncio.to_thread(candles.get_candles, normalized_code, tf, count)
+    result = await asyncio.to_thread(candles.get_candles, normalized_code, tf, count, before)
     return result
 
 

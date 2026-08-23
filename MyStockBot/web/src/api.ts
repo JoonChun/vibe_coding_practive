@@ -213,13 +213,19 @@ export function getDca(
   );
 }
 
-/** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150·최대 300(마지막 N개). */
+/** 종목 캔들 히스토리 조회(멀티 타임프레임). count 기본 150(마지막 N개).
+ * 최대치는 tf별로 다름 — 1d/1w/60m/120m/240m는 최대 1000, 그 외(1m/5m/15m/30m/1M/1y)는 300.
+ * before(epoch 초)를 주면 t < before 인 과거 구간만 온다 — 차트 왼쪽 스크롤 무한 로딩용 커서. */
 export function getCandles(
   code: string,
   tf: Timeframe = "1d",
-  count = 150
+  count = 150,
+  before?: number
 ): Promise<CandlesResponse> {
   const params = new URLSearchParams({ tf, count: String(count) });
+  if (before !== undefined) {
+    params.set("before", String(before));
+  }
   return request<CandlesResponse>(
     `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
   );

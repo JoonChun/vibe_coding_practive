@@ -5,6 +5,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 import db
 import watchlist_sync
 
+from ..services import candles
+
 from ..schemas import (
     WatchlistItemIn,
     WatchlistItemOut,
@@ -31,6 +33,9 @@ def create_watchlist_item(item: WatchlistItemIn, background_tasks: BackgroundTas
     # 앱 → 시트 미러링(단일 소스화). 응답을 막지 않도록 백그라운드로 보내고, 실패해도
     # 앱 목록은 이미 갱신된 상태다(watchlist_sync 가 예외를 격리하고 로그만 남긴다).
     background_tasks.add_task(watchlist_sync.mirror_add, row["code"], row["name"])
+    # 일/주/월봉 과거 이력 선채움 — 첫 차트 조회의 온디맨드 딥 수집(페이지네이션 수 초)을
+    # 사용자가 기다리지 않게 한다. 실패해도 온디맨드 경로가 그대로 남아 있다.
+    background_tasks.add_task(candles.backfill_history, row["code"])
     return row
 
 
