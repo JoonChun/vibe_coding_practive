@@ -34,7 +34,6 @@ build/
 # macOS
 .DS_Store
 
-# SQLite (Phase 1 백엔드 DB)
-data/*.db
-data/*.db-wal
-data/*.db-shm
+# 런타임 데이터 전체 — DB(+WAL)·백업(data/backups/)·터널 로그·KIS 토큰 캐시.
+# 개별 확장자 나열(*.db 등)로는 새 파일 종류(로그·백업)가 생길 때마다 구멍이 났다.
+data/
