@@ -1,4 +1,26 @@
-import type { DecisionView } from "../types";
+import type { DecisionView, SnapshotFactors } from "../types";
+
+/**
+ * 단기 판정(60분봉 MACD+RSI)에 필요한 최소 봉 수. 백엔드 collector.MIN_BARS_60M 과
+ * 같은 값이며, 판정 자체는 백엔드가 계산한다 — 여기서는 "그 판정을 아직 믿을 수
+ * 없다"는 표시 여부만 정한다.
+ */
+export const MIN_BARS_60M = 35;
+
+/**
+ * 단기 판정이 봉 부족 구간인가.
+ *
+ * 봉이 모자라면 MACD 는 데이터부족이지만 RSI(15봉)는 '중립'을 내므로, 합계 0점 =
+ * **'관망'** 이 나온다. 사용자는 이걸 시장 판단으로 읽지만 실제로는 데이터가 없는
+ * 것이고, 35번째 봉이 쌓이는 순간 가짜 '관망→매수' 전환이 생긴다.
+ * bars_60m 이 없는 구버전 응답에서는 false(기존 동작 유지).
+ */
+export function isShortViewWarming(
+  factors: SnapshotFactors | null | undefined
+): boolean {
+  const bars = factors?.bars_60m;
+  return typeof bars === "number" && bars < MIN_BARS_60M;
+}
 
 /** 판정 5단계 정렬 우선순위(강력매수=0 … 강력매도=4). 미상은 5로 뒤로 보낸다. */
 export const DECISION_RANK: Record<DecisionView, number> = {

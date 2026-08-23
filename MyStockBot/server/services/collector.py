@@ -63,7 +63,13 @@ _FACTOR_ERROR_FIELDS = [
     "bb_upper", "bb_mid", "bb_lower",
     "per", "pbr", "roe", "revenue", "net_income",
     "short_score", "long_score",
+    "bars_60m",
 ]
+
+# 단기 판정(60분봉 MACD)에 필요한 최소 봉 수. 이보다 모자라면 지표가 '데이터부족'이
+# 아니라 0점=관망을 내므로(indicators.short_term_view 가 MACD·RSI 둘 다 없을 때만
+# 데이터부족), 화면이 그 사실을 알 수 있도록 실제 봉 수를 함께 내려보낸다.
+MIN_BARS_60M = 35
 
 _state: dict | None = None
 _state_lock = threading.Lock()
@@ -375,6 +381,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
     store60_df, source_60m = _get_60m_df(code, token)
     macd_60m = rsi_60m = None
     rsi_value_60m = None
+    bars_60m = 0 if store60_df is None else len(store60_df)
     if store60_df is not None and not store60_df.empty:
         try:
             macd_60m = indicators.macd_cross_signal(store60_df)
@@ -410,6 +417,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
         **financials,
         **view_data,
         "source": source, "source_60m": source_60m,
+        "bars_60m": bars_60m,
         "error": None,
     }
 

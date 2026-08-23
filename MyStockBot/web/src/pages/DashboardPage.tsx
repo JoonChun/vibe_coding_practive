@@ -14,7 +14,7 @@ import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickStream } from "../hooks/useTickStream";
 import type { DecisionView, SnapshotItem, WatchlistItem } from "../types";
-import { DECISION_RANK, countDecisions } from "../utils/decision";
+import { DECISION_RANK, countDecisions, isShortViewWarming } from "../utils/decision";
 
 type SortKey = "decision" | "change" | "name";
 
@@ -77,9 +77,11 @@ export default function DashboardPage() {
           longView: snap?.long_view ?? null,
           source: snap?.source ?? null,
           market: item.market ?? null,
+          shortWarming: isShortViewWarming(snap?.factors),
+          realtimeExcluded: tickStream.excludedCodes.has(item.code),
         };
       });
-  }, [watchlist, snapshot.data]);
+  }, [watchlist, snapshot.data, tickStream.excludedCodes]);
 
   const existingCodes = useMemo(
     () => new Set(watchlist.map((item) => item.code)),
@@ -208,6 +210,17 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
+      {/* KIS 세션 구독 한도(41건) 초과 — 잘리는 건 정의상 가장 최근에 추가한 종목이고
+          목록 맨 아래라 스크롤·필터에 가려 눈에 안 띈다. 전역 배너로 먼저 알린다. */}
+      {tickStream.excludedCodes.size > 0 ? (
+        <div className="banner banner--warning" role="status">
+          <span>
+            실시간 시세는 {rows.length - tickStream.excludedCodes.size}종목까지만 구독됩니다 —
+            최근 추가한 {tickStream.excludedCodes.size}종목은 지연 시세로 표시됩니다
+          </span>
+        </div>
+      ) : null}
+
       <header className="dash-header">
         <h1 className="dash-header__title">MyStockBot</h1>
         <RealtimeBadge live={tickStream.connected && tickStream.kisConnected} />
@@ -289,12 +302,18 @@ export default function DashboardPage() {
           </p>
         ) : null}
 
-        {snapshot.loading && rows.length === 0 && !watchlistError ? (
+        {/* 워밍업(첫 수집 사이클 전)도 스켈레톤으로 덮는다 — 이때 카드를 그리면
+            전 종목이 '—' + '데이터부족' 칩으로 렌더돼 고장난 것처럼 보인다. */}
+        {(snapshot.loading || snapshot.warmingUp) && rows.length === 0 && !watchlistError ? (
           <ul className="stock-card-grid" aria-hidden="true">
             {[0, 1, 2, 3].map((i) => (
               <li key={i} className="stock-card stock-card--skeleton" />
             ))}
           </ul>
+        ) : snapshot.warmingUp && rows.length > 0 ? (
+          <p className="watchlist-empty">
+            첫 수집이 진행 중입니다 — 관심종목 {rows.length}개의 시세·판정을 불러오는 중입니다.
+          </p>
         ) : visibleRows.length === 0 ? (
           <p className="watchlist-empty">
             {rows.length === 0

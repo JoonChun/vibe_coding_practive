@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { setApiToken } from "./api";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./index.css";
 
 // 매직 링크 온보딩: https://…/#token=<값> 으로 접속하면 토큰을 저장하고
@@ -22,8 +23,10 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 );

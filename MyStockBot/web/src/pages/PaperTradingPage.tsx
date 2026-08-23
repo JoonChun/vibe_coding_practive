@@ -121,9 +121,18 @@ export default function PaperTradingPage() {
       </header>
 
       <main className="dash-main">
+        {/* 다른 화면(대시보드·관심종목)은 폴링이 스스로 복구하지만 이 화면은 마운트
+            시 1회만 불러오므로, 실패하면 사용자가 직접 재시도할 수단이 필요하다. */}
         {loadError ? (
           <p className="panel__error" role="alert">
             {loadError}
+            <button
+              type="button"
+              className="banner__retry"
+              onClick={() => void loadAll()}
+            >
+              다시 시도
+            </button>
           </p>
         ) : null}
 

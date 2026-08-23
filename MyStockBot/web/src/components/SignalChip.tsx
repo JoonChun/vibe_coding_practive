@@ -4,6 +4,12 @@ interface SignalChipProps {
   label: SignalView | null;
   /** 접근성 라벨 보강용 — "단기" | "장기" 등 */
   kind: string;
+  /**
+   * 봉이 모자라 이 판정을 아직 믿을 수 없는 구간(60분봉 35봉 미만).
+   * 라벨을 '축적 중'으로 바꾸고 데이터부족 스타일을 재사용한다 — 판정 값 자체를
+   * 바꾸지는 않으므로 정렬·분포 집계(DECISION_RANK·countDecisions)에는 영향이 없다.
+   */
+  warming?: boolean;
 }
 
 interface ChipStyle {
@@ -39,8 +45,13 @@ function resolveStyle(label: SignalView | null): {
   return { display: "데이터부족", style: CHIP_STYLES["데이터부족"] };
 }
 
-export function SignalChip({ label, kind }: SignalChipProps) {
-  const { display, style } = resolveStyle(label);
+export function SignalChip({ label, kind, warming = false }: SignalChipProps) {
+  const resolved = resolveStyle(label);
+  const display = warming ? "축적 중" : resolved.display;
+  const style = warming ? CHIP_STYLES["데이터부족"] : resolved.style;
+  const title = warming
+    ? "60분봉이 아직 35개 미만입니다 — 지표가 계산되지 않아 판정을 신뢰할 수 없습니다"
+    : undefined;
 
   return (
     <span
@@ -51,6 +62,7 @@ export function SignalChip({ label, kind }: SignalChipProps) {
         borderColor: style.border,
       }}
       aria-label={`${kind} 관점: ${display}`}
+      title={title}
     >
       {display}
     </span>

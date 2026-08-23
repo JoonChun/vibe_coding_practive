@@ -282,6 +282,12 @@ export interface SnapshotFactors {
   short_score: number | null;
   /** 장기 스코어 합 — 임계값은 응답의 rules 참조 */
   long_score: number | null;
+  /**
+   * 단기 판정에 쓰인 60분봉 개수. MACD 에 35봉이 필요한데 모자라면 백엔드 지표가
+   * '데이터부족'이 아니라 0점=관망을 내므로, 화면은 이 값으로 그 구간을 구분한다.
+   * 구버전 응답에는 없어 undefined/null 일 수 있다.
+   */
+  bars_60m?: number | null;
   /** 단기(60분봉) 기여요인 — MACD·RSI */
   breakdown_short: FactorRow[];
   /** 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE */

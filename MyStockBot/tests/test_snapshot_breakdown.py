@@ -103,3 +103,28 @@ def test_breakdown_sum_consistency_across_factor_combinations():
         )
         factors = _factors(item)
         assert sum(r["score"] for r in factors["breakdown_long"]) == factors["long_score"], patch
+
+
+# ────────────────────────────────────────────
+# bars_60m — 단기 판정 워밍업 구간 표시용 (additive)
+# ────────────────────────────────────────────
+#
+# 60분봉이 MACD 최소 봉수(35)에 못 미치면 지표는 '데이터부족'이 아니라 0점=관망을
+# 낸다(RSI 는 15봉이면 '중립'을 내므로 합계가 0). 화면은 그 구간을 '축적 중'으로
+# 구분해야 하는데, 그러려면 실제 봉 수가 응답에 실려야 한다.
+
+def test_bars_60m_passthrough_to_factors():
+    item = {**_ITEM, "bars_60m": 12}
+    assert _factors(item)["bars_60m"] == 12
+
+
+def test_bars_60m_absent_is_none_not_crash():
+    """구버전 상태(키 없음)에서도 깨지지 않고 None 으로 내려간다."""
+    item = {k: v for k, v in _ITEM.items() if k != "bars_60m"}
+    assert _factors(item)["bars_60m"] is None
+
+
+def test_failed_item_still_has_no_factors_with_bars():
+    """수집 실패 항목은 bars_60m 유무와 무관하게 factors=None 계약 유지."""
+    item = {**_ITEM, "bars_60m": 5, "error": "수집 실패"}
+    assert snapshot_cache._to_snapshot_item(item)["factors"] is None

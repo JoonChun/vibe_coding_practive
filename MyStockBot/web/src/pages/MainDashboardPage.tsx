@@ -167,8 +167,14 @@ export default function MainDashboardPage() {
         <section className="movers" aria-label="관심종목 Top Movers">
           <h2 className="movers__title">오늘의 관심종목 Top Movers</h2>
           {topMovers.length === 0 ? (
+            // 빈 이유를 구분해서 말한다 — 셋을 한 문구로 덮으면 정상 워밍업이
+            // 설정 오류처럼 읽힌다(첫 수집 중 / 관심종목 없음 / 등락 데이터만 없음).
             <p className="movers__empty">
-              등록된 관심종목의 등락 데이터가 아직 없습니다.
+              {snapshot.warmingUp
+                ? "첫 수집이 진행 중입니다 — 잠시 후 자동으로 채워집니다."
+                : (snapshot.data?.items.length ?? 0) === 0
+                  ? "관심종목이 없습니다. 관심종목 탭에서 종목을 추가해보세요."
+                  : "등록된 관심종목의 등락 데이터가 아직 없습니다."}
             </p>
           ) : (
             <ul className="movers__list">
