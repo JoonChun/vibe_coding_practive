@@ -12,6 +12,9 @@ MYSTOCKBOT_API_TOKEN 환경변수가 설정되어 있으면 모든 /api/* 요청
 """
 import os
 import secrets
+import threading
+import time
+from collections import deque
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -23,6 +26,30 @@ _API_TOKEN = os.environ.get(API_TOKEN_ENV_KEY, "").strip() or None
 
 _HEALTH_PATH = "/api/health"
 _API_PREFIX = "/api"
+
+# ── 인증 실패 감속기(브루트포스 방어) ──
+#
+# IP별 추적은 하지 않는다 — 터널(cloudflared/Tailscale) 뒤에서는 모든 요청의
+# client IP 가 터널 프로세스의 로컬 주소로 보여 IP별 구분이 무의미하다.
+# 대신 **실패만** 전역으로 세고, 창 안 실패가 임계치를 넘으면 이후의 "실패하는"
+# 요청에만 429 를 준다. 올바른 토큰은 언제나 통과하므로, 공격이 진짜 사용자를
+# 잠그는(락아웃 DoS) 부작용 없이 추측 속도만 분당 _FAIL_THRESHOLD 로 상한된다.
+_FAIL_WINDOW_SECONDS = 60
+_FAIL_THRESHOLD = 10
+_RETRY_AFTER_SECONDS = 60
+_fail_times: deque = deque()
+_fail_lock = threading.Lock()
+
+
+def _register_failure_and_check_limit() -> bool:
+    """인증 실패 1건을 기록하고, 창(_FAIL_WINDOW_SECONDS) 안의 실패 수가 임계치를
+    넘었으면 True(=이 요청은 401 대신 429 대상)를 돌려준다."""
+    now = time.monotonic()
+    with _fail_lock:
+        while _fail_times and now - _fail_times[0] > _FAIL_WINDOW_SECONDS:
+            _fail_times.popleft()
+        _fail_times.append(now)
+        return len(_fail_times) > _FAIL_THRESHOLD
 
 
 def is_auth_enabled() -> bool:
@@ -70,6 +97,12 @@ async def auth_middleware(request: Request, call_next):
     scheme, _, token = auth_header.partition(" ")
 
     if scheme.lower() != "bearer" or not token or not tokens_match(token, _API_TOKEN):
+        if _register_failure_and_check_limit():
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "인증 실패가 너무 잦습니다 — 잠시 후 다시 시도하세요"},
+                headers={"Retry-After": str(_RETRY_AFTER_SECONDS)},
+            )
         return JSONResponse(
             status_code=401,
             content={"detail": "인증이 필요합니다"},

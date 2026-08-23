@@ -150,10 +150,17 @@ app.add_exception_handler(sqlite3.OperationalError, sqlite_operational_error_han
 
 @app.get("/api/health")
 def health():
-    """liveness('status') + readiness(마지막 스냅샷 신선도). 첫 수집 사이클 전이면 ready=false."""
+    """liveness('status') + readiness(마지막 스냅샷 신선도). 첫 수집 사이클 전이면 ready=false.
+
+    kis: 마지막 KIS 토큰 발급 시도 결과. ok=false 가 지속되면 앱키 만료/폐기로 전
+    종목이 yfinance 지연 데이터로 조용히 강등된 상태다 — 외부 모니터링(uptime 체커)이
+    이 필드를 보고 경보를 걸 수 있다(status 는 그 경우에도 ok 로 남는다: 서버 자체는
+    살아 있고, 데이터 품질 문제와 프로세스 생존 문제를 한 필드에 섞지 않는다).
+    """
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
+    import kis_auth
     from config import TIMEZONE
 
     from .services import collector
@@ -168,7 +175,12 @@ def health():
             snapshot["age_seconds"] = round((now - gen).total_seconds(), 1)
         except (ValueError, TypeError):
             pass
-    return {"status": "ok", "ready": snapshot is not None, "snapshot": snapshot}
+    return {
+        "status": "ok",
+        "ready": snapshot is not None,
+        "snapshot": snapshot,
+        "kis": kis_auth.token_status(),
+    }
 
 
 app.include_router(watchlist.router)

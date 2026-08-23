@@ -115,7 +115,6 @@ MyStockBot/
 | 변수 | 필요 경로 | 설명 |
 |------|-----------|------|
 | `KIS_APP_KEY` / `KIS_APP_SECRET` | 웹앱·크론 | KIS Open API 자격증명 |
-| `KIS_ACCOUNT_NO` | (선택) | KIS 계좌번호 |
 | `MYSTOCKBOT_API_TOKEN` | 웹앱 | API 인증 토큰. **미설정 시 인증 비활성** |
 | `CORS_ALLOWED_ORIGINS` | 웹앱 | 허용 오리진(쉼표 구분). 기본 `http://localhost:5173` |
 | `MYSTOCKBOT_DB_PATH` | 웹앱 | SQLite 경로. 기본 `data/mystockbot.db` |

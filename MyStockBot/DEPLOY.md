@@ -6,7 +6,7 @@
 
 ### 사전 준비
 - Docker Desktop 설치 (WSL2 백엔드 활성화)
-- MyStockBot/.env 파일 작성 (KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO, CORS_ALLOWED_ORIGINS 등)
+- MyStockBot/.env 파일 작성 (KIS_APP_KEY, KIS_APP_SECRET, CORS_ALLOWED_ORIGINS 등 — KIS_ACCOUNT_NO 는 불필요, 조회 전용이라 읽는 코드가 없다)
 
 ### 실행
 ```bash
@@ -426,4 +426,53 @@ cloudflared tunnel info <tunnel-name>
 
 ---
 
-마지막 업데이트: 2026-07-21
+## 7. 운영 — 백업·모니터링·연간 체크리스트
+
+### 7-1. DB 백업 (자동)
+서버가 매일 17:00(KST)에 `data/backups/mystockbot-YYYYMMDD.db` 스냅샷을 만든다
+(sqlite3 backup API — WAL 쓰기 중에도 일관 스냅샷, 최근 14개 보존, scheduler `daily_db_backup`).
+
+**복구**: 컨테이너 중지 → `cp data/backups/mystockbot-<날짜>.db data/mystockbot.db` → 재시작.
+
+**주의**: 백업이 같은 디스크에 있다 — 디스크가 통째로 죽는 시나리오는 못 막는다.
+분기 1회 정도 `data/backups/` 최신 파일을 다른 기기·클라우드에 복사해 둘 것.
+
+### 7-2. 모니터링 (서버 다운·데이터 강등 감지)
+`/api/health` 는 무인증이다. 외부 uptime 체커(Healthchecks.io, UptimeRobot 등 무료 플랜)에
+터널 URL 기준으로 등록하면 서버·터널이 죽었을 때 메일/푸시를 받는다:
+
+```bash
+curl -s https://<터널URL>/api/health
+```
+
+응답 필드:
+- `status: ok` — 프로세스 생존 (liveness)
+- `ready: true` — 첫 수집 사이클 완료 (readiness)
+- `kis.ok: false` — **KIS 토큰 발급 실패 상태.** 앱키 만료·폐기로 전 종목이 yfinance
+  지연 데이터로 강등됐다는 뜻이다(서버는 살아 있으므로 status 는 ok 로 유지된다).
+  `kis.detail` 에 사유가 담긴다.
+
+토큰 발급이 3사이클 연속 실패하면 서버가 알림 채널(Discord/Slack — 켜져 있는 것)로
+시스템 경보를 1회 보낸다(6시간 쿨다운, collector `_note_kis_token_result`).
+
+### 7-3. 배포 후 점검 (수동 체크리스트)
+프론트 재배포·터널 전환·컨테이너 재빌드 후에는 브라우저 스모크를 한 번 돌린다:
+
+```bash
+node scripts/smoke_ui.mjs <배포 URL> <API 토큰>
+```
+
+(캔버스 렌더·탭바·푸터 겹침 등 실제로 겪은 회귀를 잡도록 설계된 스크립트다 —
+CI 에는 없으므로 이 체크리스트가 유일한 실행 지점이다.)
+
+### 7-4. 연간 체크리스트 (조용히 썩는 것들)
+| 주기 | 항목 | 방법 |
+|------|------|------|
+| **매년 (발급일 기준)** | KIS 앱키 만료(1년) 재발급 | KIS 개발자센터 재발급 → `.env` 의 `KIS_APP_KEY`/`KIS_APP_SECRET` 교체 + GitHub Secrets 갱신 → 컨테이너 재시작. 만료일을 캘린더에 기록해 둘 것 |
+| **매년 12월** | 휴장일 하드코딩 표 갱신 | `src/market_calendar.py` 의 `TABLE_MAX_YEAR`·다음 해 휴장일 추가 (KRX 휴장일 공시 참조). 서버 런타임은 KIS 캐시가 우선이라 안전하지만 GitHub Actions 크론은 이 표만 본다 |
+| **분기 1회** | 백업 오프사이트 복사 | 7-1 참고 |
+| **분기 1회** | 의존성 lock 재생성 | `pip install -r requirements.txt && pip freeze > requirements.lock.txt` 후 테스트 통과 확인 |
+
+---
+
+마지막 업데이트: 2026-08-23

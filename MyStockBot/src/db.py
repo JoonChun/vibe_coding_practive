@@ -530,6 +530,46 @@ def get_candles_store_before(code: str, tf: str, limit: int, before_t: int) -> l
         conn.close()
 
 
+def create_backup(backup_dir: str | None = None, retention: int = 14) -> str | None:
+    """운영 DB 스냅샷 백업. 생성한 백업 파일 경로를 반환한다(원본 없으면 None).
+
+    sqlite3 의 backup API 를 쓴다 — WAL 모드에서 쓰기가 진행 중이어도 일관된
+    스냅샷이 보장된다(파일 복사 cp 는 WAL 저널과 어긋난 조각을 뜰 수 있다).
+    파일명은 mystockbot-YYYYMMDD.db (하루 1개 — 같은 날 재실행은 덮어쓴다).
+    retention 개를 넘는 오래된 백업은 삭제한다. 기본 위치는 DB 옆 backups/
+    (data/ 하위 — gitignore 대상이며 호스트 바인드 마운트라 컨테이너 밖에서 보인다).
+    """
+    if not os.path.exists(DB_PATH):
+        return None
+
+    directory = backup_dir or os.path.join(os.path.dirname(DB_PATH) or ".", "backups")
+    os.makedirs(directory, exist_ok=True)
+    stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d")
+    dest_path = os.path.join(directory, f"mystockbot-{stamp}.db")
+
+    src = get_connection()
+    try:
+        dst = sqlite3.connect(dest_path)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+    backups = sorted(
+        f for f in os.listdir(directory)
+        if f.startswith("mystockbot-") and f.endswith(".db")
+    )
+    for old in backups[:-max(1, int(retention))]:
+        try:
+            os.remove(os.path.join(directory, old))
+        except OSError:
+            pass  # 지우기 실패가 백업 자체를 실패로 만들 이유는 없다
+
+    return dest_path
+
+
 def get_candles_age_seconds(code: str, tf: str) -> float | None:
     """(code, tf) 저장소의 max(fetched_at) 로부터 현재(UTC)까지 경과 초. 데이터 없으면 None."""
     conn = get_connection()

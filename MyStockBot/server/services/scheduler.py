@@ -115,7 +115,33 @@ def _daily_candle_backfill() -> None:
     logger.info("[scheduler] 캔들 백필 완료")
 
 
+def _daily_db_backup() -> None:
+    """SQLite 일일 백업 — 관심종목·모의투자·알림 기준선이 전부 이 파일 하나에 있다.
+    디스크가 같이 죽는 시나리오까지는 못 막지만(오프사이트는 사용자 몫 — DEPLOY.md),
+    실수 삭제·파일 손상·마이그레이션 사고는 이걸로 되돌린다."""
+    import db
+
+    try:
+        path = db.create_backup()
+        if path:
+            logger.info("[scheduler] DB 백업 완료: %s", path)
+        else:
+            logger.warning("[scheduler] DB 백업 건너뜀 — 원본 DB 파일이 없음")
+    except Exception as e:
+        logger.warning("[scheduler] DB 백업 실패: %s", e)
+
+
 def start() -> None:
+    # DB 백업은 주말 포함 매일 — 모의투자·관심종목 편집은 장중이 아니어도 일어난다.
+    _scheduler.add_job(
+        _daily_db_backup,
+        trigger="cron",
+        hour=17,
+        minute=0,
+        timezone=TIMEZONE,
+        id="daily_db_backup",
+        replace_existing=True,
+    )
     _scheduler.add_job(
         _daily_candle_backfill,
         trigger="cron",

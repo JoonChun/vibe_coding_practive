@@ -418,6 +418,54 @@ def _collect_one(item: dict, token: str | None) -> dict:
 # 사이클 · 루프
 # ────────────────────────────────────────────
 
+# KIS 토큰 발급 연속 실패 경보 — 앱키 만료(발급 1년)·폐기가 "조용한 yfinance 강등"으로
+# 지나가는 문제의 능동 통지. 화면 배지(SourceBadge)와 /api/health 의 kis 필드는 수동
+# 확인 수단이고, 이건 사용자가 안 보고 있어도 알림 채널로 1회 알려주는 마지막 그물이다.
+# _run_cycle 은 단일 루프 스레드에서만 돌므로 전역 카운터에 락이 필요 없다.
+_KIS_FAIL_ALERT_THRESHOLD = 3
+_KIS_FAIL_ALERT_COOLDOWN_SECONDS = 6 * 3600
+_kis_fail_streak = 0
+_kis_fail_alerted_at: float | None = None  # time.monotonic()
+
+
+def _note_kis_token_result(ok: bool) -> None:
+    """사이클의 토큰 발급 성패를 기록하고, 연속 실패가 임계치에 닿으면 알림 채널
+    (Discord/Slack — 켜져 있는 것만)로 시스템 경보를 보낸다. 쿨다운(6시간) 안에는
+    재발송하지 않고, 성공이 한 번이라도 나오면 스트릭이 리셋된다. 발송 실패는
+    로그만 남긴다(경보 경로가 수집 사이클을 죽이면 안 된다)."""
+    global _kis_fail_streak, _kis_fail_alerted_at
+
+    if ok:
+        _kis_fail_streak = 0
+        return
+
+    _kis_fail_streak += 1
+    if _kis_fail_streak < _KIS_FAIL_ALERT_THRESHOLD:
+        return
+
+    now = time.monotonic()
+    if _kis_fail_alerted_at is not None and (now - _kis_fail_alerted_at) < _KIS_FAIL_ALERT_COOLDOWN_SECONDS:
+        return
+    _kis_fail_alerted_at = now
+
+    text = (
+        f"⚠️ MyStockBot: KIS 토큰 발급이 {_kis_fail_streak}사이클 연속 실패했습니다.\n"
+        "전 종목이 yfinance 지연 데이터로 강등된 상태입니다. "
+        "앱키 만료(발급 후 1년)·폐기 여부를 확인하세요 — KIS 개발자센터에서 재발급 후 "
+        ".env 의 KIS_APP_KEY/KIS_APP_SECRET 교체, 컨테이너 재시작."
+    )
+    logger.error("[collector] ★ KIS 토큰 연속 %d회 실패 — 시스템 경보 발송 시도", _kis_fail_streak)
+    try:
+        import alert_channels
+
+        if alert_channels.discord_enabled():
+            alert_channels.send_discord(text)
+        if alert_channels.slack_enabled():
+            alert_channels.send_slack(text)
+    except Exception as e:
+        logger.warning(f"[collector] 시스템 경보 발송 실패(로그로만 남김): {e}")
+
+
 def _run_cycle() -> None:
     global _state
 
@@ -434,6 +482,7 @@ def _run_cycle() -> None:
     except Exception as e:
         logger.warning(f"[collector] KIS 토큰 발급 실패 — 이번 사이클은 전 종목 yfinance 폴백 경로로 진행: {e}")
         token = None
+    _note_kis_token_result(token is not None)
 
     items: list[dict] = []
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
