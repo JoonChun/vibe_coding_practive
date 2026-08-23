@@ -382,7 +382,10 @@ DECISION_ALERT_ENABLED=1
 # 3) 서버를 띄우고 테스트 발송으로 채널이 살아 있는지 먼저 확인한다.
 #    (이 엔드포인트는 ENABLED 플래그와 장 시간대 게이트를 우회한다)
 #    MYSTOCKBOT_API_TOKEN 은 .env 안에만 있고 셸에는 없으므로 직접 읽어 쓴다.
-TOKEN=$(sed -n 's/^MYSTOCKBOT_API_TOKEN=//p' .env | head -1 | tr -d '"'"'"'\r')
+#    ★ 아래 한 줄을 그대로 쓰세요. "Bearer <토큰>" 을 손으로 적다가 예시 문구를
+#      그대로 보내면 401 이 옵니다(예전에는 500 이 났고, 그건 결함이라 고쳤습니다).
+TOKEN=$(sed -n 's/^MYSTOCKBOT_API_TOKEN=//p' .env | head -1 \
+        | sed 's/[[:space:]]*#.*$//' | tr -d '"'"'"'\r')
 curl -X POST localhost:8000/api/alerts/test -H "Authorization: Bearer $TOKEN"
 # → {"channels":["discord"],"results":{"discord":true},"detail":"성공: discord"}
 
@@ -512,6 +515,7 @@ Gmail 은 크론 리포트와 같은 자격증명(`SENDER_EMAIL`/`NOTIFY_EMAIL`/
 |------|-----------|
 | 종목코드 앞 `0` 이 사라짐 | Google Sheets A열 서식을 **일반 텍스트**로 변경 |
 | `401 Unauthorized` (앱) | `MYSTOCKBOT_API_TOKEN` 과 웹앱 입력 토큰 불일치 |
+| `curl` 이 `{"detail":"인증이 필요합니다"}` | `MYSTOCKBOT_API_TOKEN` 이 설정된 상태다. `-H "Authorization: Bearer <토큰>"` 를 붙이거나 `/alerts` 화면에서 누르세요(위 `TOKEN=$(...)` 한 줄 사용 권장) |
 | KIS `EGW00133` | 토큰 발급 rate-limit(1분당 1회). 잠시 후 재시도 — 토큰은 파일 캐시됨 |
 | 실시간 배지가 초록인데 틱이 없음 | 무수신 워치독(3분)이 자동 재연결. 지속되면 KIS 자격증명·장 시간 확인 |
 | 지수만 "데이터 없음" | KIS 지수 API 실패 후 yfinance 폴백까지 실패. 네트워크·프록시 확인 |

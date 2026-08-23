@@ -15,12 +15,12 @@ import asyncio
 import contextlib
 import logging
 import os
-import secrets
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from config import API_TOKEN_ENV_KEY
 
+from ..auth import tokens_match
 from ..services import kis_ws
 
 logger = logging.getLogger(__name__)
@@ -39,12 +39,18 @@ _API_TOKEN = os.environ.get(API_TOKEN_ENV_KEY, "").strip() or None
 
 
 def _is_authorized(token: str | None) -> bool:
-    """MYSTOCKBOT_API_TOKEN 미설정 시 자유 접속, 설정 시 상수시간 비교로 검증."""
+    """MYSTOCKBOT_API_TOKEN 미설정 시 자유 접속, 설정 시 상수시간 비교로 검증.
+
+    비교는 `auth.tokens_match` 에 위임한다 — `secrets.compare_digest` 를 `str` 로
+    직접 부르면 비ASCII 토큰에서 TypeError 가 나고, 여기서는 그게 4401(인증 실패)이
+    아니라 핸드셰이크 예외가 된다. HTTP 쪽과 **같은 함수**를 쓰게 해서 한쪽만 고쳐지는
+    상황을 막는다.
+    """
     if _API_TOKEN is None:
         return True
     if not token:
         return False
-    return secrets.compare_digest(token, _API_TOKEN)
+    return tokens_match(token, _API_TOKEN)
 
 
 async def _drain_incoming(websocket: WebSocket) -> None:

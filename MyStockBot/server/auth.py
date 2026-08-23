@@ -30,6 +30,27 @@ def is_auth_enabled() -> bool:
     return _API_TOKEN is not None
 
 
+def tokens_match(given: str, expected: str) -> bool:
+    """상수시간 토큰 비교. **바이트로 비교한다.**
+
+    `secrets.compare_digest` 는 `str` 을 받으면 **비ASCII 문자에서 TypeError 를 던진다**
+    (실측: `compare_digest('여기에_토큰', 'x')` → TypeError). 미들웨어에서 그 예외가
+    새면 틀린 토큰이 401 이 아니라 **500** 으로 나간다 — 실제로 사용자가 안내 문서의
+    플레이스홀더를 그대로 보내 500 을 받았고, "서버가 고장났다"로 읽혔다. 설정한 토큰
+    자체가 비ASCII 면 **모든 인증 요청이 500** 이 되어 인증을 켜는 순간 서버를 못 쓴다.
+
+    UTF-8 바이트로 인코딩해 비교하면 어떤 문자든 안전하고 상수시간 성질도 유지된다
+    (길이가 다르면 compare_digest 가 길이를 누설하는 것은 문서화된 성질이고, 토큰
+    길이 누설은 이 앱에서 감수할 수 있는 수준이다).
+
+    surrogate 가 섞인 값(잘못 디코딩된 헤더)도 인코딩이 실패할 수 있으므로 방어한다.
+    """
+    try:
+        return secrets.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))
+    except (UnicodeEncodeError, ValueError):
+        return False
+
+
 def _is_exempt(request: Request) -> bool:
     if request.method == "OPTIONS":
         return True
@@ -48,7 +69,7 @@ async def auth_middleware(request: Request, call_next):
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
 
-    if scheme.lower() != "bearer" or not token or not secrets.compare_digest(token, _API_TOKEN):
+    if scheme.lower() != "bearer" or not token or not tokens_match(token, _API_TOKEN):
         return JSONResponse(
             status_code=401,
             content={"detail": "인증이 필요합니다"},
