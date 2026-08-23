@@ -1165,6 +1165,13 @@ select:focus-visible {
   grid-column: span 12;
 }
 
+/* 장기 탭에서는 기여요인 분해 아래에 눌림목 분석 카드가 쌓이므로 세로 스택으로 */
+.detail-grid__factors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap);
+}
+
 @media (min-width: 1024px) {
   .detail-grid__gauge {
     grid-column: span 4;
@@ -1243,7 +1250,8 @@ select:focus-visible {
 
 /* 기여요인 분해 카드 */
 .factor-card {
-  height: 100%;
+  /* height:100% 제거 — 장기 탭에서 눌림목 카드와 세로 스택(.detail-grid__factors)이
+     되면서 각 카드가 부모 전체 높이를 요구해 넘치던 문제. */
   background-color: var(--surface-container-lowest);
   border: 1px solid var(--outline-variant);
   border-radius: var(--radius-xl);
@@ -3437,4 +3445,114 @@ select:focus-visible {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--outline);
   overflow-wrap: anywhere;
+}
+
+/* ── 눌림목 분석 카드 (종목 상세 장기 탭) ──
+   기여요인 분해 카드와 같은 시각 문법(카드 컨테이너·헤딩 좌 한글/우 영문 보조라벨)을
+   재사용하고, 상태칩 아래에 6종 조건 체크리스트를 순차 파이프라인 위계로 보여준다. */
+.pullback-card {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--gutter);
+}
+
+.pullback-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pullback-card__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.pullback-card__meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+/* 상태칩 — 6종 전부 동일 스타일(외곽선 pill), 색만 상태별로 다름(PullbackCard.tsx) */
+.pullback-card__chip {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-color: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pullback-check-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.pullback-check {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.pullback-check__glyph {
+  flex: none;
+  width: 1rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pullback-check__label {
+  color: var(--on-surface);
+  overflow-wrap: anywhere;
+}
+
+.pullback-check--ok .pullback-check__glyph {
+  color: #16a34a;
+}
+
+.pullback-check--fail .pullback-check__glyph {
+  color: var(--outline);
+}
+
+.pullback-check--fail .pullback-check__label {
+  color: var(--on-surface-variant);
+}
+
+/* 추세 필터(1~3) 미충족 시 4~6 — 순차 파이프라인 '대기' 상태를 더 흐리게 */
+.pullback-check--waiting {
+  opacity: 0.45;
+}
+
+.pullback-card__footer {
+  margin-top: 1rem;
+}
+
+.pullback-card__caption {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--on-surface-variant);
+}
+
+.pullback-card__reason {
+  margin: 0.25rem 0 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--outline);
 }

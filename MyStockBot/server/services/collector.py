@@ -64,6 +64,7 @@ _FACTOR_ERROR_FIELDS = [
     "per", "pbr", "roe", "revenue", "net_income",
     "short_score", "long_score",
     "bars_60m",
+    "pullback_status", "pullback_reason", "pullback_trend_up", "pullback_checks",
 ]
 
 # 단기 판정(60분봉 MACD)에 필요한 최소 봉 수. 이보다 모자라면 지표가 '데이터부족'이
@@ -84,6 +85,9 @@ _last_source_lock = threading.Lock()
 
 _thread: threading.Thread | None = None
 _stop_event = threading.Event()
+# 대기 중인 루프를 깨우는 이벤트 — 정지(stop)와 즉시수집(trigger_immediate_cycle)
+# 양쪽이 공유한다. 어느 쪽으로 깼는지는 _stop_event 로 구분한다.
+_wake_event = threading.Event()
 
 
 # ────────────────────────────────────────────
@@ -377,6 +381,18 @@ def _collect_one(item: dict, token: str | None) -> dict:
         rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
 
+    # ①-b 눌림목 판정(일봉). 5단계 판정 점수에는 들어가지 않는 **별개 축**이라
+    # 실패해도 판정 전체를 죽이지 않고 None 으로 두고 넘어간다.
+    try:
+        pullback = indicators.pullback_signal(daily_store_df)
+        pullback_status = pullback.get("status")
+        pullback_reason = pullback.get("reason")
+        pullback_trend_up = pullback.get("trend_up")
+        pullback_checks = pullback.get("checks")
+    except Exception as e:
+        logger.warning(f"[collector] 눌림목 판정 실패 ({code}): {e}")
+        pullback_status = pullback_reason = pullback_trend_up = pullback_checks = None
+
     # ② 60분봉(신선도 게이트 — 5분 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
     store60_df, source_60m = _get_60m_df(code, token)
     macd_60m = rsi_60m = None
@@ -416,6 +432,10 @@ def _collect_one(item: dict, token: str | None) -> dict:
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
         **financials,
         **view_data,
+        "pullback_status": pullback_status,
+        "pullback_reason": pullback_reason,
+        "pullback_trend_up": pullback_trend_up,
+        "pullback_checks": pullback_checks,
         "source": source, "source_60m": source_60m,
         "bars_60m": bars_60m,
         "error": None,
@@ -536,7 +556,11 @@ def _loop() -> None:
 
     while not _stop_event.is_set():
         interval = _cycle_interval_seconds()
-        if _stop_event.wait(interval):
+        # 정지와 즉시수집 요청을 한 이벤트로 깨운다 — 어느 쪽으로 깼는지는
+        # _stop_event 로 구분한다(threading.Event 는 다중 대기를 지원하지 않는다).
+        _wake_event.wait(interval)
+        _wake_event.clear()
+        if _stop_event.is_set():
             break
         try:
             _run_cycle()
@@ -546,15 +570,29 @@ def _loop() -> None:
     logger.info("[collector] 수집 루프 종료")
 
 
+def trigger_immediate_cycle() -> None:
+    """다음 수집 사이클을 즉시 앞당긴다(대기 인터벌 중단).
+
+    관심종목을 새로 추가한 직후처럼 사용자가 결과를 바로 보고 싶은 시점에 호출한다 —
+    그러지 않으면 장외에는 최대 10분(유휴 주기)을 기다려야 카드가 채워진다.
+    이벤트만 세우고 즉시 반환하며, 실제 수집은 루프 스레드가 수행한다.
+    사이클 도중에 들어온 요청은 다음 대기에서 곧바로 소비된다(그 사이클엔 새 종목이
+    안 잡혔을 수 있으므로 한 번 더 도는 편이 맞다 — 수집은 멱등하다).
+    """
+    _wake_event.set()
+
+
 def start() -> None:
     global _thread
     _stop_event.clear()
+    _wake_event.clear()
     _thread = threading.Thread(target=_loop, daemon=True, name="collector-loop")
     _thread.start()
 
 
 def stop() -> None:
     _stop_event.set()
+    _wake_event.set()  # 대기 중이면 즉시 깨워 인터벌만큼 기다리지 않게 한다
     if _thread is not None:
         _thread.join(timeout=5)
 

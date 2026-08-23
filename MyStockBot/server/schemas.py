@@ -45,6 +45,17 @@ class DecisionRules(BaseModel):
     long_strong_requires_tech_confirm: bool   # 장기 강력 등급에 기술 지표 확증을 요구하는지
 
 
+class PullbackCheck(BaseModel):
+    """눌림목 체크리스트 항목 1개.
+
+    label 문자열·순서가 곧 프론트 렌더 계약이다 — src/indicators.py pullback_signal 의
+    checks 리스트를 그대로 옮겨 담는다(6개 고정: 정배열 → 기울기 → 추세강도 →
+    근접 → 거래량수축 → 반등트리거).
+    """
+    label: str
+    ok: bool
+
+
 class FactorDetail(BaseModel):
     macd_1d: str | None = None
     rsi_1d: str | None = None
@@ -64,6 +75,12 @@ class FactorDetail(BaseModel):
     # '데이터부족'이 아니라 0점=관망을 내므로, 화면이 그 사실을 구분할 수 있게 함께
     # 내려보낸다(additive — 구버전 응답에는 없어 None).
     bars_60m: int | None = None
+    # 눌림목 판정(일봉) — 5단계 판정 점수와는 **별개 축**이라 score 에 합산되지 않는다.
+    # status 는 6개 문자열 중 하나(indicators.pullback_signal docstring 참조).
+    pullback_status: str | None = None
+    pullback_reason: str | None = None
+    pullback_trend_up: bool | None = None
+    pullback_checks: list[PullbackCheck] | None = None
     breakdown_short: list[FactorRow] = []   # 단기(60분봉) 기여요인 — MACD·RSI
     breakdown_long: list[FactorRow] = []    # 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE
 

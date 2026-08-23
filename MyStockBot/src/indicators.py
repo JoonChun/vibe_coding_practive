@@ -13,6 +13,10 @@ import decision_rules as rules
 from config import (
     RSI_PERIOD, MACD_FAST, MACD_SLOW, MACD_SIGNAL,
     BB_PERIOD, BB_STD, RSI_OVERSOLD, RSI_OVERBOUGHT,
+    PULLBACK_MA_SHORT, PULLBACK_MA_MID, PULLBACK_MA_LONG, PULLBACK_MA_SLOPE_LOOKBACK,
+    PULLBACK_PROXIMITY_PCT, PULLBACK_MAX_DEPTH_PCT, PULLBACK_SWING_HIGH_LOOKBACK,
+    PULLBACK_VOL_MA_PERIOD, PULLBACK_VOL_CONTRACTION_RATIO, PULLBACK_VOL_EXPANSION_RATIO,
+    PULLBACK_ADX_PERIOD, PULLBACK_ADX_TREND_MIN, PULLBACK_EXIT_PCT, PULLBACK_MIN_BARS,
 )
 
 
@@ -108,6 +112,162 @@ def bollinger(df: pd.DataFrame) -> dict:
         "bb_mid":   _to_float(bb_obj.bollinger_mavg().iloc[-1]),
         "bb_lower": _to_float(bb_obj.bollinger_lband().iloc[-1]),
     }
+
+
+def _is_nan(val) -> bool:
+    try:
+        return math.isnan(float(val))
+    except (TypeError, ValueError):
+        return True
+
+
+def pullback_signal(df: pd.DataFrame) -> dict:
+    """정배열 추세 + MA20 되돌림(눌림목) 판정. 순수 함수(외부 I/O 없음).
+
+    입력: 일봉 DataFrame(t 오름차순, open/high/low/close/volume 컬럼 필수).
+    반환: {"status": str, "reason": str, "trend_up": bool, "checks": list[dict]}.
+
+    ## 5단계 판정과의 관계
+    이건 **별개의 축**이다. 5단계 판정(decision_rules)이 "지금 어느 국면인가"를 답한다면
+    이건 "지금이 진입 타이밍인가"를 본다. 점수에 합산되지 않으므로 기존 판정 결과를
+    바꾸지 않는다 — 화면에서도 독립 카드로 나란히 보여준다.
+
+    status 는 정확히 다음 6개 문자열 중 하나(프론트 계약 — 문자열 변경 금지):
+      데이터부족 / 추세아님 / 추세지속 / 눌림 진행중(관망) / 눌림목 반등(매수후보) / 눌림 이탈(무효)
+
+    checks 는 프론트 체크리스트용 구조화 항목(순서·label 문자열 고정 — 프론트 계약):
+      [정배열(MA5>MA20>MA60, Close>MA60 포함), MA20 기울기 상승, 추세 강도(ADX≥20),
+       MA20 근접(눌림 깊이), 거래량 수축(≤60%), 반등 트리거(양봉·전일고가·거래량)]
+    각 항목은 status 산정에 쓰는 조건의 **독립** 상태를 그대로 보여줄 뿐이다 — 항목끼리
+    서로 배타적일 수 있다(거래량 수축 ≤60% 와 반등 트리거의 팽창 ≥140% 는 같은 봉의
+    한 비율에서 유도되므로 동시에 참일 수 없다). "데이터부족"이면 checks=[].
+
+    판정 순서: 데이터부족 → 추세 필터(추세아님) → 이탈 → 반등 → 진행중 → (그 외) 추세지속.
+    """
+    if len(df) < PULLBACK_MIN_BARS:
+        return {
+            "status": "데이터부족",
+            "reason": f"유효 봉수 부족({len(df)}<{PULLBACK_MIN_BARS})",
+            "trend_up": False,
+            "checks": [],
+        }
+
+    close = df["close"].astype(float)
+    open_ = df["open"].astype(float)
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    volume = df["volume"].astype(float)
+
+    ma_short = close.rolling(PULLBACK_MA_SHORT).mean()
+    ma_mid = close.rolling(PULLBACK_MA_MID).mean()
+    ma_long = close.rolling(PULLBACK_MA_LONG).mean()
+    vol_ma = volume.rolling(PULLBACK_VOL_MA_PERIOD).mean()
+
+    try:
+        adx_series = ta.trend.ADXIndicator(
+            high=high, low=low, close=close, window=PULLBACK_ADX_PERIOD
+        ).adx()
+    except Exception:
+        adx_series = pd.Series([float("nan")] * len(df))
+
+    slope_lookback_idx = -1 - PULLBACK_MA_SLOPE_LOOKBACK
+
+    curr_close = close.iloc[-1]
+    curr_open = open_.iloc[-1]
+    prev_high = high.iloc[-2]
+    curr_ma_short = ma_short.iloc[-1]
+    curr_ma_mid = ma_mid.iloc[-1]
+    curr_ma_long = ma_long.iloc[-1]
+    prev_ma_mid = (
+        ma_mid.iloc[slope_lookback_idx] if len(ma_mid) >= abs(slope_lookback_idx) else float("nan")
+    )
+    curr_adx = adx_series.iloc[-1] if len(adx_series) else float("nan")
+    curr_volume = volume.iloc[-1]
+    curr_vol_ma = vol_ma.iloc[-1]
+
+    required = [curr_close, curr_ma_short, curr_ma_mid, curr_ma_long, prev_ma_mid, curr_adx, curr_vol_ma]
+    if any(_is_nan(v) for v in required):
+        return {"status": "데이터부족", "reason": "지표 계산 불가(NaN)", "trend_up": False, "checks": []}
+
+    aligned = curr_ma_short > curr_ma_mid > curr_ma_long
+    above_long = curr_close > curr_ma_long
+    slope_up = curr_ma_mid > prev_ma_mid
+    adx_ok = curr_adx >= PULLBACK_ADX_TREND_MIN
+    trend_up = aligned and above_long and slope_up and adx_ok
+
+    # checks 구성에 필요한 나머지 불리언 — status 분기(trend_up 여부)와 무관하게 항상
+    # 계산해 둔다(추세아님·이탈 상태에서도 checks 6개를 온전히 채우기 위함).
+    proximity_pct = abs(curr_close - curr_ma_mid) / curr_ma_mid * 100
+    swing_high = high.iloc[-PULLBACK_SWING_HIGH_LOOKBACK:].max()
+    depth_pct = (swing_high - curr_close) / swing_high * 100 if swing_high else float("nan")
+    in_proximity = proximity_pct <= PULLBACK_PROXIMITY_PCT
+    depth_ok = not _is_nan(depth_pct) and depth_pct <= PULLBACK_MAX_DEPTH_PCT
+    vol_ratio = curr_volume / curr_vol_ma if curr_vol_ma else float("nan")
+
+    is_bullish = curr_close > curr_open
+    breaks_prev_high = curr_close > prev_high
+    vol_expansion = not _is_nan(vol_ratio) and vol_ratio >= PULLBACK_VOL_EXPANSION_RATIO
+    vol_contraction = not _is_nan(vol_ratio) and vol_ratio <= PULLBACK_VOL_CONTRACTION_RATIO
+
+    checks = [
+        {"label": "정배열 (MA5>MA20>MA60)", "ok": bool(aligned and above_long)},
+        {"label": "MA20 기울기 상승", "ok": bool(slope_up)},
+        {"label": "추세 강도 (ADX≥20)", "ok": bool(adx_ok)},
+        {"label": "MA20 근접 (눌림 깊이)", "ok": bool(in_proximity and depth_ok)},
+        {"label": "거래량 수축 (≤60%)", "ok": bool(vol_contraction)},
+        {"label": "반등 트리거 (양봉·전일고가·거래량)", "ok": bool(is_bullish and breaks_prev_high and vol_expansion)},
+    ]
+
+    if not trend_up:
+        reasons = []
+        if not aligned:
+            reasons.append("정배열 미충족")
+        if not above_long:
+            reasons.append("MA60 하회")
+        if not slope_up:
+            reasons.append("MA20 기울기 하락")
+        if not adx_ok:
+            reasons.append(f"ADX {curr_adx:.1f}<{PULLBACK_ADX_TREND_MIN}")
+        return {
+            "status": "추세아님",
+            "reason": "·".join(reasons) or "추세 필터 미충족",
+            "trend_up": False,
+            "checks": checks,
+        }
+
+    # 이하 trend_up == True 확정 구간
+    exit_pct = (curr_ma_mid - curr_close) / curr_ma_mid * 100  # 양수면 MA20 하회
+    if exit_pct > PULLBACK_EXIT_PCT:
+        return {
+            "status": "눌림 이탈(무효)",
+            "reason": f"MA20 대비 {exit_pct:.1f}% 하회(기준 {PULLBACK_EXIT_PCT}%)",
+            "trend_up": True,
+            "checks": checks,
+        }
+
+    if in_proximity and depth_ok and is_bullish and breaks_prev_high and vol_expansion:
+        return {
+            "status": "눌림목 반등(매수후보)",
+            "reason": f"양봉·전일고가 돌파·거래량 {vol_ratio * 100:.0f}%",
+            "trend_up": True,
+            "checks": checks,
+        }
+
+    if in_proximity and depth_ok and vol_contraction:
+        return {
+            "status": "눌림 진행중(관망)",
+            "reason": f"MA20 근접 {proximity_pct:.1f}%·거래량 {vol_ratio * 100:.0f}%로 수축",
+            "trend_up": True,
+            "checks": checks,
+        }
+
+    if not in_proximity:
+        reason = f"MA20 이격 {proximity_pct:.1f}%(근접밴드 {PULLBACK_PROXIMITY_PCT}% 밖)"
+    elif not depth_ok:
+        reason = f"전고점 대비 낙폭 {depth_pct:.1f}%(눌림 범위 {PULLBACK_MAX_DEPTH_PCT}% 초과)"
+    else:
+        reason = f"MA20 근접이나 거래량 {vol_ratio * 100:.0f}%(수축·팽창 기준 미충족)"
+    return {"status": "추세지속", "reason": reason, "trend_up": True, "checks": checks}
 
 
 _NO_DATA = rules.NO_DATA_INPUTS

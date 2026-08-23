@@ -19,6 +19,7 @@ _FACTOR_KEYS = [
     "per", "pbr", "roe",
     "short_score", "long_score",
     "bars_60m",
+    "pullback_status", "pullback_reason", "pullback_trend_up", "pullback_checks",
 ]
 
 

@@ -265,6 +265,21 @@ export interface DecisionRules {
   long_strong_requires_tech_confirm: boolean;
 }
 
+/** 눌림목 판정 6상태 — 백엔드 indicators.pullback_signal 의 status 문자열과 1:1 */
+export type PullbackStatus =
+  | "데이터부족"
+  | "추세아님"
+  | "추세지속"
+  | "눌림 진행중(관망)"
+  | "눌림목 반등(매수후보)"
+  | "눌림 이탈(무효)";
+
+/** 눌림목 체크리스트 항목 — 순서 고정 6개(백엔드 schemas.PullbackCheck 와 1:1) */
+export interface PullbackCheck {
+  label: string;
+  ok: boolean;
+}
+
 export interface SnapshotFactors {
   macd_1d: string | null;
   rsi_1d: string | null;
@@ -288,6 +303,12 @@ export interface SnapshotFactors {
    * 구버전 응답에는 없어 undefined/null 일 수 있다.
    */
   bars_60m?: number | null;
+  /** 눌림목 판정 — 5단계 판정과 별개 축(점수에 합산되지 않음). 구버전 응답이면 undefined */
+  pullback_status?: PullbackStatus | null;
+  pullback_reason?: string | null;
+  pullback_trend_up?: boolean | null;
+  /** 조건 체크리스트 — "데이터부족"이면 빈 배열 */
+  pullback_checks?: PullbackCheck[] | null;
   /** 단기(60분봉) 기여요인 — MACD·RSI */
   breakdown_short: FactorRow[];
   /** 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE */
