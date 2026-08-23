@@ -67,9 +67,11 @@ KIS_INDEX_CHART_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire
 KIS_INDEX_PRICE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-index-price"
 
 # KIS 환경변수 키
+# (KIS_ACCOUNT_NO 는 제거 — 조회 전용 앱이라 계좌번호를 읽는 코드가 저장소에 없었다.
+#  사용하지 않는 민감정보를 .env·GitHub Secrets 에 유통하는 것은 유출 표면만 넓힌다.
+#  주문 API 를 붙이는 날 다시 도입한다.)
 KIS_APP_KEY_ENV = "KIS_APP_KEY"
 KIS_APP_SECRET_ENV = "KIS_APP_SECRET"
-KIS_ACCOUNT_NO_ENV = "KIS_ACCOUNT_NO"
 
 # 기술지표 파라미터
 OHLCV_LOOKBACK_DAYS = 60    # RSI/MACD/BB 계산용 과거 일봉 수 (KIS API 최대 100건 제한)

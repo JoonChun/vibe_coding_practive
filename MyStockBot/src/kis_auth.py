@@ -130,9 +130,27 @@ def _request_token(payload: dict) -> dict:
     raise RuntimeError(f"토큰 발급 요청 실패: {last_error}") from last_error
 
 
+# 마지막 토큰 발급 시도 결과 — /api/health 가 "KIS 가 조용히 죽어 yfinance 로 강등된
+# 상태"를 밖에서 볼 수 있게 노출한다(앱키 1년 만료가 무통지로 지나가는 문제의 가시화).
+# 단일 키 갱신뿐이라 락 없이 advisory 로 쓴다. ok=None 은 "아직 시도 없음".
+_token_status: dict = {"ok": None, "detail": None, "checked_at": None}
+
+
+def token_status() -> dict:
+    """마지막 토큰 발급 시도의 결과 스냅샷(dict 복사본). /api/health 소비용."""
+    return dict(_token_status)
+
+
+def _set_token_status(ok: bool, detail: str | None = None) -> None:
+    _token_status["ok"] = ok
+    _token_status["detail"] = detail
+    _token_status["checked_at"] = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
+
+
 def get_token() -> str:
     cached = _load_cache()
     if cached:
+        _set_token_status(True)
         return cached
 
     # 락 밖에서 1차 확인(위)해 hot-path 경합을 피하고, 콜드미스일 때만 락 진입.
@@ -140,38 +158,50 @@ def get_token() -> str:
         # 락 대기 중 다른 스레드가 이미 발급했을 수 있으므로 재확인(double-checked).
         cached = _load_cache()
         if cached:
+            _set_token_status(True)
             return cached
 
-        app_key = os.environ.get(KIS_APP_KEY_ENV)
-        app_secret = os.environ.get(KIS_APP_SECRET_ENV)
-
-        if not app_key or not app_secret:
-            # 전용 타입 — 호출부가 "재시도 무의미"를 알 수 있어야 한다.
-            raise MissingCredentialsError(
-                "KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다."
-            )
-
-        payload = {
-            "grant_type": "client_credentials",
-            "appkey": app_key,
-            "appsecret": app_secret,
-        }
-
-        data = _request_token(payload)
-        token = data.get("access_token")
-        if not token:
-            code = str(data.get("error_code") or data.get("msg_cd") or "")
-            msg = str(data.get("error_description") or data.get("msg1") or data.get("msg") or "")
-            if "EGW00133" in code or "EGW00133" in msg or "1분" in msg:
-                raise RuntimeError(
-                    "KIS 토큰 발급 rate-limit(EGW00133: 1분당 1회 초과). 잠시 후 다시 시도하세요."
-                )
-            # 응답 전체를 로그에 남기지 않도록 코드/메시지만 노출.
-            raise RuntimeError(f"KIS access_token 발급 실패(error_code={code}, msg={msg}).")
-
-        expires_in = int(data.get("expires_in", 86400))
-        _save_cache(token, expires_in)
+        try:
+            token = _issue_token()
+        except Exception as e:
+            _set_token_status(False, str(e))
+            raise
+        _set_token_status(True)
         return token
+
+
+def _issue_token() -> str:
+    """새 토큰 발급(락 안에서만 호출). 실패 사유는 예외로 그대로 전달."""
+    app_key = os.environ.get(KIS_APP_KEY_ENV)
+    app_secret = os.environ.get(KIS_APP_SECRET_ENV)
+
+    if not app_key or not app_secret:
+        # 전용 타입 — 호출부가 "재시도 무의미"를 알 수 있어야 한다.
+        raise MissingCredentialsError(
+            "KIS_APP_KEY 또는 KIS_APP_SECRET 환경변수가 없습니다."
+        )
+
+    payload = {
+        "grant_type": "client_credentials",
+        "appkey": app_key,
+        "appsecret": app_secret,
+    }
+
+    data = _request_token(payload)
+    token = data.get("access_token")
+    if not token:
+        code = str(data.get("error_code") or data.get("msg_cd") or "")
+        msg = str(data.get("error_description") or data.get("msg1") or data.get("msg") or "")
+        if "EGW00133" in code or "EGW00133" in msg or "1분" in msg:
+            raise RuntimeError(
+                "KIS 토큰 발급 rate-limit(EGW00133: 1분당 1회 초과). 잠시 후 다시 시도하세요."
+            )
+        # 응답 전체를 로그에 남기지 않도록 코드/메시지만 노출.
+        raise RuntimeError(f"KIS access_token 발급 실패(error_code={code}, msg={msg}).")
+
+    expires_in = int(data.get("expires_in", 86400))
+    _save_cache(token, expires_in)
+    return token
 
 
 # ────────────────────────────────────────────

@@ -3,7 +3,10 @@ services:
     build: .
     container_name: mystockbot
     ports:
-      - "8000:8000"
+      # localhost 에만 바인드 — 외부 공개는 터널(cloudflared/Tailscale)만이 유일한 경로다.
+      # "8000:8000"(=0.0.0.0)으로 두면 터널이 죽은 순간 LAN/방화벽 설정에 따라 백엔드가
+      # 직접 노출된다. 터널 프로세스는 이 호스트에서 돌므로 127.0.0.1 로 충분하다.
+      - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
       TZ: Asia/Seoul
