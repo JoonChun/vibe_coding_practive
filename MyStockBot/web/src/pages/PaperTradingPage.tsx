@@ -6,6 +6,7 @@ import {
   placePaperOrder,
   resetPaperAccount,
 } from "../api";
+import { EquityCurve } from "../components/EquityCurve";
 import { TokenBanner } from "../components/TokenBanner";
 import type { PaperAccount, PaperHolding, PaperTrade } from "../types";
 
@@ -180,6 +181,9 @@ export default function PaperTradingPage() {
             </p>
           ) : null}
         </section>
+
+        {/* 자산 추이 — 거래가 없으면 컴포넌트가 스스로 숨는다 */}
+        <EquityCurve />
 
         {/* 주문 */}
         <section className="paper-order" aria-label="매수/매도 주문">

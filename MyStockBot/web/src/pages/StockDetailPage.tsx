@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BacktestCard } from "../components/BacktestCard";
 import { DcaCard } from "../components/DcaCard";
+import { TimeMachineCard } from "../components/TimeMachineCard";
 import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
@@ -240,6 +241,7 @@ export default function StockDetailPage() {
         </div>
 
         <BacktestCard code={code} />
+        <TimeMachineCard code={code} />
         <DcaCard code={code} name={name} />
       </main>
 

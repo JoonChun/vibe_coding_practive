@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..schemas import (
     PaperAccountResponse,
+    PaperEquityResponse,
     PaperOrderRequest,
     PaperTradesResponse,
 )
@@ -36,3 +37,13 @@ def place_order(order: PaperOrderRequest):
 @router.post("/paper/reset", response_model=PaperAccountResponse)
 def reset_account():
     return paper_service.reset()
+
+
+@router.get("/paper/equity", response_model=PaperEquityResponse)
+def get_equity():
+    """자산 추이 — 거래 이력 replay + 일봉 종가로 일자별 평가금액 재구성.
+
+    거래 이력·일봉 저장소 조회(SQLite)만 하는 블로킹 로직이라 def 핸들러 그대로 둔다
+    (외부 네트워크 호출 없음 — 다른 paper 라우트와 동일 관례).
+    """
+    return paper_service.get_equity_curve()

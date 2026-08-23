@@ -9,6 +9,7 @@ import type {
   IndicesResponse,
   MarketStatus,
   PaperAccount,
+  PaperEquityResponse,
   PaperOrderInput,
   PaperTradesResponse,
   SnapshotResponse,
@@ -17,6 +18,7 @@ import type {
   WatchlistItem,
   WatchlistItemInput,
   WatchlistListResponse,
+  WhatIfResponse,
 } from "./types";
 
 // 개발: 빈 값(상대경로) → vite dev 프록시(/api → localhost:8000)가 처리.
@@ -169,6 +171,11 @@ export function resetPaperAccount(): Promise<PaperAccount> {
   return request<PaperAccount>("/api/paper/reset", { method: "POST" });
 }
 
+/** 모의투자 자산 추이 — 거래 이력 replay + 일봉 종가로 재구성한 일자별 평가금액. */
+export function getPaperEquity(): Promise<PaperEquityResponse> {
+  return request<PaperEquityResponse>("/api/paper/equity");
+}
+
 /** 전 종목 자동완성 검색(종목명 부분일치 또는 코드 prefix). limit 기본 10·최대 30. */
 export function searchStocks(
   q: string,
@@ -228,6 +235,19 @@ export function getCandles(
   }
   return request<CandlesResponse>(
     `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
+  );
+}
+
+/** "그날의 나" 타임머신(What-if) 조회. date는 'YYYY-MM-DD', amount는 1~100,000,000원.
+ * 미래 날짜·형식 오류는 422(ApiError throw) — 그 외 사유(상장 전 등)는 200 응답의 error 필드로 온다. */
+export function getWhatIf(
+  code: string,
+  date: string,
+  amount: number
+): Promise<WhatIfResponse> {
+  const params = new URLSearchParams({ date, amount: String(amount) });
+  return request<WhatIfResponse>(
+    `/api/stocks/${encodeURIComponent(code)}/whatif?${params.toString()}`
   );
 }
 

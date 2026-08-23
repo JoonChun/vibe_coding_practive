@@ -3556,3 +3556,202 @@ select:focus-visible {
   line-height: 14px;
   color: var(--outline);
 }
+
+/* ── "그날의 나" 타임머신 카드 (종목 상세) ──
+   백테스트·DCA 카드와 같은 .bt-card 컨테이너를 재사용하고, 입력 컨트롤과
+   시장 대비·그날의 판정 블록만 전용 클래스로 둔다. */
+.tm-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.tm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.tm-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tm-field__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.tm-input {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.tm-presets,
+.tm-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tm-preset,
+.tm-amount,
+.tm-run {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--surface-container-lowest);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+}
+
+.tm-preset:hover:not(:disabled),
+.tm-amount:hover:not(:disabled),
+.tm-run:hover:not(:disabled) {
+  border-color: var(--outline);
+  color: var(--on-surface);
+}
+
+.tm-amount--on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary, #fff);
+}
+
+.tm-run {
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.tm-preset:disabled,
+.tm-amount:disabled,
+.tm-run:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 시장(코스피) 대비 병치 */
+.tm-market {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-lowest);
+}
+
+.tm-market__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0;
+}
+
+.tm-market__label {
+  color: var(--on-surface-variant);
+}
+
+.tm-market__verdict {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+/* 그날의 봇 판정 */
+.tm-bot {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px dashed var(--outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.tm-bot__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tm-bot__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.tm-bot__view {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.tm-bot__detail {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+.tm-bot__note {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+  color: var(--outline);
+}
+
+/* ── 모의투자 자산 추이 카드 ── */
+.equity-card {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--gutter);
+}
+
+.equity-curve {
+  width: 100%;
+  height: 90px;
+  margin: 0.75rem 0;
+  display: block;
+  overflow: visible;
+}
+
+.equity-curve__fill {
+  fill: rgba(220, 38, 38, 0.12);
+}
+
+.equity-curve__line {
+  stroke: #dc2626;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.equity-curve--down .equity-curve__fill {
+  fill: rgba(37, 99, 235, 0.12);
+}
+
+.equity-curve--down .equity-curve__line {
+  stroke: #2563eb;
+}
+
+/* 시작 시점 기준선 — 위/아래가 곧 누적 손익의 부호 */
+.equity-curve__base {
+  stroke: var(--outline);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}

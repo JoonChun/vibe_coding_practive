@@ -930,3 +930,37 @@ def fetch_all(stock_list: list[dict]) -> tuple[list[dict], list[dict]]:
             failed_list.append(result)
 
     return success_list, failed_list
+
+
+def fetch_yf_index_ohlcv(ticker: str, interval: str = "1d", period: str = "max") -> pd.DataFrame | None:
+    """Yahoo Finance 지수(코스피 등) OHLCV 조회 — fetch_yf_ohlcv 와 별개 함수.
+
+    fetch_yf_ohlcv 는 내부에서 종목코드에 .KS/.KQ 접미사를 붙이는데, "^KS11" 같은 지수
+    심볼은 그 규칙 대상이 아니다(붙이면 존재하지 않는 티커가 된다). 원시 ticker 문자열을
+    그대로 yf.Ticker 에 넘기는 전용 경로가 필요해 병치한다 — 기존 종목 조회는 무변경.
+
+    반환 스키마는 fetch_yf_ohlcv 와 동일: date(일봉류 YYYYMMDD)/open/high/low/close/volume
+    + 원본 tz-aware DatetimeIndex 유지. 실패·빈 데이터 시 None.
+    """
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        hist = ticker_obj.history(period=period, interval=interval)
+        if hist is None or hist.empty:
+            return None
+        hist = hist.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+        if hist.empty:
+            return None
+        date_fmt = "%Y%m%d" if interval in ("1d", "1wk", "1mo") else "%Y%m%d%H%M"
+        df = pd.DataFrame({
+            "date": hist.index.strftime(date_fmt),
+            "open": hist["Open"].astype(float),
+            "high": hist["High"].astype(float),
+            "low": hist["Low"].astype(float),
+            "close": hist["Close"].astype(float),
+            "volume": hist["Volume"].astype(int),
+        })
+        df.index = hist.index
+        return df
+    except Exception as e:
+        logger.warning(f"[YF] 지수 OHLCV 수집 실패 ({ticker}, interval={interval}, period={period}): {e}")
+        return None
