@@ -1,10 +1,14 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { DistributionStrip } from "../components/DistributionStrip";
+import { MarketBreadthBar } from "../components/MarketBreadthBar";
+import { MarketStatusBar } from "../components/MarketStatusBar";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { SignalChip } from "../components/SignalChip";
 import { TokenBanner } from "../components/TokenBanner";
 import { useIndices } from "../hooks/useIndices";
+import { useMarketStatus } from "../hooks/useMarketStatus";
+import { useRelativeTime } from "../hooks/useRelativeTime";
 import { useSnapshot } from "../hooks/useSnapshot";
 import { useTickStream } from "../hooks/useTickStream";
 import type { IndexItem, SnapshotItem } from "../types";
@@ -25,6 +29,13 @@ function formatIndexValue(value: number | null): string {
   });
 }
 
+/** stale 값의 나이를 사람이 읽는 형태로. 60초 미만은 초, 그 이상은 분 단위. */
+function formatStaleAge(seconds: number | null): string {
+  if (seconds === null) return "";
+  if (seconds < 60) return `${Math.round(seconds)}초 전`;
+  return `${Math.round(seconds / 60)}분 전`;
+}
+
 function IndexCard({ item }: { item: IndexItem }) {
   // 등락폭·등락률은 함께 있어야 의미가 있다. 하나만 있는 부분데이터는 "—"로 처리해
   // "▲ — (+1.2%)" 같은 어정쩡한 표기를 막는다.
@@ -39,11 +50,24 @@ function IndexCard({ item }: { item: IndexItem }) {
     <div className="index-card">
       <span className="index-card__name">{item.name}</span>
       <span className="index-card__value">{formatIndexValue(item.value)}</span>
-      {item.error ? (
+      {/*
+        error 가 아니라 **value 유무**로 갈린다. 조회가 실패해도 서버가 직전 성공 값을
+        stale 로 실어 보내면 value 는 있다(IndexItem.stale 주석 참고). error 만 보고
+        "데이터 없음"을 띄우면 그 멀쩡한 값을 버린다 — 실제로 그랬던 결함이다.
+      */}
+      {item.value === null ? (
         <span className="index-card__chg index-card__chg--flat">데이터 없음</span>
       ) : (
         <span className={`index-card__chg ${changeClass(hasChange ? item.change_pct : null)}`}>
           {chgText}
+          {item.stale && (
+            <span
+              className="index-card__stale"
+              title={item.error ?? "최신 조회 실패"}
+            >
+              {" "}· {formatStaleAge(item.stale_age_seconds)}
+            </span>
+          )}
         </span>
       )}
     </div>
@@ -58,6 +82,8 @@ export default function MainDashboardPage() {
   const indices = useIndices();
   const snapshot = useSnapshot();
   const tickStream = useTickStream();
+  const marketStatus = useMarketStatus();
+  const updatedRelative = useRelativeTime(snapshot.lastUpdatedAt);
   const navigate = useNavigate();
 
   const unauthorized =
@@ -99,6 +125,13 @@ export default function MainDashboardPage() {
       </header>
 
       <main className="dash-main">
+        <MarketStatusBar
+          data={marketStatus.data}
+          remainingMs={marketStatus.remainingMs}
+          countdownTarget={marketStatus.countdownTarget}
+          updatedRelative={updatedRelative}
+        />
+
         <section className="index-grid" aria-label="시장 지수">
           {indices.data && indices.data.items.length > 0 ? (
             indices.data.items.map((idx) => (
@@ -122,6 +155,9 @@ export default function MainDashboardPage() {
             </div>
           )}
         </section>
+
+        {/* 시장 폭 — KIS 현재지수 경로에서만 데이터가 오고, 없으면 스스로 렌더하지 않는다. */}
+        <MarketBreadthBar items={indices.data?.items ?? []} />
 
         <DistributionStrip
           counts={distribution.counts}

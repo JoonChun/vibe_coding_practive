@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from datetime import datetime
@@ -15,6 +16,13 @@ load_dotenv(_BASE_DIR / ".env")
 import config
 import db
 import sheets
+
+# 엔트리포인트가 로깅 설정을 책임진다(모듈들은 getLogger 만 사용).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # config.STOCKDATA_HEADER (한글) 순서와 1:1 대응하는 영문 키
 _ROW_KEYS = [
@@ -35,7 +43,7 @@ def _row_to_item(row: list) -> dict:
 
 def _backfill_watchlist(spreadsheet_id: str) -> None:
     stock_list = sheets.load_stock_list(spreadsheet_id)
-    print(f"[backfill] Dashboard 종목 {len(stock_list)}건 로드")
+    logger.info(f"[backfill] Dashboard 종목 {len(stock_list)}건 로드")
 
     added = 0
     for stock in stock_list:
@@ -45,9 +53,9 @@ def _backfill_watchlist(spreadsheet_id: str) -> None:
         except db.DuplicateError:
             pass
         except Exception as e:
-            print(f"[backfill] 종목 등록 실패 ({stock.get('code')}): {e}")
+            logger.warning(f"[backfill] 종목 등록 실패 ({stock.get('code')}): {e}")
 
-    print(f"[backfill] watchlist 신규 등록 {added}건")
+    logger.info(f"[backfill] watchlist 신규 등록 {added}건")
 
 
 def _to_epoch(date_str) -> int | None:
@@ -80,7 +88,7 @@ def _backfill_candles(spreadsheet_id: str) -> None:
     (과거엔 고아 bar_history 테이블에 넣었으나 서버가 읽지 않아 死데이터였다 → candles 로 연결.)
     """
     rows = sheets.load_stock_data_rows(spreadsheet_id)
-    print(f"[backfill] StockData 행 {len(rows)}건 로드")
+    logger.info(f"[backfill] StockData 행 {len(rows)}건 로드")
 
     by_code: dict[str, list[dict]] = {}
     for row in rows:
@@ -106,9 +114,9 @@ def _backfill_candles(spreadsheet_id: str) -> None:
     for code, items in by_code.items():
         items.sort(key=lambda x: x["t"])
         total += db.upsert_candles(code, "1d", items)
-        print(f"[backfill] {code}: 일봉 {len(items)}건 → candles(1d)")
+        logger.info(f"[backfill] {code}: 일봉 {len(items)}건 → candles(1d)")
 
-    print(f"[backfill] candles(1d) 총 {total}건 저장")
+    logger.info(f"[backfill] candles(1d) 총 {total}건 저장")
 
 
 def main() -> None:
@@ -116,7 +124,7 @@ def main() -> None:
 
     spreadsheet_id = os.environ.get(config.SPREADSHEET_ID_ENV_KEY)
     if not spreadsheet_id:
-        print(f"[backfill] 환경변수 {config.SPREADSHEET_ID_ENV_KEY} 가 설정되지 않았습니다.")
+        logger.warning(f"[backfill] 환경변수 {config.SPREADSHEET_ID_ENV_KEY} 가 설정되지 않았습니다.")
         sys.exit(1)
 
     _backfill_watchlist(spreadsheet_id)

@@ -1,8 +1,13 @@
 import type {
+  AlertConfig,
+  AlertHistoryResponse,
+  AlertStateResponse,
+  AlertTestResponse,
   BacktestResponse,
   CandlesResponse,
   DcaResponse,
   IndicesResponse,
+  MarketStatus,
   PaperAccount,
   PaperOrderInput,
   PaperTradesResponse,
@@ -136,6 +141,11 @@ export function getIndices(): Promise<IndicesResponse> {
   return request<IndicesResponse>("/api/indices");
 }
 
+/** 장 운영 상태(장전/장중/장마감/휴장) + 세션 경계. 외부 조회 없는 순수 계산이라 가볍다. */
+export function getMarketStatus(): Promise<MarketStatus> {
+  return request<MarketStatus>("/api/market/status");
+}
+
 /** 모의투자 가상 계좌(현금·평가손익·보유목록) 조회. */
 export function getPaperAccount(): Promise<PaperAccount> {
   return request<PaperAccount>("/api/paper/account");
@@ -213,4 +223,27 @@ export function getCandles(
   return request<CandlesResponse>(
     `/api/stocks/${encodeURIComponent(code)}/candles?${params.toString()}`
   );
+}
+
+/** 알림 설정 조회(읽기 전용 — 설정은 .env 로 바꾼다). 비밀은 응답에 실리지 않는다. */
+export function getAlertConfig(): Promise<AlertConfig> {
+  return request<AlertConfig>("/api/alerts/config");
+}
+
+/** 저장된 기준선("마지막으로 알린 판정") 조회 — 오알림 진단용. */
+export function getAlertState(): Promise<AlertStateResponse> {
+  return request<AlertStateResponse>("/api/alerts/state");
+}
+
+/**
+ * 테스트 발송. ENABLED 플래그와 장 시간대 게이트를 우회한다 — 설정을 켜기 전에
+ * 채널이 살아 있는지 확인하는 것이 목적이다. 서버가 동시 1건으로 제한한다(429).
+ */
+export function sendTestAlert(): Promise<AlertTestResponse> {
+  return request<AlertTestResponse>("/api/alerts/test", { method: "POST" });
+}
+
+/** 실제로 알림으로 나간 전환 이력(최신순). 기준선과 달리 append-only 기록이다. */
+export function getAlertHistory(limit = 50): Promise<AlertHistoryResponse> {
+  return request<AlertHistoryResponse>(`/api/alerts/history?limit=${limit}`);
 }

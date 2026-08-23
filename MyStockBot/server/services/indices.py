@@ -1,19 +1,34 @@
-"""시장 지수(코스피/코스닥) 조회 — read-through 인메모리 캐시.
+"""시장 지수(코스피/코스닥) + 시장 폭(등락종목수) 조회 — read-through 인메모리 캐시.
 
-개별 종목 시세(collector.py)와는 조회 경로가 다르다. 지수는 **KIS 국내업종 일자별
-지수(FHKUP03500100)를 1차**로 시도하고, 실패하면 **yfinance(^KS11/^KQ11)로 폴백**한다.
-KIS 경로가 어떤 이유(자격증명 없음·TR/필드 불일치·네트워크)로든 실패하면 예외를
-삼키고 yfinance 로 넘어가므로, KIS 경로가 틀려도 회귀 없이 항상 값을 낸다(failsafe).
+개별 종목 시세(collector.py)와는 조회 경로가 다르다. 3단 폴백:
+
+  1) **KIS 국내업종 현재지수(FHPUP02100000)** — 전일 대비·대비율을 직접 주고,
+     상승/보합/하락/상한/하한 종목 수(시장 폭)까지 같은 응답에 담겨 온다. 1순위.
+  2) **KIS 국내업종 일자별 지수(FHKUP03500100)** — 종가 2개를 빼서 등락을 계산한다.
+     시장 폭은 없다. 1)이 실패했을 때만.
+  3) **yfinance(^KS11/^KQ11)** — 지연·결측이 있고 시장 폭도 없다. 최후 폴백.
+
+어떤 이유(자격증명 없음·TR/필드 불일치·네트워크)로든 앞 단계가 실패하면 예외를 삼키고
+다음 단계로 넘어가므로, 항상 값을 낸다(failsafe). 시장 폭은 1)에서만 나오므로 그 외
+경로에서는 breadth=None 이고, 화면은 그때 시장 폭 블록을 숨긴다.
 
 get_indices() 는 동기 함수다(내부에서 blocking HTTP 호출) — 라우터에서
 asyncio.to_thread 로 감싸 호출한다(routers/stocks.py candles 와 동일 패턴).
 """
+import logging
 import threading
 import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from config import INDICES_CACHE_TTL_SECONDS, TIMEZONE
+from config import (
+    INDICES_CACHE_TTL_SECONDS,
+    INDICES_ERROR_RETRY_SECONDS,
+    INDICES_STALE_MAX_SECONDS,
+    TIMEZONE,
+)
+
+logger = logging.getLogger(__name__)
 
 # code → (표시명, KIS 업종 지수 코드, yfinance 심볼)
 #   KIS 업종코드: 코스피 종합 "0001", 코스닥 종합 "1001"
@@ -26,8 +41,61 @@ _INDEX_DEFS = [
 _KIS_CLOSE_KEYS = ["bstp_nmix_prpr", "stck_clpr", "ovrs_nmix_prpr", "bstp_nmix_clpr"]
 _KIS_DATE_KEYS = ["stck_bsop_date", "bsop_date"]
 
-_cache: dict = {"generated_at": None, "items": None, "fetched_at": 0.0}
+# ────────────────────────────────────────────
+# 캐시 — **지수별로** 따로 잡는다
+#
+# 예전 구현은 두 지수를 한 리스트로 묶어 캐시하고, 실패 항목도 성공과 같은 TTL(60초)로
+# 저장했다. 두 가지가 잘못됐다:
+#   ① 실패가 성공과 같은 수명을 가졌다 — 순간 장애 하나가 "데이터 없음"을 60초 고정
+#      시키고, 네트워크가 1초 뒤 복구돼도 남은 59초는 새로고침해도 실패가 나왔다.
+#   ② 실패가 직전의 성공 값을 밀어냈다 — 되돌릴 값이 있는데도 버렸다.
+#
+# 그래서 항목별로 "마지막 성공 값"과 "마지막 시도의 실패 사유"를 **따로** 들고 있는다.
+# 엔트리 구조:
+#   good        : 마지막으로 성공한 항목 payload(dict) 또는 None
+#   good_at     : 그 값을 받은 시각(monotonic)
+#   error       : 마지막 시도의 실패 사유(성공했으면 None)
+#   checked_at  : 마지막 시도 시각(monotonic) — TTL 기준
+_cache: dict[str, dict] = {}
 _cache_lock = threading.Lock()
+
+
+def _entry_ttl(entry: dict) -> float:
+    """이 엔트리를 재조회 없이 재사용할 수 있는 시간(초).
+
+    성공은 넉넉히, 실패는 짧게. 실패 재시도 간격은 성공 TTL 을 넘지 않게 조인다
+    (설정을 잘못 줘도 실패가 성공보다 오래 붙잡히지 않는다).
+    """
+    if entry.get("error") is None:
+        return max(0, INDICES_CACHE_TTL_SECONDS)
+    return max(1, min(INDICES_ERROR_RETRY_SECONDS, max(1, INDICES_CACHE_TTL_SECONDS)))
+
+
+def _render(entry: dict, definition: dict, now: float) -> dict:
+    """엔트리 → 응답 항목. stale 여부를 여기 한 곳에서만 판단한다."""
+    error = entry.get("error")
+    good = entry.get("good")
+
+    if error is None and good is not None:
+        return {**good, "stale": False, "stale_age_seconds": None}
+
+    # 실패 상태. 되돌릴 성공 값이 있고 너무 낡지 않았다면 그것을 stale 로 내준다.
+    if good is not None:
+        age = now - entry["good_at"]
+        if age <= max(0, INDICES_STALE_MAX_SECONDS):
+            return {
+                **good,
+                "error": error,
+                "stale": True,
+                "stale_age_seconds": round(age, 1),
+            }
+
+    return {
+        "code": definition["code"], "name": definition["name"],
+        "value": None, "change": None, "change_pct": None, "breadth": None,
+        "source": None, "error": error,
+        "stale": False, "stale_age_seconds": None,
+    }
 
 
 def _safe_float(val) -> float | None:
@@ -44,6 +112,90 @@ def _from_two_closes(value, prev) -> tuple[float, float | None, float | None]:
         return value, None, None
     change = value - prev
     return value, round(change, 2), round(change / prev * 100, 2)
+
+
+# 전일 대비 부호 코드 → 극성. KIS 전 API 공통 관례(kis_ws._SIGN_POLARITY 와 동일):
+#   1 상한가, 2 상승, 3 보합, 4 하한가, 5 하락.
+# 원문 숫자에 부호가 이미 있을 수도 없을 수도 있어(WS 쪽에서 확정 불가로 판명), abs() 로
+# 절대값을 취한 뒤 이 코드로 극성을 결정한다 — 이중 반전을 막는다.
+_SIGN_POLARITY = {"1": 1, "2": 1, "3": 0, "4": -1, "5": -1}
+
+# 시장 폭 필드(FHPUP02100000 output) — chk_inquire_index_price.py COLUMN_MAPPING 원문 기준.
+_BREADTH_FIELDS = {
+    "up": "ascn_issu_cnt",        # 상승 종목 수
+    "flat": "stnr_issu_cnt",      # 보합 종목 수
+    "down": "down_issu_cnt",      # 하락 종목 수
+    "limit_up": "uplm_issu_cnt",  # 상한 종목 수
+    "limit_down": "lslm_issu_cnt",  # 하한 종목 수
+}
+
+
+def _safe_int(val) -> int | None:
+    try:
+        return int(float(val))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_breadth(output: dict) -> dict | None:
+    """지수 응답에서 등락종목수를 뽑는다. 상승·하락 둘 다 없으면 None(의미 없는 부분데이터 방지)."""
+    parsed = {key: _safe_int(output.get(field)) for key, field in _BREADTH_FIELDS.items()}
+    if parsed["up"] is None and parsed["down"] is None:
+        return None
+    return {k: (v if v is not None else 0) for k, v in parsed.items()}
+
+
+def _fetch_kis_index_price(iscd: str) -> tuple[float, float | None, float | None, dict | None]:
+    """KIS 국내업종 현재지수(FHPUP02100000) → (현재지수, 등락폭, 등락률%, 시장폭).
+
+    일자별 지수와 달리 등락을 직접 주므로 종가 2개를 빼는 계산이 필요 없고, 시장 폭이
+    같은 응답에 들어 있다. 실패 시 예외를 던진다(→ 호출부에서 다음 단계 폴백).
+    """
+    import os
+
+    import kis_auth
+    import requests
+    from config import (
+        KIS_APP_KEY_ENV,
+        KIS_APP_SECRET_ENV,
+        KIS_INDEX_PRICE_URL,
+    )
+
+    token = kis_auth.get_token()  # 자격증명 없으면 RuntimeError
+    headers = {
+        "Content-Type": "application/json",
+        "authorization": f"Bearer {token}",
+        "appkey": os.environ.get(KIS_APP_KEY_ENV, ""),
+        "appsecret": os.environ.get(KIS_APP_SECRET_ENV, ""),
+        "tr_id": "FHPUP02100000",
+    }
+    params = {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd}
+
+    kis_auth.kis_throttle()
+    resp = requests.get(KIS_INDEX_PRICE_URL, headers=headers, params=params, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    output = data.get("output")
+    if not output:
+        raise RuntimeError(
+            f"KIS 현재지수 output 없음: rt_cd={data.get('rt_cd')} msg={data.get('msg1')}"
+        )
+    # output 이 배열로 오는 변형에 대비(문서상 object 지만 방어).
+    if isinstance(output, list):
+        output = output[0] if output else {}
+
+    value = _safe_float(output.get("bstp_nmix_prpr"))
+    if value is None:
+        raise RuntimeError("KIS 현재지수 파싱 실패(bstp_nmix_prpr 없음)")
+
+    polarity = _SIGN_POLARITY.get(str(output.get("prdy_vrss_sign") or "").strip(), 0)
+    raw_change = _safe_float(output.get("bstp_nmix_prdy_vrss"))
+    raw_pct = _safe_float(output.get("bstp_nmix_prdy_ctrt"))
+    change = None if raw_change is None else round(abs(raw_change) * polarity, 2)
+    change_pct = None if raw_pct is None else round(abs(raw_pct) * polarity, 2)
+
+    return round(value, 2), change, change_pct, _parse_breadth(output)
 
 
 def _fetch_kis_index(iscd: str) -> tuple[float, float | None, float | None]:
@@ -132,60 +284,96 @@ def _fetch_yf_index(symbol: str) -> tuple[float, float | None, float | None]:
     return _from_two_closes(value, prev)
 
 
-def _fetch_one(d: dict) -> tuple[float, float | None, float | None, str]:
-    """KIS 1차 → yfinance 폴백. 반환에 source 포함. 둘 다 실패 시 예외 전파."""
+def _fetch_one(d: dict) -> tuple[float, float | None, float | None, dict | None, str]:
+    """현재지수(시장폭 포함) → 일자별 지수 → yfinance 순으로 폴백.
+
+    반환에 breadth 와 source 포함. 시장 폭은 1순위 경로에서만 나오므로 폴백하면 None 이다.
+    전부 실패하면 예외 전파(호출부가 종목별로 격리).
+    """
+    try:
+        value, change, pct, breadth = _fetch_kis_index_price(d["iscd"])
+        return value, change, pct, breadth, "kis"
+    except Exception as e:
+        logger.warning(f"[indices] {d['code']} KIS 현재지수 실패, 일자별 지수로 폴백: {e}")
+
     try:
         value, change, pct = _fetch_kis_index(d["iscd"])
-        return value, change, pct, "kis"
+        # 일자별 지수에는 등락종목수가 없다 → 시장 폭 블록은 화면에서 숨겨진다.
+        return value, change, pct, None, "kis"
     except Exception as e:
-        print(f"[indices] {d['code']} KIS 실패, yfinance 폴백: {e}")
+        logger.warning(f"[indices] {d['code']} KIS 일자별 지수 실패, yfinance 폴백: {e}")
+
     value, change, pct = _fetch_yf_index(d["symbol"])
-    return value, change, pct, "yfinance"
+    return value, change, pct, None, "yfinance"
 
 
-def _fetch_all() -> list[dict]:
-    items: list[dict] = []
-    for d in _INDEX_DEFS:
-        try:
-            value, change, change_pct, source = _fetch_one(d)
-            items.append({
-                "code": d["code"], "name": d["name"],
-                "value": value, "change": change, "change_pct": change_pct,
-                "source": source, "error": None,
-            })
-        except Exception as e:  # 한 지수 실패가 다른 지수를 막지 않도록 개별 격리
-            print(f"[indices] {d['code']} 조회 실패: {e}")
-            items.append({
-                "code": d["code"], "name": d["name"],
-                "value": None, "change": None, "change_pct": None,
-                "source": None, "error": str(e),
-            })
-    return items
+def _fetch_entry(definition: dict, previous: dict | None, now: float) -> dict:
+    """지수 1개를 조회해 캐시 엔트리를 만든다. 예외를 던지지 않는다.
+
+    **실패해도 직전의 성공 값(good)을 버리지 않는다** — 되돌릴 값이 있으면 stale 로
+    내주기 위해서다. 한 지수의 실패가 다른 지수를 막지 않도록 여기서 격리한다.
+    """
+    try:
+        value, change, change_pct, breadth, source = _fetch_one(definition)
+    except Exception as e:
+        logger.warning("[indices] %s 조회 실패: %s", definition["code"], e)
+        return {
+            "good": (previous or {}).get("good"),
+            "good_at": (previous or {}).get("good_at"),
+            "error": str(e),
+            "checked_at": now,
+        }
+
+    return {
+        "good": {
+            "code": definition["code"], "name": definition["name"],
+            "value": value, "change": change, "change_pct": change_pct,
+            "breadth": breadth, "source": source, "error": None,
+        },
+        "good_at": now,
+        "error": None,
+        "checked_at": now,
+    }
 
 
 def get_indices() -> dict:
-    """read-through 캐시. 신선하면 캐시 반환, stale/없으면 재조회 후 갱신.
+    """read-through 캐시. 지수별로 신선도를 따로 판단한다.
 
     fetch 는 락 밖에서 수행해 요청이 서로를 오래 블로킹하지 않게 한다(간헐적 중복
     조회는 허용 — 2개 심볼·TTL 고려 시 무해).
+
+    `cache_hit` 은 "이번 요청에서 조회를 한 번도 하지 않았다"는 뜻이다. 항목별로
+    갱신 시점이 다를 수 있으므로, 각 항목의 낡음은 stale·stale_age_seconds 로 읽는다.
     """
     now = time.monotonic()
-    with _cache_lock:
-        if (
-            _cache["items"] is not None
-            and (now - _cache["fetched_at"]) < INDICES_CACHE_TTL_SECONDS
-        ):
-            return {
-                "generated_at": _cache["generated_at"],
-                "cache_hit": True,
-                "items": _cache["items"],
-            }
 
-    items = _fetch_all()
-    generated_at = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
+    # 이전 엔트리 전체를 락 안에서 한 번에 떠 온다. 재사용 여부와 무관하게 필요하다 —
+    # 재조회가 실패하면 그 이전 엔트리의 `good` 을 stale 로 승계해야 한다.
     with _cache_lock:
-        _cache["items"] = items
-        _cache["generated_at"] = generated_at
-        _cache["fetched_at"] = time.monotonic()
+        previous = dict(_cache)
+    # _INDEX_DEFS 의 코드만 센다 — 정의가 바뀌어 남은 옛 엔트리가 cache_hit 을
+    # 부풀리지 않도록.
+    reusable = {
+        d["code"]: previous[d["code"]]
+        for d in _INDEX_DEFS
+        if d["code"] in previous
+        and (now - previous[d["code"]]["checked_at"]) < _entry_ttl(previous[d["code"]])
+    }
 
-    return {"generated_at": generated_at, "cache_hit": False, "items": items}
+    entries: dict[str, dict] = {}
+    for d in _INDEX_DEFS:
+        code = d["code"]
+        if code in reusable:
+            entries[code] = reusable[code]
+        else:
+            entries[code] = _fetch_entry(d, previous.get(code), time.monotonic())
+
+    with _cache_lock:
+        _cache.update(entries)
+
+    render_now = time.monotonic()
+    return {
+        "generated_at": datetime.now(ZoneInfo(TIMEZONE)).isoformat(),
+        "cache_hit": len(reusable) == len(_INDEX_DEFS),
+        "items": [_render(entries[d["code"]], d, render_now) for d in _INDEX_DEFS],
+    }

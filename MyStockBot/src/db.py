@@ -28,6 +28,47 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_decision_alert_state(conn: sqlite3.Connection) -> None:
+    """구버전 스키마(fund_present 0/1)를 fund_mask 비트마스크로 교체한다.
+
+    두 컬럼의 **의미가 달라서** 값을 그대로 옮길 수 없다(0/1 vs 0~7 비트마스크).
+    이 테이블은 "무엇을 마지막으로 알렸는지"만 담은 캐시이므로 버려도 손실은
+    키당 무음 시딩 1회뿐이다 — 값을 억지로 변환해 잘못된 기준선을 남기는 것보다 낫다.
+
+    `CREATE TABLE IF NOT EXISTS` 는 기존 테이블에 컬럼을 추가하지 않으므로 이 단계가 필요하다.
+    조건부이므로 부팅마다 지우지 않는다.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'decision_alert_state'"
+    ).fetchone()
+    if exists is None:
+        return
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(decision_alert_state)")}
+    if "fund_mask" not in columns:
+        conn.execute("DROP TABLE decision_alert_state")
+
+
+def _migrate_paper_trades(conn: sqlite3.Connection) -> None:
+    """paper_trades 에 price_source·market_status·realized_pnl 컬럼을 더한다.
+
+    `CREATE TABLE IF NOT EXISTS` 는 기존 테이블에 컬럼을 추가하지 않으므로 이 단계가
+    필요하다. **decision_alert_state 처럼 DROP 하지 않는다** — 이건 캐시가 아니라
+    사용자의 거래 기록이고, 버리면 되살릴 방법이 없다. ALTER TABLE ADD COLUMN 으로
+    더하고, 기존 행은 세 값이 NULL 로 남는다("기록되기 전의 거래" = 알 수 없음).
+    NULL 을 'market'/'open' 으로 채워 넣지 않는다 — 모르는 것을 안다고 적는 셈이다.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(paper_trades)")}
+    if not existing:  # 테이블이 아직 없다(방금 CREATE 된다) → 할 일 없음
+        return
+    for column, ddl in (
+        ("price_source", "ALTER TABLE paper_trades ADD COLUMN price_source TEXT"),
+        ("market_status", "ALTER TABLE paper_trades ADD COLUMN market_status TEXT"),
+        ("realized_pnl", "ALTER TABLE paper_trades ADD COLUMN realized_pnl REAL"),
+    ):
+        if column not in existing:
+            conn.execute(ddl)
+
+
 def init_db() -> None:
     conn = get_connection()
     try:
@@ -71,6 +112,64 @@ def init_db() -> None:
             )
             """
         )
+        # ── KRX 휴장일 캐시 ──
+        # KIS 국내휴장일조회(CTCA0903R)는 "가급적 1일 1회 호출"을 요청하므로 결과를 여기
+        # 영속 저장한다. in-memory 캐시만 쓰면 서버 재시작마다 재호출하게 된다.
+        # is_open = opnd_yn(개장일여부) 을 0/1 로 저장.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS market_holidays (
+                date TEXT PRIMARY KEY,
+                is_open INTEGER NOT NULL,
+                fetched_at TEXT NOT NULL
+            )
+            """
+        )
+
+        # ── 판정 전환 알림 기준선 ──
+        # "직전 사이클과 비교"가 아니라 "마지막으로 **알린** 판정과 비교"한다.
+        # in-memory 로만 들고 있으면 (1) 서버 재시작 때 기준선이 사라져 재부팅마다 전 종목
+        # 알림이 터지고, (2) 판정이 A↔B 로 왕복할 때 매번 알림이 나간다. 영속화하면 둘 다
+        # 공짜로 해결된다 — 왕복해서 돌아온 판정은 마지막 알린 값과 같으므로 알리지 않는다.
+        #
+        # fund_mask / source 도 함께 저장한다: 재무데이터가 뒤늦게 도착하거나(장기 판정이
+        # 재무 ±3점만큼 통째로 이동) 데이터 출처가 kis↔yfinance 로 바뀌면 판정이 바뀌는데,
+        # 그건 시장이 아니라 **입력 구성**이 바뀐 것이라 알릴 사건이 아니다.
+        #
+        # fund_mask 는 per/pbr/roe 의 **존재 여부 비트마스크**(0~7)다. 예전엔 any() 로 접은
+        # 0/1 이었는데, 세 값은 각각 독립적으로 ±1 점을 내고 관망 구간이 score==0 단일 점이라
+        # **한 필드만 도착·소실해도** 측이 바뀐다. 1비트로는 그 사이클을 구분할 수 없어
+        # "재무 도착이 매매 신호로 보이는" 경로가 그대로 열려 있었다(적자·미공시 종목은
+        # per 만 결측인 경우가 흔하다).
+        # 재무 '점수'를 저장하는 대안은 채택하지 않았다 — KIS 의 PER/PBR 은 현재가로
+        # 계산되므로 주가가 움직이면 점수도 움직인다. 점수를 입력 지문으로 쓰면 진짜 시장
+        # 전환까지 무음 흡수해 오알림을 알림 누락으로 바꾸는 것뿐이다.
+        #
+        # notified_at 은 실제 발송 시각(쿨다운 기준), updated_at 은 행을 마지막으로 만진
+        # 시각(TTL 재시딩 기준)이다. 무음 시딩은 notified_at 을 건드리지 않는다.
+        _migrate_decision_alert_state(conn)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_alert_state (
+                code TEXT NOT NULL,
+                view_kind TEXT NOT NULL,
+                view TEXT NOT NULL,
+                fund_mask INTEGER NOT NULL DEFAULT 0,
+                source TEXT,
+                notified_at TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (code, view_kind)
+            )
+            """
+        )
+        # 고아 기준선 정리 — 관심종목에서 빠진 코드의 행을 남겨두면 나중에 다시 추가했을 때
+        # 그동안의 시장 움직임이 '방금 전환'으로 알려지고, /api/alerts/config 의 baselines
+        # 카운트도 실제보다 커진다. 부팅 때 한 번 쓸어낸다(활성 목록이 진실의 원천).
+        conn.execute(
+            "DELETE FROM decision_alert_state WHERE code NOT IN "
+            "(SELECT code FROM watchlist WHERE is_active = 1)"
+        )
+
         # ── 모의투자(Paper Trading) ── 개인용 단일 계좌(id=1 싱글턴)
         conn.execute(
             """
@@ -104,12 +203,56 @@ def init_db() -> None:
                 side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
                 qty INTEGER NOT NULL,
                 price REAL NOT NULL,
-                amount REAL NOT NULL
+                amount REAL NOT NULL,
+                -- 체결가가 어디서 왔는지. 'market' = 수집된 시세, 'book' = 장부가(평균단가)
+                -- 대체 체결. 이걸 남기지 않으면 시세가 없어 평균단가로 청산한 매도가 실제
+                -- 시장가 체결과 구별되지 않는다 — 즉 "그 가격에 팔렸다"가 사실이 아닌
+                -- 기록이 남는다. 성적 해석의 근거가 되는 값이라 반드시 구분해 둔다.
+                price_source TEXT,
+                -- 체결 시점의 장 상태('open'/'pre'/'closed'/'holiday'). 장외 체결은
+                -- 현실에서 불가능하므로, 성적을 볼 때 걸러낼 수 있어야 한다.
+                market_status TEXT,
+                -- 매도에서 확정된 실현손익 = (체결가 - 그 시점 평균단가) * 수량. 매수는 NULL.
+                -- 평균단가는 체결 트랜잭션 안에서만 정확히 알 수 있으므로 여기서 함께 남긴다
+                -- (나중에 거래내역만 보고 되계산하려면 평균단가 이력이 필요해 불가능하다).
+                realized_pnl REAL
+            )
+            """
+        )
+        _migrate_paper_trades(conn)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_trades_ts ON paper_trades(ts DESC)"
+        )
+
+        # ── 알림 이력 ── "실제로 알림으로 나간 판정 전환"의 기록.
+        #
+        # decision_alert_state 와 역할이 다르다: 그쪽은 종목·종류당 **한 행**(마지막으로
+        # 알린 판정)만 들고 게이트 판단에 쓰이는 캐시다. 이쪽은 append-only 기록이라
+        # "언제 어떻게 바뀌었나"에 답한다 — 알림을 놓쳤거나 지난 며칠을 되짚을 때 필요하다.
+        #
+        # 쿨다운·히스테리시스로 눌린 전환은 넣지 않는다. 그것들은 _pending 에 남아 조건이
+        # 풀리면 발화하므로 유실이 아니라 지연이고, 넣으면 같은 전환이 두 번 보인다.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notified_at TEXT NOT NULL DEFAULT (datetime('now')),
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                view_kind TEXT NOT NULL,
+                before_view TEXT NOT NULL,
+                after_view TEXT NOT NULL,
+                close REAL,
+                change_pct REAL,
+                -- 실제로 **성공한** 채널만 콤마로 잇는다. 실패한 채널을 실으면
+                -- "어디로 갔는지"가 사실과 달라진다.
+                channels TEXT NOT NULL
             )
             """
         )
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_paper_trades_ts ON paper_trades(ts DESC)"
+            "CREATE INDEX IF NOT EXISTS idx_alert_history_id "
+            "ON decision_alert_history(id DESC)"
         )
         conn.commit()
     finally:
@@ -168,6 +311,14 @@ def add_watchlist_item(code, name) -> dict:
                 "UPDATE watchlist SET is_active = 1, name = ? WHERE code = ?",
                 (name, normalized_code),
             )
+            # 알림 기준선을 여기서도 지운다 — **추가 시점이 경합 없는 지점이다.**
+            # 삭제 시점에만 지우면, 그때 진행 중이던 수집 사이클이 사이클 끝에 기준선을
+            # 되살릴 수 있다(watchlist 는 soft delete 라 행이 재사용된다). 추가 시점에
+            # 한 번 더 지우면 재추가 직후의 기준선은 반드시 비어 있고, 첫 사이클이 조용히
+            # 시딩하므로 "그동안의 시장 움직임"이 방금 전환으로 알려지지 않는다.
+            conn.execute(
+                "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
+            )
             conn.commit()
             row = conn.execute(
                 "SELECT id, code, name, is_active, created_at FROM watchlist WHERE code = ?",
@@ -178,6 +329,10 @@ def add_watchlist_item(code, name) -> dict:
         conn.execute(
             "INSERT INTO watchlist (code, name) VALUES (?, ?)",
             (normalized_code, name),
+        )
+        # 신규 코드라도 고아 기준선이 남아 있을 수 있다(부활한 행·수동 조작).
+        conn.execute(
+            "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
         )
         conn.commit()
         row = conn.execute(
@@ -197,6 +352,12 @@ def remove_watchlist_item(code) -> bool:
         cursor = conn.execute(
             "UPDATE watchlist SET is_active = 0 WHERE code = ? AND is_active = 1",
             (normalized_code,),
+        )
+        # 알림 기준선도 같은 트랜잭션에서 지운다. 남겨두면 나중에 이 종목을 다시 추가했을 때
+        # 그동안 시장이 움직인 결과가 '방금 전환'으로 알려진다(watchlist 는 soft delete 라
+        # 행이 재사용되므로 기준선이 저절로 사라지지 않는다).
+        conn.execute(
+            "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -363,6 +524,224 @@ def get_candles_age_seconds(code: str, tf: str) -> float | None:
 
 
 # ────────────────────────────────────────────
+# KRX 휴장일 캐시 (KIS CTCA0903R 결과 영속화)
+# ────────────────────────────────────────────
+
+def upsert_market_holidays(rows: list[dict]) -> int:
+    """[{date: 'YYYY-MM-DD', is_open: bool}, ...] 를 upsert. 단일 트랜잭션. 반영 건수 반환.
+
+    빈 리스트는 no-op(0) — 실패한 조회 결과로 기존 캐시를 지우지 않기 위함이다.
+    """
+    if not rows:
+        return 0
+
+    fetched_at = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
+    conn = get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO market_holidays (date, is_open, fetched_at) VALUES (?, ?, ?)",
+            [(r["date"], 1 if r["is_open"] else 0, fetched_at) for r in rows],
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def get_market_open_flag(date_str: str) -> bool | None:
+    """캐시된 개장일 여부. 해당 날짜가 캐시에 없으면 None(호출부가 하드코딩 표로 폴백)."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT is_open FROM market_holidays WHERE date = ?", (date_str,)
+        ).fetchone()
+        return None if row is None else bool(row["is_open"])
+    finally:
+        conn.close()
+
+
+def get_market_holiday_meta() -> dict:
+    """휴장일 캐시 메타 — 건수·커버 범위·마지막 조회 시각.
+
+    스케줄러가 "1일 1회" 제약을 지키며 갱신 필요 여부를 판단하는 데 쓴다.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count, MIN(date) AS min_date, MAX(date) AS max_date, "
+            "MAX(fetched_at) AS fetched_at FROM market_holidays"
+        ).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
+# 판정 전환 알림 이력
+# ────────────────────────────────────────────
+
+# 보존 상한. 개인용 앱이라 이력이 무한히 자라면 DB 만 커진다. 넘으면 오래된 것부터 지운다.
+# 관심종목 수십 개 × 하루 몇 건이면 수백 건으로 몇 주가 덮인다.
+ALERT_HISTORY_MAX_ROWS = 500
+
+
+def insert_decision_alert_history(rows: list[dict]) -> None:
+    """발송 성공한 전환을 이력에 남긴다. 빈 리스트면 아무 것도 하지 않는다.
+
+    `channels` 는 **성공한 채널만** 콤마로 이어 넘긴다(호출부 책임).
+    """
+    if not rows:
+        return
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "INSERT INTO decision_alert_history "
+            "(code, name, view_kind, before_view, after_view, close, change_pct, channels) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    _normalize_code(r["code"]), r["name"], r["view_kind"],
+                    r["before_view"], r["after_view"],
+                    r.get("close"), r.get("change_pct"), r["channels"],
+                )
+                for r in rows
+            ],
+        )
+        # 상한 초과분 정리. id 기준이라 삽입 순서가 곧 시간 순서다(notified_at 은
+        # 초 단위라 같은 사이클 내 동시 삽입을 구분하지 못한다).
+        cap = max(1, int(ALERT_HISTORY_MAX_ROWS))
+        conn.execute(
+            "DELETE FROM decision_alert_history WHERE id <= ("
+            "  SELECT MAX(id) FROM decision_alert_history"
+            ") - ?",
+            (cap,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_decision_alert_history(limit: int = 100) -> list[dict]:
+    """최신순 알림 이력. limit 은 1~500 으로 조인다.
+
+    0·음수를 그대로 LIMIT 에 넘기면 SQLite 가 전체를 돌려준다(LIMIT -1 = 무제한) —
+    페이지 크기를 실수로 0 으로 준 호출이 전체 스캔이 되지 않게 막는다.
+    """
+    safe_limit = max(1, min(int(limit), 500))
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, notified_at, code, name, view_kind, before_view, after_view, "
+            "close, change_pct, channels "
+            "FROM decision_alert_history ORDER BY id DESC LIMIT ?",
+            (safe_limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
+# 판정 전환 알림 기준선
+# ────────────────────────────────────────────
+
+def get_decision_alert_state() -> dict[tuple[str, str], dict]:
+    """{(code, view_kind): {view, fund_mask, source, notified_at, updated_at}}.
+
+    사이클마다 종목 수만큼 SELECT 하지 않도록 전량을 한 번에 읽는다(관심종목 규모가
+    수십 건이라 전량 읽기가 더 싸다).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT code, view_kind, view, fund_mask, source, notified_at, updated_at "
+            "FROM decision_alert_state"
+        ).fetchall()
+        return {
+            (r["code"], r["view_kind"]): {
+                "view": r["view"],
+                "fund_mask": int(r["fund_mask"]),
+                "source": r["source"],
+                "notified_at": r["notified_at"],
+                "updated_at": r["updated_at"],
+            }
+            for r in rows
+        }
+    finally:
+        conn.close()
+
+
+def upsert_decision_alert_state(rows: list[dict]) -> int:
+    """[{code, view_kind, view, fund_mask, source, notified: bool}, ...] 를 upsert.
+
+    세 가지 보호 장치가 이 한 문장에 들어 있다:
+
+    1. `WHERE EXISTS (... watchlist ... is_active = 1)` — **활성 관심종목만** 기준선을 갖는다.
+       수집 사이클은 시작 시점의 watchlist 스냅샷으로 돌고 사이클 **끝**에 이 함수를 부르므로,
+       그 사이에 라우터 스레드가 종목을 지우면 방금 지운 기준선이 되살아난다(그 행은
+       notified_at=NULL 이라 쿨다운도 안 걸려 재추가 시 헛알림이 된다). 단일 statement 안의
+       원자적 검사라 그 레이스가 구조적으로 닫힌다.
+    2. `notified_at = COALESCE(...)` — 무음 시딩이 기존 발송 시각을 밀지 않는다(쿨다운 기준 보존).
+    3. `source = COALESCE(...)` — 출처를 알 수 없는 사이클(None)이 저장된 'kis'/'yfinance' 를
+       지우지 않는다. 지우면 다음 사이클에 NULL→'kis' 가 또 입력 변화로 잡혀 2차 무음 재시딩이 난다.
+
+    fund_mask 는 bool 로 강제하지 않는다 — 0~7 비트마스크를 1 로 접으면 게이트가 무력해진다.
+    """
+    if not rows:
+        return 0
+
+    now = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
+    conn = get_connection()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO decision_alert_state
+                (code, view_kind, view, fund_mask, source, notified_at, updated_at)
+            SELECT ?, ?, ?, ?, ?, ?, ?
+             WHERE EXISTS (SELECT 1 FROM watchlist WHERE code = ? AND is_active = 1)
+            ON CONFLICT(code, view_kind) DO UPDATE SET
+                view = excluded.view,
+                fund_mask = excluded.fund_mask,
+                source = COALESCE(excluded.source, decision_alert_state.source),
+                notified_at = COALESCE(excluded.notified_at, decision_alert_state.notified_at),
+                updated_at = excluded.updated_at
+            """,
+            [
+                (
+                    r["code"], r["view_kind"], r["view"],
+                    int(r.get("fund_mask") or 0),
+                    r.get("source"),
+                    now if r.get("notified") else None,
+                    now,
+                    r["code"],  # WHERE EXISTS 용 — 활성 관심종목 확인
+                )
+                for r in rows
+            ],
+        )
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def delete_decision_alert_state(code) -> int:
+    """한 종목의 알림 기준선을 삭제. 관심종목에서 제거할 때 함께 지운다."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "DELETE FROM decision_alert_state WHERE code = ?", (_normalize_code(code),)
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+# ────────────────────────────────────────────
 # 모의투자(Paper Trading) — 개인용 단일 계좌(id=1)
 # ────────────────────────────────────────────
 
@@ -389,10 +768,23 @@ def _account_snapshot(conn: sqlite3.Connection) -> dict:
     holdings = conn.execute(
         "SELECT code, name, qty, avg_cost FROM paper_holdings WHERE qty > 0 ORDER BY code"
     ).fetchall()
+    # 실현손익 누적 = 매도에서 확정된 손익의 합. 마이그레이션 이전 거래는 realized_pnl 이
+    # NULL 이라 SUM 에서 자연히 제외된다(0 으로 세지 않는다 — 모르는 값이다).
+    realized = conn.execute(
+        "SELECT COALESCE(SUM(realized_pnl), 0.0) AS total FROM paper_trades"
+    ).fetchone()
+    # 실현손익을 계산할 수 없는 과거 거래가 남아 있는지. 있으면 실현/미실현 분해가
+    # 총손익과 맞지 않으므로 화면이 그 사실을 알려야 한다.
+    unknown = conn.execute(
+        "SELECT COUNT(*) AS n FROM paper_trades "
+        "WHERE side = 'sell' AND realized_pnl IS NULL"
+    ).fetchone()
     return {
         "cash": acct["cash"] if acct else 0.0,
         "seed": acct["seed"] if acct else 0.0,
         "holdings": [dict(h) for h in holdings],
+        "realized_pnl": round(realized["total"], 2),
+        "realized_unknown_trades": unknown["n"],
     }
 
 
@@ -412,7 +804,8 @@ def get_paper_trades(limit: int = 100) -> list[dict]:
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT id, ts, code, name, side, qty, price, amount "
+            "SELECT id, ts, code, name, side, qty, price, amount, "
+            "price_source, market_status, realized_pnl "
             "FROM paper_trades ORDER BY id DESC LIMIT ?",
             (safe_limit,),
         ).fetchall()
@@ -421,16 +814,27 @@ def get_paper_trades(limit: int = 100) -> list[dict]:
         conn.close()
 
 
+PRICE_SOURCES = ("market", "book")
+
+
 def execute_paper_order(
-    code, name: str, side: str, qty: int, price: float, seed_default: float
+    code, name: str, side: str, qty: int, price: float, seed_default: float,
+    *, price_source: str, market_status: str | None = None,
 ) -> dict:
     """시장가 즉시 체결 시뮬레이션. 잔액/보유 검증부터 갱신까지 단일 IMMEDIATE
     트랜잭션으로 원자화해 동시 주문 TOCTOU(초과매수·음수잔액·초과매도)를 방지한다.
     체결 성공 시 갱신된 계좌 스냅샷 반환.
+
+    `price_source` 는 필수 키워드다 — 기본값을 주면 호출부가 잊었을 때 조용히
+    'market' 으로 기록돼, 장부가 대체 체결이 실제 시장가 체결로 위장된다.
+    `realized_pnl`(매도)은 **이 트랜잭션 안에서** 계산한다. 평균단가는 체결 직전에만
+    정확히 알 수 있고, 나중에 거래내역만으로 되계산하려면 평균단가 이력이 필요해 불가능하다.
     """
     normalized = _normalize_code(code)
     if side not in ("buy", "sell"):
         raise InvalidOrderError(f"잘못된 주문 유형: {side}")
+    if price_source not in PRICE_SOURCES:
+        raise InvalidOrderError(f"알 수 없는 체결가 출처: {price_source}")
     if not isinstance(qty, int) or qty <= 0:
         raise InvalidOrderError("수량은 1 이상의 정수여야 합니다.")
     price_f = float(price)
@@ -451,6 +855,7 @@ def execute_paper_order(
             "SELECT qty, avg_cost FROM paper_holdings WHERE code = ?", (normalized,)
         ).fetchone()
 
+        realized_pnl = None
         if side == "buy":
             if amount > cash:
                 raise InsufficientFundsError(
@@ -477,6 +882,9 @@ def execute_paper_order(
                     f"보유 수량 부족: 매도 {qty}주 / 보유 {held}주"
                 )
             new_cash = cash + amount
+            # 실현손익 = (체결가 - 매도 시점 평균단가) * 수량. 평균이동원가 방식이므로
+            # 부분 매도 후에도 남은 보유의 평균단가는 그대로다(원가 basis 가 비례 감소).
+            realized_pnl = round((price_f - holding["avg_cost"]) * qty, 2)
             remaining = held - qty
             if remaining > 0:
                 conn.execute(
@@ -492,9 +900,11 @@ def execute_paper_order(
             (new_cash,),
         )
         conn.execute(
-            "INSERT INTO paper_trades (code, name, side, qty, price, amount) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (normalized, name, side, qty, price_f, amount),
+            "INSERT INTO paper_trades "
+            "(code, name, side, qty, price, amount, price_source, market_status, realized_pnl) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (normalized, name, side, qty, price_f, amount,
+             price_source, market_status, realized_pnl),
         )
         snapshot = _account_snapshot(conn)
         conn.commit()

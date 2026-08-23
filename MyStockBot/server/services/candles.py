@@ -9,6 +9,7 @@ GET /api/stocks/{code}/candles 라우트의 비즈니스 로직.
   이력과 병합된 채로 나간다 — collector.py가 채워둔 데이터와도 자연히 합쳐짐).
   fetch 실패 시 저장소에 남은 값(낡아도)을 서빙, 그마저 없으면 빈 items(기존 계약).
 """
+import logging
 import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,6 +20,8 @@ import crawler
 import db
 import kis_auth
 from config import TIMEZONE
+
+logger = logging.getLogger(__name__)
 
 # tf → (KIS FID_PERIOD_DIV_CODE, KIS 기간별시세 조회 lookback 일수)
 _KIS_PERIOD_MAP = {
@@ -184,7 +187,7 @@ def _fetch_daily_plus(code: str, tf: str) -> tuple[pd.DataFrame | None, str | No
     try:
         token = kis_auth.get_token()
     except Exception as e:
-        print(f"[candles] KIS 토큰 발급 실패({code},{tf}) — yfinance 폴백 경로로 진행: {e}")
+        logger.warning(f"[candles] KIS 토큰 발급 실패({code},{tf}) — yfinance 폴백 경로로 진행: {e}")
         token = None
 
     if token is not None:
@@ -266,7 +269,7 @@ def get_candles(code: str, tf: str, count: int = _DEFAULT_COUNT) -> dict:
     try:
         items, source = _fetch(code, tf)
     except Exception as e:
-        print(f"[candles] 수집 실패 ({code}, {tf}): {e}")
+        logger.warning(f"[candles] 수집 실패 ({code}, {tf}): {e}")
         items, source = [], None
         fetch_error = True
 
@@ -279,7 +282,7 @@ def get_candles(code: str, tf: str, count: int = _DEFAULT_COUNT) -> dict:
     # fetch 실패/빈 데이터 — 저장소에 낡은 값이라도 있으면 그거라도 서빙.
     stored = db.get_candles_store(code, tf, safe_count)
     if stored:
-        print(f"[candles] 최신 수집 실패 — 저장소의 낡은 데이터로 서빙 ({code}, {tf})")
+        logger.warning(f"[candles] 최신 수집 실패 — 저장소의 낡은 데이터로 서빙 ({code}, {tf})")
         return _build_response(code, tf, _remembered_source(code, tf), stored, safe_count)
 
     # 데이터가 아예 없음: fetch 예외였는지(소스 장애) 빈 응답이었는지 구분해 전달.

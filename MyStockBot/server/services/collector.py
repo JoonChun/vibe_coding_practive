@@ -13,6 +13,7 @@ GET /api/snapshot 은 이 모듈이 채운 상태(get_state)를 읽기만 한다
 사이클 간격: 장중(평일 09:00~15:40 Asia/Seoul) COLLECTOR_INTERVAL_MARKET,
 그 외 COLLECTOR_INTERVAL_IDLE. 부팅 직후 즉시 1회 수집.
 """
+import logging
 import random
 import threading
 import time
@@ -29,9 +30,14 @@ import kis_auth
 from config import (
     COLLECTOR_INTERVAL_IDLE,
     COLLECTOR_INTERVAL_MARKET,
-    KIS_RATE_LIMIT_DELAY,
+    KIS_MINUTE_BACKFILL_DAYS,
+    KIS_MINUTE_ENABLED,
     TIMEZONE,
 )
+
+from . import alerts
+
+logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 4
 
@@ -197,7 +203,7 @@ def _get_financials_cached(code: str, token: str | None) -> dict:
     try:
         data = crawler.fetch_kis_financials(code, token)
     except Exception as e:
-        print(f"[collector] 재무데이터 수집 실패 ({code}): {e}")
+        logger.warning(f"[collector] 재무데이터 수집 실패 ({code}): {e}")
         data = dict(_EMPTY_FINANCIALS)
 
     ttl = _FINANCIALS_TTL_SECONDS + random.uniform(
@@ -231,18 +237,20 @@ def _fetch_daily(code: str, token: str | None) -> tuple[pd.DataFrame | None, str
         try:
             df = crawler.fetch_kis_ohlcv(code, token, period="D", lookback_days=150)
         except Exception as e:
-            print(f"[collector] KIS 일봉 수집 예외 ({code}): {e}")
+            logger.warning(f"[collector] KIS 일봉 수집 예외 ({code}): {e}")
             df = None
-        time.sleep(KIS_RATE_LIMIT_DELAY)
+        # 호출 간격은 crawler 안에서 kis_auth.kis_throttle() 이 전역으로 보장한다
+        # (예전에는 여기서 다시 sleep 해 지연이 이중 적용됐다 — 워커 4개 × 종목 수만큼
+        #  사이클이 불필요하게 길어졌다).
         if df is not None and not df.empty:
             source = "kis"
 
     if df is None or df.empty:
-        print(f"[collector] ⚠ KIS 일봉 실패, yfinance 폴백: {code}")
+        logger.warning(f"[collector] ⚠ KIS 일봉 실패, yfinance 폴백: {code}")
         try:
             df = crawler.fetch_yf_ohlcv(code, interval="1d", period="2y")
         except Exception as e:
-            print(f"[collector] yfinance 일봉 폴백 실패 ({code}): {e}")
+            logger.warning(f"[collector] yfinance 일봉 폴백 실패 ({code}): {e}")
             df = None
         if df is not None and not df.empty:
             source = "yfinance"
@@ -285,10 +293,28 @@ def _get_daily_df(code: str, token: str | None) -> tuple[pd.DataFrame | None, st
     return (pd.DataFrame(stored) if stored else daily_df), source
 
 
-def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
+def _fetch_60m_from_kis(code: str, token: str | None) -> pd.DataFrame | None:
+    """KIS 1분봉(FHKST03010230) → 60분봉 리샘플. 비활성·자격증명 없음·실패 시 None.
+
+    단기 판정이 yfinance 하나에만 매달려 있던 문제(야후 지연·결측·429 → 단기 판정 소실)를
+    풀기 위한 1차 경로다. 호출량이 커서 기본 비활성이다(config.KIS_MINUTE_ENABLED 주석 참고).
+    """
+    if not KIS_MINUTE_ENABLED or token is None:
+        return None
+    try:
+        minutes = crawler.fetch_kis_minute_ohlcv(code, token, KIS_MINUTE_BACKFILL_DAYS)
+        if minutes is None or minutes.empty:
+            return None
+        return crawler.resample_minutes_to_60m(minutes)
+    except Exception as e:
+        logger.warning(f"[collector] KIS 60분봉 수집 실패 ({code}) — yfinance 폴백: {e}")
+        return None
+
+
+def _get_60m_df(code: str, token: str | None = None) -> tuple[pd.DataFrame | None, str | None]:
     """60분봉 신선도 게이트(5분). 신선하면 저장소에서 바로 서빙(외부 fetch 생략),
-    stale/없으면 기존과 동일하게 yfinance 재수집. fetch 실패 시 동작은 기존과 동일
-    (None 반환 → 호출부에서 macd_60m 등 None 유지, 스코프 확대 없음).
+    stale/없으면 KIS 분봉 1차 → yfinance 폴백으로 재수집. fetch 실패 시 (None, None)
+    → 호출부에서 macd_60m 등 None 유지(반환 규약 불변).
 
     60분봉은 시간당 1회 갱신이면 충분한 데이터라 분봉 일반 기준(60초)보다 여유 있는
     임계치를 둔다.
@@ -299,11 +325,16 @@ def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
         if stored:
             return pd.DataFrame(stored), _remembered_source(code, "60m")
 
-    try:
-        df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
-    except Exception as e:
-        print(f"[collector] 60분봉 수집 실패 ({code}): {e}")
-        df60 = None
+    source = "yfinance"
+    df60 = _fetch_60m_from_kis(code, token)
+    if df60 is not None and not df60.empty:
+        source = "kis"
+    else:
+        try:
+            df60 = crawler.fetch_yf_ohlcv(code, interval="60m", period="6mo")
+        except Exception as e:
+            logger.warning(f"[collector] 60분봉 수집 실패 ({code}): {e}")
+            df60 = None
 
     if df60 is None or df60.empty:
         return None, None
@@ -311,9 +342,9 @@ def _get_60m_df(code: str) -> tuple[pd.DataFrame | None, str | None]:
     items60 = _df_to_candle_items_minute(df60)
     if items60:
         db.upsert_candles(code, "60m", items60)
-    _remember_source(code, "60m", "yfinance")
+    _remember_source(code, "60m", source)
     stored = db.get_candles_store(code, "60m", 150)
-    return (pd.DataFrame(stored) if stored else df60), "yfinance"
+    return (pd.DataFrame(stored) if stored else df60), source
 
 
 def _collect_one(item: dict, token: str | None) -> dict:
@@ -335,13 +366,13 @@ def _collect_one(item: dict, token: str | None) -> dict:
         bb = indicators.bollinger(daily_store_df)
         bb_upper, bb_mid, bb_lower = bb.get("bb_upper"), bb.get("bb_mid"), bb.get("bb_lower")
     except Exception as e:
-        print(f"[collector] 1일봉 지표 계산 실패 ({code}): {e}")
+        logger.warning(f"[collector] 1일봉 지표 계산 실패 ({code}): {e}")
         macd_1d = rsi_1d = None
         rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
 
     # ② 60분봉(신선도 게이트 — 5분 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
-    store60_df, source_60m = _get_60m_df(code)
+    store60_df, source_60m = _get_60m_df(code, token)
     macd_60m = rsi_60m = None
     rsi_value_60m = None
     if store60_df is not None and not store60_df.empty:
@@ -350,7 +381,7 @@ def _collect_one(item: dict, token: str | None) -> dict:
             rsi_60m = indicators.rsi_zone_signal(store60_df)
             rsi_value_60m = indicators.rsi_latest_value(store60_df)
         except Exception as e:
-            print(f"[collector] 60분봉 지표 계산 실패 ({code}): {e}")
+            logger.warning(f"[collector] 60분봉 지표 계산 실패 ({code}): {e}")
             macd_60m = rsi_60m = None
             rsi_value_60m = None
 
@@ -395,13 +426,13 @@ def _run_cycle() -> None:
         now = datetime.now(ZoneInfo(TIMEZONE))
         with _state_lock:
             _state = {"generated_at": now.isoformat(), "items": []}
-        print("[collector] watchlist 비어있음 — 수집 건너뜀")
+        logger.info("[collector] watchlist 비어있음 — 수집 건너뜀")
         return
 
     try:
         token = kis_auth.get_token()
     except Exception as e:
-        print(f"[collector] KIS 토큰 발급 실패 — 이번 사이클은 전 종목 yfinance 폴백 경로로 진행: {e}")
+        logger.warning(f"[collector] KIS 토큰 발급 실패 — 이번 사이클은 전 종목 yfinance 폴백 경로로 진행: {e}")
         token = None
 
     items: list[dict] = []
@@ -414,23 +445,37 @@ def _run_cycle() -> None:
             try:
                 items.append(future.result())
             except Exception as e:
-                print(f"[collector] 종목 수집 예외 ({stock.get('code')}): {e}")
+                logger.warning(f"[collector] 종목 수집 예외 ({stock.get('code')}): {e}")
                 items.append(_error_item(stock.get("code"), stock.get("name"), f"수집 예외: {e}"))
 
     now = datetime.now(ZoneInfo(TIMEZONE))
     with _state_lock:
         _state = {"generated_at": now.isoformat(), "items": items}
 
+    # 판정 전환 알림 — **반드시 락 밖에서.**
+    # _state_lock 은 이벤트 루프 스레드가 직접 잡는다(routers/snapshot.py 의 async 핸들러가
+    # to_thread 없이 snapshot_cache → collector.get_state() 를 호출한다). 락을 쥔 채
+    # SMTP·HTTP 를 하면 서버 전체가 그 시간만큼 응답을 멈춘다.
+    # 이 경로는 KIS 를 다시 부르지 않는다 — kis_auth.kis_throttle() 이 전역 락을 잡고
+    # 0.5초 sleep 하므로 알림이 수집 사이클을 늘리게 된다. 스냅샷 값만 쓴다.
+    try:
+        alerts.process_cycle(items, now)
+    except Exception as e:
+        logger.warning(f"[collector] 판정 전환 알림 처리 실패: {e}")
+
     success = sum(1 for it in items if it.get("error") is None)
-    print(f"[collector] 사이클 완료: 성공 {success}건 실패 {len(items) - success}건 (전체 {len(items)}건)")
+    failed = len(items) - success
+    # 정상 사이클은 info, 실패가 섞인 사이클만 warning — 로그 레벨로 걸러 볼 수 있게.
+    log = logger.warning if failed else logger.info
+    log(f"[collector] 사이클 완료: 성공 {success}건 실패 {failed}건 (전체 {len(items)}건)")
 
 
 def _loop() -> None:
-    print("[collector] 수집 루프 시작")
+    logger.info("[collector] 수집 루프 시작")
     try:
         _run_cycle()  # 부팅 직후 즉시 1회
     except Exception as e:
-        print(f"[collector] 부팅 직후 수집 사이클 실패: {e}")
+        logger.warning(f"[collector] 부팅 직후 수집 사이클 실패: {e}")
 
     while not _stop_event.is_set():
         interval = _cycle_interval_seconds()
@@ -439,9 +484,9 @@ def _loop() -> None:
         try:
             _run_cycle()
         except Exception as e:
-            print(f"[collector] 수집 사이클 실패: {e}")
+            logger.warning(f"[collector] 수집 사이클 실패: {e}")
 
-    print("[collector] 수집 루프 종료")
+    logger.info("[collector] 수집 루프 종료")
 
 
 def start() -> None:

@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 import sys
@@ -5,6 +6,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -17,13 +19,17 @@ from config import (
     KIS_APP_SECRET_ENV,
     KIS_DAILY_PRICE_URL,
     KIS_FINANCIAL_RATIO_URL,
+    KIS_HOLIDAY_URL,
     KIS_INCOME_STMT_URL,
+    KIS_MINUTE_CHART_URL,
     KIS_RATE_LIMIT_DELAY,
     OHLCV_LOOKBACK_DAYS,
     TIMEZONE,
 )
 import indicators
 import kis_auth
+
+logger = logging.getLogger(__name__)
 
 
 # ────────────────────────────────────────────
@@ -58,9 +64,26 @@ def _price_change(df: pd.DataFrame) -> dict:
     return {"change": change, "change_pct": change_pct}
 
 
+def _bar_date(df: pd.DataFrame) -> str | None:
+    """일봉 df 마지막 봉의 거래일을 'YYYY-MM-DD' 로 반환. 파싱 실패 시 None.
+
+    수집 실행일(오늘)이 아니라 **데이터가 실제로 속한 거래일**이다. 호출부(src/main.py)가
+    이 값을 시트 '날짜' 컬럼에 쓰기 때문에, 휴장일에 크론이 돌아 직전 거래일 종가를
+    받아와도 그 종가의 원래 날짜로 기록된다 → sheets.write_stock_data 의 (날짜,종목코드)
+    중복 스킵이 자연히 걸려 같은 종가가 다른 날짜로 두 번 쌓이지 않는다.
+    """
+    if df is None or len(df) == 0:
+        return None
+    raw = str(df.iloc[-1].get("date") or "")[:8]
+    if len(raw) != 8 or not raw.isdigit():
+        return None
+    return f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
+
+
 _EMPTY_RESULT = {
     "open": None, "close": None, "low": None, "high": None, "volume": None,
     "change": None, "change_pct": None,
+    "bar_date": None,
     "macd_1d": None, "rsi_1d": None, "macd_60m": None, "rsi_60m": None,
     "rsi_value_1d": None, "rsi_value_60m": None,
     "short_view": None, "long_view": None,
@@ -92,7 +115,6 @@ def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> p
     lookback_days: 조회 시작일을 오늘로부터 며칠 전으로 잡을지(각 tf 별 권장 range는 호출부에서 결정).
     반환 컬럼: date(YYYYMMDD 문자열)/open/high/low/close/volume. 실패·빈 데이터 시 None.
     """
-    from zoneinfo import ZoneInfo
     tz = ZoneInfo(TIMEZONE)
     today = datetime.now(tz)
     start = today - timedelta(days=lookback_days)
@@ -113,12 +135,12 @@ def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> p
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] OHLCV 요청 실패 ({code}, period={period}): {e}")
+        logger.warning(f"[KIS] OHLCV 요청 실패 ({code}, period={period}): {e}")
         return None
 
     output2 = data.get("output2")
     if not output2:
-        print(f"[KIS] OHLCV output2 없음 ({code}, period={period}): rt_cd={data.get('rt_cd')} msg={data.get('msg1')}")
+        logger.info(f"[KIS] OHLCV output2 없음 ({code}, period={period}): rt_cd={data.get('rt_cd')} msg={data.get('msg1')}")
         return None
 
     rows = []
@@ -142,6 +164,298 @@ def fetch_kis_ohlcv(code: str, token: str, period: str, lookback_days: int) -> p
     return df.sort_values("date").reset_index(drop=True)
 
 
+# ────────────────────────────────────────────
+# KIS 분봉(1분) — 주식일별분봉조회 FHKST03010230
+#
+# 출처(추측 금지 원칙에 따라 공식 코드 3곳 교차확인):
+#   examples_llm/domestic_stock/inquire_time_dailychartprice/inquire_time_dailychartprice.py
+#     L23 API_URL, L71 tr_id="FHKST03010230", L73-80 params 6개
+#   .../chk_inquire_time_dailychartprice.py L22-39 COLUMN_MAPPING (응답 필드명 전체)
+#   backtester/kis_backtest/providers/kis/data.py L150-225 (_get_minute_bars 페이징)
+#   MCP/Kis Trading MCP/configs/domestic_stock.json (파라미터 타입·필수여부 교차확인)
+#
+# 함정 2개:
+#   1) 종가 필드가 stck_prpr(주식 현재가)이다. 일봉 경로의 stck_clpr 을 재사용하면 전 종목
+#      close 가 None 이 된다 → 파서를 공유하지 않고 분리한다.
+#   2) 국내주식(J)은 1분봉 고정이다(간격 지정 파라미터 없음 — 60/120초 지정은 업종 U 전용).
+#      60분봉은 리샘플로 만든다.
+# ────────────────────────────────────────────
+
+_KIS_MINUTE_TR_ID = "FHKST03010230"
+_KIS_MINUTE_PAGE_LIMIT = 120  # 1회 호출 최대 건수(공식 docstring)
+_KIS_MINUTE_SESSION_END = "153000"    # 정규장 마감 — 역순 페이징 시작 시각
+_KIS_MINUTE_SESSION_START = "090000"  # 정규장 개장 — 여기 도달하면 그 날짜 완료
+_KIS_MINUTE_MAX_PAGES = 8  # 390분 / 120건 ≈ 4회. 무한 루프 방지용 상한.
+
+_minute_schema_logged = False
+
+
+def _log_minute_schema_once(rows: list[dict]) -> None:
+    """첫 성공 응답의 output2 키 목록을 1회만 남긴다.
+
+    이 경로는 자격증명 없이 개발되어 실제 응답으로 검증되지 않았다. 필드명이 문서와
+    다르면 조용히 전부 None 이 되므로, 실환경 첫 호출에서 스키마를 눈으로 확인할 수 있게 한다.
+    """
+    global _minute_schema_logged
+    if _minute_schema_logged or not rows:
+        return
+    _minute_schema_logged = True
+    logger.info("[KIS] 분봉 output2 스키마(첫 응답 1회만): %s", sorted(rows[0].keys()))
+
+
+def _parse_kis_minute_rows(rows: list[dict]) -> list[dict]:
+    """분봉 output2 → [{date: 'YYYYMMDDHHMM', open/high/low/close/volume}]. 파싱 실패 행은 건너뜀."""
+    parsed = []
+    for item in rows:
+        raw_date = str(item.get("stck_bsop_date") or "").strip()
+        raw_time = str(item.get("stck_cntg_hour") or "").strip()
+        if len(raw_date) != 8 or len(raw_time) < 4:
+            continue
+        try:
+            parsed.append({
+                "date": f"{raw_date}{raw_time[:4]}",  # 분 단위까지(초는 버린다)
+                "open": float(item["stck_oprc"]),
+                "high": float(item["stck_hgpr"]),
+                "low": float(item["stck_lwpr"]),
+                # ★ 분봉 종가는 stck_prpr — 일봉의 stck_clpr 이 아니다.
+                "close": float(item["stck_prpr"]),
+                "volume": int(float(item.get("cntg_vol") or 0)),
+                "_time": raw_time,
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+    return parsed
+
+
+def _fetch_kis_minute_one_day(code: str, token: str, date_str: str) -> list[dict]:
+    """특정 일자의 1분봉 전체를 시각 역순 페이징으로 모아 반환(오름차순 정렬).
+
+    페이징 방식은 공식 백테스터와 동일: FID_INPUT_HOUR_1 을 마감 시각으로 시작해, 응답의
+    최소 체결시각을 다음 호출의 기준시각으로 재투입한다. 개장 시각 도달·건수 미달·상한
+    도달 중 하나면 종료.
+    """
+    headers = _get_headers(token)
+    headers["tr_id"] = _KIS_MINUTE_TR_ID
+
+    collected: dict[str, dict] = {}  # date(분) → row, 페이지 경계 중복 제거
+    cursor = _KIS_MINUTE_SESSION_END
+
+    for _ in range(_KIS_MINUTE_MAX_PAGES):
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_HOUR_1": cursor,
+            "FID_INPUT_DATE_1": date_str,
+            "FID_PW_DATA_INCU_YN": "Y",
+            "FID_FAKE_TICK_INCU_YN": "",
+        }
+        try:
+            kis_auth.kis_throttle()
+            resp = requests.get(
+                KIS_MINUTE_CHART_URL, headers=headers, params=params, timeout=10
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning("[KIS] 분봉 요청 실패 (%s, %s, %s): %s", code, date_str, cursor, e)
+            break
+
+        rows = data.get("output2") or []
+        if not rows:
+            if not collected:
+                logger.info(
+                    "[KIS] 분봉 output2 없음 (%s, %s): rt_cd=%s msg=%s",
+                    code, date_str, data.get("rt_cd"), data.get("msg1"),
+                )
+            break
+
+        _log_minute_schema_once(rows)
+        parsed = _parse_kis_minute_rows(rows)
+        if not parsed:
+            break
+
+        for row in parsed:
+            collected.setdefault(row["date"], row)
+
+        min_time = min(row["_time"] for row in parsed)
+        if min_time <= _KIS_MINUTE_SESSION_START or len(rows) < _KIS_MINUTE_PAGE_LIMIT:
+            break
+        cursor = min_time
+
+    ordered = sorted(collected.values(), key=lambda r: r["date"])
+    for row in ordered:
+        row.pop("_time", None)
+    return ordered
+
+
+def fetch_kis_minute_ohlcv(code: str, token: str, lookback_days: int) -> pd.DataFrame | None:
+    """최근 영업일들의 1분봉을 모아 반환. 컬럼: date('YYYYMMDDHHMM')/open/high/low/close/volume.
+
+    1회 호출 = 1일자라서 날짜 루프 + 날짜 내 시각 역순 페이징의 2중 루프다. 주말·휴장일은
+    market_calendar 로 건너뛴다(빈 응답 왕복 낭비 방지). 수집 결과가 없으면 None.
+    """
+    import market_calendar
+
+    tz = ZoneInfo(TIMEZONE)
+    today = datetime.now(tz).date()
+
+    rows: list[dict] = []
+    checked = 0
+    day_offset = 0
+    # lookback_days 만큼의 '거래일'을 모을 때까지 달력을 거슬러 올라간다(최대 2배까지만 탐색).
+    while checked < lookback_days and day_offset < lookback_days * 2 + 10:
+        target = today - timedelta(days=day_offset)
+        day_offset += 1
+        if not market_calendar.is_trading_day(target):
+            continue
+        checked += 1
+        rows.extend(_fetch_kis_minute_one_day(code, token, target.strftime("%Y%m%d")))
+
+    if not rows:
+        return None
+
+    df = pd.DataFrame(rows)
+    return df.sort_values("date").reset_index(drop=True)
+
+
+def resample_minutes_to_60m(df: pd.DataFrame) -> pd.DataFrame | None:
+    """1분봉 df('date'='YYYYMMDDHHMM') → 60분봉. tz-aware DatetimeIndex 를 붙여 반환.
+
+    반환 형식은 crawler.fetch_yf_ohlcv 와 같은 계약(date 문자열 컬럼 + tz-aware 인덱스)이라
+    호출부(collector._get_60m_df → _df_to_candle_items_minute)가 소스에 무관하게 동작한다.
+
+    **진행 중인 마지막 봉은 버린다.** 아직 닫히지 않은 60분 구간은 미완성 OHLC 라서 지표에
+    넣으면 판정이 봉 중간마다 흔들린다(공식 문서도 첫 배열의 체결량이 직전 봉 값일 수 있다고
+    경고한다). 장중에는 그래서 마지막 미완성 구간을 제외한다.
+    """
+    if df is None or df.empty or "date" not in df.columns:
+        return None
+
+    tz = ZoneInfo(TIMEZONE)
+    ts = pd.to_datetime(df["date"], format="%Y%m%d%H%M", errors="coerce")
+    work = df.assign(_ts=ts).dropna(subset=["_ts"])
+    if work.empty:
+        return None
+    work = work.set_index("_ts").sort_index()
+
+    agg = work.resample("60min").agg({
+        "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum",
+    }).dropna(subset=["open", "high", "low", "close"])
+    if agg.empty:
+        return None
+
+    # 마지막 구간이 아직 진행 중이면(마지막 1분봉이 그 구간의 끝에 닿지 않았으면) 버린다.
+    last_bin = agg.index[-1]
+    if work.index[-1] < last_bin + pd.Timedelta(minutes=59):
+        agg = agg.iloc[:-1]
+    if agg.empty:
+        return None
+
+    idx = agg.index.tz_localize(tz)
+    out = pd.DataFrame({
+        "date": idx.strftime("%Y%m%d%H%M"),
+        "open": agg["open"].astype(float),
+        "high": agg["high"].astype(float),
+        "low": agg["low"].astype(float),
+        "close": agg["close"].astype(float),
+        "volume": agg["volume"].astype(int),
+    })
+    out.index = idx
+    return out
+
+
+# ────────────────────────────────────────────
+# KRX 휴장일 조회 — 국내휴장일조회 CTCA0903R
+#
+# 출처: examples_llm/domestic_stock/chk_holiday/chk_holiday.py (URL·tr_id·params·페이징),
+#       .../chk_chk_holiday.py COLUMN_MAPPING (응답 필드).
+#
+# ★ 공식 docstring 경고: "원장서비스와 연관되어 있어 단시간 내 다수 호출시 서비스에 영향을
+#   줄 수 있어 가급적 1일 1회 호출" → 호출부(scheduler)가 하루 1회로 제한하고 결과를
+#   SQLite 에 영속 저장한다. 이 함수 자체는 호출 빈도를 판단하지 않는다.
+# ★ 개장일 판단은 opnd_yn — 공식 docstring 이 "주문을 넣을 수 있는지 확인하고자 하실
+#   경우 개장일여부(opnd_yn)을 사용"이라고 명시한다.
+# ────────────────────────────────────────────
+
+_KIS_HOLIDAY_TR_ID = "CTCA0903R"
+# 응답 1페이지가 몇 건인지 문서화되어 있지 않아, 연속조회 헤더(tr_cont M/F)를 따라가되
+# 무한 루프 방지 상한을 둔다.
+_KIS_HOLIDAY_MAX_PAGES = 12
+_KIS_HOLIDAY_CONTINUE_FLAGS = ("M", "F")
+
+
+def _parse_kis_holiday_rows(rows: list[dict]) -> list[dict]:
+    """휴장일 output → [{date: 'YYYY-MM-DD', is_open: bool}]. 파싱 실패 행은 건너뜀."""
+    parsed = []
+    for item in rows:
+        raw_date = str(item.get("bass_dt") or "").strip()
+        if len(raw_date) != 8 or not raw_date.isdigit():
+            continue
+        opnd = str(item.get("opnd_yn") or "").strip().upper()
+        if opnd not in ("Y", "N"):
+            continue
+        parsed.append({
+            "date": f"{raw_date[0:4]}-{raw_date[4:6]}-{raw_date[6:8]}",
+            "is_open": opnd == "Y",
+        })
+    return parsed
+
+
+def fetch_kis_holidays(token: str, bass_dt: str, max_days: int) -> list[dict]:
+    """기준일자부터의 개장일 여부를 연속조회로 모아 반환. 실패 시 빈 리스트.
+
+    반환: [{date: 'YYYY-MM-DD', is_open: bool}, ...] (날짜 오름차순, 중복 제거)
+    max_days 만큼 모이거나 연속조회가 끝나면 종료한다.
+    """
+    headers = _get_headers(token)
+    headers["tr_id"] = _KIS_HOLIDAY_TR_ID
+    headers["tr_cont"] = ""
+
+    collected: dict[str, dict] = {}
+    ctx_fk = ""
+    ctx_nk = ""
+
+    for page in range(_KIS_HOLIDAY_MAX_PAGES):
+        params = {"BASS_DT": bass_dt, "CTX_AREA_FK": ctx_fk, "CTX_AREA_NK": ctx_nk}
+        try:
+            kis_auth.kis_throttle()
+            resp = requests.get(KIS_HOLIDAY_URL, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning("[KIS] 휴장일 조회 실패 (page=%d, bass_dt=%s): %s", page, bass_dt, e)
+            break
+
+        rows = data.get("output") or []
+        if isinstance(rows, dict):  # 단건 응답 변형 방어
+            rows = [rows]
+        parsed = _parse_kis_holiday_rows(rows)
+        if not parsed:
+            if not collected:
+                logger.warning(
+                    "[KIS] 휴장일 output 없음/파싱 실패: rt_cd=%s msg=%s",
+                    data.get("rt_cd"), data.get("msg1"),
+                )
+            break
+
+        for row in parsed:
+            collected.setdefault(row["date"], row)
+
+        if len(collected) >= max_days:
+            break
+
+        # 연속조회: 응답 헤더 tr_cont 가 M/F 면 다음 페이지가 있고, 바디의 ctx_area_* 를
+        # 다음 요청에 되돌려준다(공식 예제와 동일).
+        tr_cont = (resp.headers.get("tr_cont") or "").strip().upper()
+        if tr_cont not in _KIS_HOLIDAY_CONTINUE_FLAGS:
+            break
+        ctx_fk = str(data.get("ctx_area_fk") or "").strip()
+        ctx_nk = str(data.get("ctx_area_nk") or "").strip()
+        headers["tr_cont"] = "N"
+
+    return sorted(collected.values(), key=lambda r: r["date"])[:max_days]
+
+
 def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
     """기존 호출부(스냅샷 수집) 전용 — 일봉 지표 계산에 필요한 lookback으로 fetch_kis_ohlcv 호출."""
     lookback = int(OHLCV_LOOKBACK_DAYS * 1.6)
@@ -162,7 +476,7 @@ def _kis_financial_ratio(code: str, token: str) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] 재무비율 요청 실패 ({code}): {e}")
+        logger.warning(f"[KIS] 재무비율 요청 실패 ({code}): {e}")
         return {"per": None, "pbr": None, "roe": None}
 
     output = data.get("output")
@@ -191,7 +505,7 @@ def _kis_income_statement(code: str, token: str) -> dict:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"[KIS] 손익계산서 요청 실패 ({code}): {e}")
+        logger.warning(f"[KIS] 손익계산서 요청 실패 ({code}): {e}")
         return {"revenue": None, "net_income": None}
 
     output = data.get("output")
@@ -233,6 +547,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         "low": int(latest["low"]),
         "high": int(latest["high"]),
         "volume": int(latest["volume"]),
+        "bar_date": _bar_date(df),
     }
     change_data = _price_change(df)
 
@@ -245,7 +560,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
         bb_mid = bb.get("bb_mid")
         bb_lower = bb.get("bb_lower")
     except Exception as e:
-        print(f"[KIS] 1일봉 지표 계산 실패 ({code}): {e}")
+        logger.warning(f"[KIS] 1일봉 지표 계산 실패 ({code}): {e}")
         macd_1d = rsi_1d = None
         rsi_value_1d = None
         bb_upper = bb_mid = bb_lower = None
@@ -257,7 +572,7 @@ def _fetch_from_kis(code: str, name: str, token: str) -> dict | None:
             rsi_60m = indicators.rsi_zone_signal(df60)
             rsi_value_60m = indicators.rsi_latest_value(df60)
         except Exception as e:
-            print(f"[KIS] 60분봉 지표 계산 실패 ({code}): {e}")
+            logger.warning(f"[KIS] 60분봉 지표 계산 실패 ({code}): {e}")
             macd_60m = rsi_60m = None
             rsi_value_60m = None
     else:
@@ -354,7 +669,7 @@ def fetch_yf_ohlcv(code: str, interval: str, period: str) -> pd.DataFrame | None
         df.index = hist.index
         return df
     except Exception as e:
-        print(f"[YF] OHLCV 수집 실패 ({code}, interval={interval}, period={period}): {e}")
+        logger.warning(f"[YF] OHLCV 수집 실패 ({code}, interval={interval}, period={period}): {e}")
         return None
 
 
@@ -368,11 +683,11 @@ def _yf_intraday_60m(code: str) -> pd.DataFrame | None:
 
 def _fetch_from_yfinance(code: str, name: str) -> dict | None:
     """Yahoo Finance로 OHLCV + 기술지표 + 일부 재무 수집. 실패 시 None 반환."""
-    print(f"[YF] 폴백 시도 ({code})")
+    logger.info(f"[YF] 폴백 시도 ({code})")
     try:
         ticker = _yf_ticker(code)
         if ticker is None:
-            print(f"[YF] ticker 없음 ({code})")
+            logger.info(f"[YF] ticker 없음 ({code})")
             return None
 
         hist = ticker.history(period="6mo")
@@ -398,6 +713,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             "low": int(latest["low"]),
             "high": int(latest["high"]),
             "volume": int(latest["volume"]),
+            "bar_date": _bar_date(df),
         }
         change_data = _price_change(df)
 
@@ -410,7 +726,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             bb_mid = bb.get("bb_mid")
             bb_lower = bb.get("bb_lower")
         except Exception as e:
-            print(f"[YF] 1일봉 지표 계산 실패 ({code}): {e}")
+            logger.warning(f"[YF] 1일봉 지표 계산 실패 ({code}): {e}")
             macd_1d = rsi_1d = None
             rsi_value_1d = None
             bb_upper = bb_mid = bb_lower = None
@@ -422,7 +738,7 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
                 rsi_60m = indicators.rsi_zone_signal(df60)
                 rsi_value_60m = indicators.rsi_latest_value(df60)
             except Exception as e:
-                print(f"[YF] 60분봉 지표 계산 실패 ({code}): {e}")
+                logger.warning(f"[YF] 60분봉 지표 계산 실패 ({code}): {e}")
                 macd_60m = rsi_60m = None
                 rsi_value_60m = None
         else:
@@ -459,14 +775,14 @@ def _fetch_from_yfinance(code: str, name: str) -> dict | None:
             ),
         }
 
-        print(f"[YF] 수집 성공 ({code})")
+        logger.info(f"[YF] 수집 성공 ({code})")
         return {"code": code, "name": name, **price_data, **change_data, **indicator_data,
                 **view_data, **ratio_data, **income_data,
                 "source": "yfinance", "source_60m": ("yfinance" if df60 is not None else None),
                 "error": None}
 
     except Exception as e:
-        print(f"[YF] 수집 실패 ({code}): {e}")
+        logger.warning(f"[YF] 수집 실패 ({code}): {e}")
         return None
 
 
@@ -492,7 +808,7 @@ def fetch_all(stock_list: list[dict]) -> tuple[list[dict], list[dict]]:
     try:
         token = kis_auth.get_token()
     except Exception as e:
-        print(f"[crawler] KIS 토큰 발급 실패 — 전 종목 Yahoo 폴백으로 진행: {e}")
+        logger.warning(f"[crawler] KIS 토큰 발급 실패 — 전 종목 Yahoo 폴백으로 진행: {e}")
         token = None
 
     success_list = []

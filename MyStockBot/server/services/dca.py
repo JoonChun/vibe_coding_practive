@@ -10,7 +10,11 @@ candles 서비스로 조회하고, KIS 100건 상한으로 장기 요청이 잘�
 
 순수 계산부(run_dca_backtest)는 items 리스트만 받아 단위테스트가 쉽다.
 """
+import logging
+
 from .timeseries import downsample, epoch_to_date
+
+logger = logging.getLogger(__name__)
 
 # 주기 → 연간 매수 횟수
 _PERIODS_PER_YEAR = {"weekly": 52, "monthly": 12, "quarterly": 4}
@@ -111,7 +115,7 @@ def _long_series(code: str, tf: str, want: int) -> tuple[list[dict], str | None,
                     if len(y) > len(items):
                         items, source, fetch_error = y, "yfinance", False
             except Exception as e:
-                print(f"[dca] yfinance 장기 보강 실패({code},{tf}): {e}")
+                logger.warning(f"[dca] yfinance 장기 보강 실패({code},{tf}): {e}")
     return items, source, fetch_error
 
 
@@ -159,10 +163,23 @@ def dca_backtest(
     result["freq"] = freq
     result["reinvest"] = False  # 배당 데이터 미연동 — 실제 반영되지 않음(notes 참조)
 
-    notes = ["수수료·세금·슬리피지 미반영", "수정주가 기준(소스에 따름)"]
+    # 가정·한계. **공유 카드(§15.2c)의 작은 글씨가 이 리스트다** — 그래서 프런트에
+    # 하드코딩하지 않고 여기서 만든다. 카드는 히어로 수익률 한 줄이 단독으로 퍼지는
+    # 포맷이라, "이 숫자가 무엇이 아닌지"를 계산한 쪽이 말해야 갈라지지 않는다.
+    notes = [
+        "수수료·세금·슬리피지 미반영",
+        "수정주가 기준(소스에 따름)",
+        # 배당은 reinvest 를 켰든 안 켰든 반영되지 않는다 — 켤 때만 고지하면 기본값으로
+        # 공유된 카드는 "배당이 들어간 수익률인가"에 답하지 못한다.
+        "배당 제외 — 가격 수익만 반영",
+        # 적립식은 시작 시점 하나로 결과가 크게 바뀐다(§15.2c "시작 시점 민감").
+        "시작 시점에 따라 결과가 크게 달라집니다",
+    ]
     if freq == "quarterly":
         notes.append("분기 매수는 월봉을 3개월 단위로 축약해 근사")
     if reinvest:
+        # 위 "배당 제외" 와 겹치지 않는다: 저건 숫자의 정의, 이건 **입력이 무시됐다는
+        # 사실**이다. 이걸 지우면 체크박스가 조용히 아무 일도 안 하는 UI 가 된다.
         notes.append("배당 재투자는 아직 미지원(배당 데이터 미연동)이라 반영되지 않았습니다")
     got_months = round(len(items) / ppy * 12)
     if got_months < months - 1:  # 요청보다 실제 확보 기간이 짧으면 명시(조용한 잘림 방지)

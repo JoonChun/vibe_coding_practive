@@ -13,14 +13,17 @@ KIS 실시간 체결 데이터를 브라우저로 중계하는 창구다. 실제
 """
 import asyncio
 import contextlib
+import logging
 import os
-import secrets
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from config import API_TOKEN_ENV_KEY
 
+from ..auth import tokens_match
 from ..services import kis_ws
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["stream"])
 
@@ -36,12 +39,18 @@ _API_TOKEN = os.environ.get(API_TOKEN_ENV_KEY, "").strip() or None
 
 
 def _is_authorized(token: str | None) -> bool:
-    """MYSTOCKBOT_API_TOKEN 미설정 시 자유 접속, 설정 시 상수시간 비교로 검증."""
+    """MYSTOCKBOT_API_TOKEN 미설정 시 자유 접속, 설정 시 상수시간 비교로 검증.
+
+    비교는 `auth.tokens_match` 에 위임한다 — `secrets.compare_digest` 를 `str` 로
+    직접 부르면 비ASCII 토큰에서 TypeError 가 나고, 여기서는 그게 4401(인증 실패)이
+    아니라 핸드셰이크 예외가 된다. HTTP 쪽과 **같은 함수**를 쓰게 해서 한쪽만 고쳐지는
+    상황을 막는다.
+    """
     if _API_TOKEN is None:
         return True
     if not token:
         return False
-    return secrets.compare_digest(token, _API_TOKEN)
+    return tokens_match(token, _API_TOKEN)
 
 
 async def _drain_incoming(websocket: WebSocket) -> None:
@@ -92,7 +101,7 @@ async def ws_ticks(websocket: WebSocket, token: str | None = Query(default=None)
         pass
     except Exception as e:
         # 개별 연결의 예외가 서버 전체(다른 연결·수집 루프)에 번지면 안 된다.
-        print(f"[stream] /ws/ticks 처리 중 예외: {e}")
+        logger.warning(f"[stream] /ws/ticks 처리 중 예외: {e}")
     finally:
         # reader_task 는 두 경로로 여기 도달할 수 있다:
         #  ① 아직 진행 중(정상 송신 루프 중 다른 예외로 빠져나옴) → cancel() 후

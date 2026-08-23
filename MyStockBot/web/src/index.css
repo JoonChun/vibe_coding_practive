@@ -1672,9 +1672,14 @@ select:focus-visible {
   min-height: 100vh;
 }
 
-/* 탭바가 화면 하단에 고정되므로, 페이지 콘텐츠가 가리지 않도록 여유 패딩 */
+/* 탭바가 `position: fixed` 로 문서 흐름에서 빠져 있으므로, 페이지 콘텐츠가 그 아래로
+   들어가지 않게 하단 여백을 준다.
+   탭바 실측 높이는 68px(탭 51px + 패딩)이고, 예전 값 72px 는 여유가 **4px** 뿐이었다 —
+   섹션을 하나 더 붙이면 바로 가려지는 값이다. 실측 높이 + 여유로 잡는다.
+   탭바 높이는 내용으로 결정되어 CSS 로 읽을 수 없으므로 상수다. 대신
+   scripts/smoke_ui.mjs 가 실제 겹침을 재서, 이 값이 부족해지면 실패한다. */
 .tab-layout .app {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
 }
 
 .tabbar {
@@ -1684,7 +1689,11 @@ select:focus-visible {
   bottom: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* 탭 개수를 하드코딩하지 않는다. 예전에는 repeat(3, 1fr) 이어서 4번째 탭(알림)을
+     추가하자 탭바가 2줄로 깨졌다 — tsc·DOM 검사로는 잡히지 않고 스크린샷에서만 보였다.
+     column 방향 자동 흐름이면 탭이 늘어도 한 줄을 유지한다. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.25rem;
   padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--surface-container-lowest) 92%, transparent);
@@ -1728,6 +1737,84 @@ select:focus-visible {
 }
 
 /* 지수 카드 그리드 */
+/* ── 시장 상태 줄 (PRD §10.1 블록2) ── */
+.market-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.market-bar--skeleton {
+  opacity: 0.6;
+}
+
+.market-bar__badge {
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* 장중만 초록(실시간 의미색과 동일 계열), 나머지는 중립 — 상승/하락 색과 겹치지 않게 */
+.market-bar__badge--open {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.market-bar__badge--pre {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.market-bar__badge--closed,
+.market-bar__badge--holiday {
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+}
+
+.market-bar__detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  font-size: 0.74rem;
+  color: var(--on-surface-variant);
+  min-width: 0;
+}
+
+.market-bar__countdown {
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 휴장·장전에는 "지금 보이는 값이 언제 것인지"를 명시한다(신선도 오해 방지) */
+.market-bar__reference {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--surface-container);
+  font-weight: 600;
+}
+
+.market-bar__updated {
+  color: var(--outline);
+}
+
+.market-bar__caveat {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
 .index-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1787,6 +1874,123 @@ select:focus-visible {
 
 .index-card__chg--flat {
   color: var(--outline);
+}
+
+/* 최신 조회가 실패해 직전 값을 대신 보여줄 때의 나이 표시("· 3분 전").
+   등락 색을 물려받지 않도록 색·굵기를 따로 준다 — 값 자체가 아니라 메타 정보다. */
+.index-card__stale {
+  color: var(--outline);
+  font-weight: 500;
+  font-size: 0.78rem;
+  cursor: help;
+}
+
+/* ── 시장 폭 (PRD §10.1 블록4) — 상승=빨강 / 하락=파랑 국내 관례 ── */
+.breadth {
+  padding: 0.75rem 0.85rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.breadth__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.breadth__title {
+  margin: 0;
+  font-family: var(--font-inter);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+/* 합산 범위를 밝힌다 — 한쪽 지수만 조회됐을 때 "전체 시장"으로 오해되지 않게 */
+.breadth__scope {
+  font-size: 0.7rem;
+  color: var(--outline);
+}
+
+.breadth__bar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: var(--surface-container);
+}
+
+.breadth__seg {
+  display: block;
+  height: 100%;
+}
+
+.breadth__seg--up {
+  background: #b91c1c;
+}
+
+.breadth__seg--flat {
+  background: #9ca3af;
+}
+
+.breadth__seg--down {
+  background: #1d4ed8;
+}
+
+.breadth__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.74rem;
+  color: var(--on-surface-variant);
+}
+
+.breadth__legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.breadth__legend b {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.breadth__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.breadth__dot--up {
+  background: #b91c1c;
+}
+
+.breadth__dot--flat {
+  background: #9ca3af;
+}
+
+.breadth__dot--down {
+  background: #1d4ed8;
+}
+
+.breadth__pct {
+  color: var(--outline);
+  font-variant-numeric: tabular-nums;
+}
+
+.breadth__limits {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  color: var(--on-surface-variant);
 }
 
 /* Top Movers */
@@ -2180,6 +2384,37 @@ select:focus-visible {
   color: var(--on-surface-variant);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+/* 체결 성격 표시("장부가"·"장외") — 실제 시장가 체결과 구별해야 하는 거래. */
+.paper-trade__flag {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* 매도 1건에서 확정된 실현손익. */
+.paper-trade__pnl {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* 실현손익 기록 이전 거래가 남아 있을 때의 안내. */
+.paper-hero__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--on-surface-variant);
 }
 
 /* ── 판정 백테스트 카드 ── */
@@ -2282,6 +2517,27 @@ select:focus-visible {
 .bt-stat__sub {
   font-size: 0.68rem;
   color: var(--outline);
+}
+
+/* 표본이 부족한 적중률에 붙는 '참고치' 배지 — 큰 숫자만 보고 과신하지 않도록. */
+.bt-stat__flag {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: 0.6rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* 서버가 내려준 가정·한계 목록 */
+.bt-card__notes {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.68rem;
+  line-height: 1.6;
+  color: var(--on-surface-variant);
 }
 
 .bt-curve {
@@ -2507,6 +2763,69 @@ select:focus-visible {
   stroke-width: 2;
   stroke-dasharray: 4 3;
   stroke-linejoin: round;
+}
+
+/* ── 공유 카드(§15.2c) ── */
+.dca-share__toggle {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  width: 100%;
+  margin-top: 0.75rem;
+  color: var(--on-primary);
+  background: var(--primary-container);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 0.65rem 0.9rem;
+  min-height: 44px; /* 터치 타깃 */
+  cursor: pointer;
+}
+
+.dca-share {
+  margin-top: 0.75rem;
+}
+
+/* 캔버스의 백킹 해상도는 1080×1920 고정(저장물). 화면에서는 폭에 맞춰 축소한다 —
+   `height: auto` 로 두면 내재 비율(9:16)이 그대로 유지된다. */
+.dca-share__canvas {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  margin: 0 auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--outline-variant);
+}
+
+.dca-share__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+.dca-share__save {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--on-surface);
+  background: var(--surface-container-lowest);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0.6rem 1.4rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.dca-share__save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dca-share__status {
+  margin: 0.5rem 0 0;
+  font-size: 0.74rem;
+  text-align: center;
+  color: var(--on-surface-variant);
 }
 
 /* ── UX 개선: 연결 재시도 · 토큰 온보딩 ── */
@@ -2760,6 +3079,16 @@ select:focus-visible {
     color: #4ade80;
   }
 
+  /* 시장 상태 배지 — 장중(초록)/장전(앰버). 장마감·휴장은 토큰(surface-container-high)으로 커버됨 */
+  .market-bar__badge--open {
+    background: #12261a;
+    color: #4ade80;
+  }
+  .market-bar__badge--pre {
+    background: #2a2110;
+    color: #f0c674;
+  }
+
   /* 마켓 배지 */
   .market-badge--kospi {
     background-color: #12203a;
@@ -2801,6 +3130,20 @@ select:focus-visible {
     color: #6ea8ff;
   }
 
+  /* 시장 폭 세그먼트·도트도 다크에서 밝은 톤으로 */
+  .breadth__seg--up,
+  .breadth__dot--up {
+    background: #ff6b6b;
+  }
+  .breadth__seg--down,
+  .breadth__dot--down {
+    background: #6ea8ff;
+  }
+  .breadth__seg--flat,
+  .breadth__dot--flat {
+    background: #6b7280;
+  }
+
   .price-section__change--up {
     background-color: #2a1614;
     color: #ff6b6b;
@@ -2840,4 +3183,209 @@ select:focus-visible {
       background-color: #12203a;
     }
   }
+}
+
+/* ── 알림 진단 화면 (/alerts) ── */
+.alert-chips {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.alert-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+.alert-test-btn {
+  margin-top: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.alert-test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alert-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+.alert-result {
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.6rem;
+  background: var(--surface-container);
+}
+
+.alert-result__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* 실패 사유는 길다(HTTP 상태 + 상류 응답 본문). 줄바꿈을 허용하고 값 쪽을 우측
+   정렬한다 — `min-width: 0` 이 없으면 flex 자식이 줄어들지 않아 가로로 넘친다. */
+.alert-result__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.alert-result__row > :first-child {
+  flex: 0 0 auto;
+}
+
+.alert-result__row > :last-child {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.alert-ok { color: #16a34a; }
+.alert-fail { color: #dc2626; }
+
+/* 발송 조건 표 — dt/dd 를 한 줄씩. */
+.alert-facts {
+  margin: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.alert-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.alert-facts dt {
+  color: var(--on-surface-variant);
+  font-weight: 600;
+}
+
+.alert-facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 기준선 목록 */
+.alert-state {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.alert-state__row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 0.4rem 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.alert-state__code {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.alert-state__kind {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: var(--surface-container);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+.alert-state__view { font-weight: 700; }
+
+.alert-state__meta {
+  grid-column: 1 / -1;
+  font-size: 0.68rem;
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 알림 이력 — 시각 / 종목 / 전환 / 메타 */
+.alert-hist {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.alert-hist__row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 0.2rem 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--outline);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.alert-hist__when {
+  grid-row: 1 / 3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.alert-hist__name {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.alert-hist__move {
+  grid-column: 2;
+  font-size: 0.78rem;
+  color: var(--on-surface-variant);
+}
+
+.alert-hist__meta {
+  grid-column: 1 / -1;
+  font-size: 0.68rem;
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
 }
