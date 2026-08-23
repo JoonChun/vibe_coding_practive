@@ -5,6 +5,10 @@
     python3 scripts/diagnose_alerts.py            # 형식 검사만(네트워크 안 탐)
     python3 scripts/diagnose_alerts.py --probe    # 실제로 발송까지 시도
 
+    # 다른 위치의 .env 를 보게 하기 — **작업 트리를 건드리지 않고** 진단할 때 쓴다.
+    # (모노레포에서 `git pull` 이 다른 하위 프로젝트와 충돌해 브랜치를 못 옮기는 상황)
+    python3 scripts/diagnose_alerts.py --env-file ~/vibe_ws/MyStockBot/.env --probe
+
 ## 왜 있나
 알림이 안 갈 때 원인을 찾는 경로가 지금까지 셋 다 불편했다:
   · 서버 로그 — 서버가 다른 터미널의 포그라운드 프로세스면 닿지 못한다(실제로 그랬다).
@@ -31,13 +35,33 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BASE_DIR))
 sys.path.insert(0, str(_BASE_DIR / "src"))
 
+
+def _env_file_from_argv() -> Path:
+    """`--env-file <경로>` 를 직접 파싱한다(argparse 를 쓰지 않는 이유는 아래)."""
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg == "--env-file" and i + 1 < len(argv):
+            return Path(argv[i + 1]).expanduser()
+        if arg.startswith("--env-file="):
+            return Path(arg.split("=", 1)[1]).expanduser()
+    return _BASE_DIR / ".env"
+
+
+# `.env` 는 **import 보다 먼저** 읽어야 한다 — `alert_channels`·`notifier` 는 모듈
+# 로드 시점에 환경변수를 읽는 경로가 있어서, 나중에 로드하면 값이 반영되지 않는다.
+# 그래서 argparse 를 쓰지 않고 argv 를 직접 본다(argparse 를 여기서 구성하면
+# --help 등 부수 동작이 import 전에 끼어든다).
+_ENV_FILE = _env_file_from_argv()
+
 # `.env` 는 서버와 **같은 방식**으로 읽는다. sed·grep 으로 직접 파싱하면 갈라진다 —
 # python-dotenv 는 따옴표 없는 값의 인라인 `# 주석`을 떼고, 이미 셸에 export 된
 # 변수를 덮어쓰지 않는다(실측). 그 두 성질이 진단 결과를 바꾼다.
-if os.environ.get("MYSTOCKBOT_DIAGNOSE_SKIP_DOTENV") != "1":
+_SKIP_DOTENV = os.environ.get("MYSTOCKBOT_DIAGNOSE_SKIP_DOTENV") == "1"
+_ENV_FILE_MISSING = not _SKIP_DOTENV and not _ENV_FILE.is_file()
+if not _SKIP_DOTENV and not _ENV_FILE_MISSING:
     from dotenv import load_dotenv
 
-    load_dotenv(_BASE_DIR / ".env")
+    load_dotenv(_ENV_FILE)
 
 import alert_channels  # noqa: E402  (경로 설정 후 import 해야 한다)
 import notifier  # noqa: E402
@@ -145,8 +169,13 @@ def main() -> int:
     no_network = os.environ.get("MYSTOCKBOT_DIAGNOSE_NO_NETWORK") == "1"
 
     print("== 알림 설정 진단 ==")
-    print(f"   .env: {_BASE_DIR / '.env'}"
-          f"{' (읽지 않음)' if os.environ.get('MYSTOCKBOT_DIAGNOSE_SKIP_DOTENV') == '1' else ''}")
+    print(f"   .env: {_ENV_FILE}{' (읽지 않음)' if _SKIP_DOTENV else ''}")
+    if _ENV_FILE_MISSING:
+        # 조용히 넘기면 "전부 미설정"으로 보여서 원인을 오판한다 — 실제로는 파일을
+        # 못 찾은 것이다. 경로 오타는 흔하므로 여기서 끊는다.
+        print()
+        print(f"  {BAD} 그 경로에 파일이 없습니다. --env-file 로 올바른 경로를 주세요.")
+        return 2
     print()
     print("[1] 채널 설정")
     ready = {

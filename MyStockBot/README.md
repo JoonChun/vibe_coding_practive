@@ -405,6 +405,18 @@ python3 scripts/diagnose_alerts.py            # 형식 검사만 (네트워크 �
 python3 scripts/diagnose_alerts.py --probe    # 실제로 발송까지 시도
 ```
 
+**작업 트리를 건드리고 싶지 않을 때** — 이 저장소는 프로젝트 여러 개가 든 모노레포라
+다른 하위 프로젝트의 로컬 변경 때문에 브랜치를 옮기지 못할 수 있습니다. 그럴 때는
+별도 worktree 에서 스크립트만 돌리고 `.env` 는 원래 위치를 가리키면 됩니다:
+
+```bash
+git fetch origin
+git worktree add ~/msb-check <브랜치>          # 기존 체크아웃은 그대로 둔다
+python3 ~/msb-check/MyStockBot/scripts/diagnose_alerts.py \
+        --env-file ~/vibe_ws/MyStockBot/.env --probe
+git worktree remove ~/msb-check                # 끝났으면 정리
+```
+
 `.env` 를 **서버와 같은 방식으로**(python-dotenv) 읽어 채널별 상태와 실패 사유를
 출력합니다. `sed`·`grep` 으로 `.env` 를 직접 보면 안 되는 이유가 있습니다 —
 python-dotenv 는 따옴표 없는 값의 인라인 `# 주석`을 떼고, 이미 셸에 export 된 변수를

@@ -180,3 +180,51 @@ def test_script_is_importable_without_running(monkeypatch):
 def test_rejects_malformed_urls(monkeypatch, bad):
     out = _run(monkeypatch, {"DISCORD_WEBHOOK_URL": bad})
     assert "✗" in out or "거부" in out or "문제" in out
+
+
+# ── --env-file: 작업 트리를 건드리지 않고 진단하기 ────────────────────────
+#
+# 사용자의 로컬 저장소는 프로젝트 9개가 든 모노레포이고, `git pull` 이 다른 하위
+# 프로젝트의 로컬 변경과 충돌했다. 그래서 "브랜치를 체크아웃하지 않고" 진단하는 길이
+# 필요하다 — 별도 worktree/클론에서 스크립트만 돌리고 `.env` 는 원래 위치를 가리킨다.
+
+def _run_argv(monkeypatch, args: list[str]) -> tuple[str, object]:
+    monkeypatch.delenv("MYSTOCKBOT_DIAGNOSE_SKIP_DOTENV", raising=False)
+    monkeypatch.setenv("MYSTOCKBOT_DIAGNOSE_NO_NETWORK", "1")
+    argv = sys.argv[:]
+    sys.argv = ["diagnose_alerts.py", *args]
+    buf = io.StringIO()
+    code = None
+    try:
+        with redirect_stdout(buf):
+            try:
+                runpy.run_path(str(SCRIPT), run_name="__main__")
+            except SystemExit as e:
+                code = e.code
+    finally:
+        sys.argv = argv
+    return buf.getvalue(), code
+
+
+def test_env_file_option_is_read(monkeypatch, tmp_path):
+    env_file = tmp_path / "custom.env"
+    env_file.write_text(
+        "SENDER_EMAIL=me@example.com\n"
+        "GMAIL_APP_PASSWORD=abcd efgh ijkl mnop\n"
+        "NOTIFY_EMAIL=me@example.com\n",
+        encoding="utf-8",
+    )
+    for key in ("SENDER_EMAIL", "GMAIL_APP_PASSWORD", "NOTIFY_EMAIL",
+                "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL"):
+        monkeypatch.delenv(key, raising=False)
+
+    out, _ = _run_argv(monkeypatch, ["--env-file", str(env_file)])
+    assert str(env_file) in out, "어느 .env 를 읽었는지 보여줘야 한다"
+    assert "앱 비밀번호 16자 확인" in out
+    assert "abcd efgh ijkl mnop" not in out
+
+
+def test_missing_env_file_reports_clearly(monkeypatch, tmp_path):
+    out, code = _run_argv(monkeypatch, ["--env-file", str(tmp_path / "nope.env")])
+    assert "없습니다" in out or "찾지 못" in out
+    assert code != 0, "존재하지 않는 파일을 조용히 무시하면 안 된다"
