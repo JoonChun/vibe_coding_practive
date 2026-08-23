@@ -267,6 +267,38 @@ def discord_enabled() -> bool:
     return discord_webhook_url() is not None
 
 
+# 채널명 → (환경변수 키, 허용 접두사, 추가 검사). 진단 도구가 같은 규칙을 쓰도록 공개한다.
+_CHANNEL_RULES: dict[str, tuple] = {
+    "discord": (DISCORD_WEBHOOK_URL_ENV_KEY, _DISCORD_WEBHOOK_PREFIXES, _discord_path_problem),
+    "slack": (SLACK_WEBHOOK_URL_ENV_KEY, _SLACK_WEBHOOK_PREFIXES, None),
+}
+
+
+def webhook_env_key(channel: str) -> str:
+    """그 채널이 읽는 환경변수 이름."""
+    return _CHANNEL_RULES[channel][0]
+
+
+def webhook_problem(channel: str) -> str | None:
+    """설정된 값의 **형식 문제**를 사람이 읽을 문구로. 통과하면 None.
+
+    `discord_webhook_url()` 은 문제를 로그로만 남기고 `None` 을 돌려주므로, 진단
+    도구가 "왜 거부됐는지"를 알 길이 없었다. 같은 검사를 두 번 구현하면 갈라지므로
+    판정을 여기 하나로 두고 문구만 꺼내 쓴다.
+
+    값이 비어 있으면 None 을 돌려준다 — "미설정"과 "형식 오류"는 호출부가 구분한다
+    (환경변수 존재 여부는 호출부가 이미 안다).
+    """
+    env_key, prefixes, extra_check = _CHANNEL_RULES[channel]
+    url = os.environ.get(env_key, "").strip()
+    if not url:
+        return None
+    problem = _common_problem(url, prefixes)
+    if problem is None and extra_check is not None:
+        problem = extra_check(url)
+    return problem
+
+
 # ────────────────────────────────────────────
 # 발송
 # ────────────────────────────────────────────

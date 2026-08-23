@@ -398,6 +398,29 @@ curl localhost:8000/api/alerts/config -H "Authorization: Bearer $TOKEN"
 curl localhost:8000/api/alerts/state  -H "Authorization: Bearer $TOKEN"
 ```
 
+#### 가장 빠른 진단 — 서버 없이 한 줄
+
+```bash
+python3 scripts/diagnose_alerts.py            # 형식 검사만 (네트워크 안 탐)
+python3 scripts/diagnose_alerts.py --probe    # 실제로 발송까지 시도
+```
+
+`.env` 를 **서버와 같은 방식으로**(python-dotenv) 읽어 채널별 상태와 실패 사유를
+출력합니다. `sed`·`grep` 으로 `.env` 를 직접 보면 안 되는 이유가 있습니다 —
+python-dotenv 는 따옴표 없는 값의 인라인 `# 주석`을 떼고, 이미 셸에 export 된 변수를
+덮어쓰지 않습니다. 그 두 성질 때문에 육안 확인과 서버의 판단이 갈립니다.
+
+**출력에 웹훅 URL·앱 비밀번호가 없습니다**(길이와 sha256 앞 12자만 보여줍니다) —
+결과를 그대로 붙여 공유해도 됩니다. 그 성질은 테스트로 잠가 두었습니다.
+
+예시:
+```
+[1] 채널 설정
+  · Discord: 길이 157 · sha256 c148e8c9c56e
+  ✗ Discord: 형식 검사에서 거부 — URL 이 두 개 이어붙어 있습니다(`://` 가 2번 등장) …
+  ✗ 이메일: 앱 비밀번호가 13자입니다 (Gmail 앱 비밀번호는 공백 제외 16자)
+```
+
 #### 화면에서 먼저 확인하세요 — `/alerts`
 
 `/alerts` 탭이 아래 세 가지를 보여줍니다. curl 없이 여기서 대부분 판별됩니다.
