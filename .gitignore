@@ -30,3 +30,19 @@
 **/out/
 **/build/
 docs/
+
+# ── 비밀·로컬 산출물 (하위 프로젝트에 .gitignore 가 없어도 막힌다) ──
+#
+# 이 파일은 allowlist 방식이다(`*` 다음에 `!프로젝트/**`). 그래서 하위 프로젝트가
+# 자기 .gitignore 를 갖고 있지 않으면 그 안의 모든 파일이 커밋 가능해진다.
+# 실측(2026-08-23): `devDogam` 에 .gitignore 가 없어 `devDogam/.env.local` 이
+# **무시되지 않았다** — `git add -A` 한 번으로 비밀이 커밋될 수 있는 상태였다.
+# 한 번 커밋되면 히스토리에서 지우기 어렵고, 그 사이 푸시되면 사실상 유출이다.
+#
+# `.env.example` 은 여기 걸리지 않는다(패턴이 `.env` 로 끝남) — 템플릿은 추적되어야
+# 한다. `MyStockBot/tests/test_gitignore_secrets.py` 가 양방향으로 잠가 둔다.
+**/.env
+**/.env.local
+**/.env.*.local
+**/*.tsbuildinfo
+**/.vercel/
