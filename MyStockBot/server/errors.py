@@ -36,8 +36,14 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
-# 경합으로 판단할 SQLite 기본 결과코드.
-_CONTENTION_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+# 경합으로 판단할 SQLite 기본 결과코드. 상수 자체도 3.11+에만 있으므로 getattr 로
+# 읽는다 — 값(5·6)은 SQLite C API 의 공개 결과코드라 버전과 무관하게 고정이다.
+# 3.11 미만에서는 sqlite_errorcode 속성이 없어 어차피 변환이 발동하지 않지만(위 docstring),
+# 모듈 임포트까지 죽으면 그 "변환하지 않는다"는 의도조차 지킬 수 없다.
+_CONTENTION_CODES = frozenset({
+    getattr(sqlite3, "SQLITE_BUSY", 5),
+    getattr(sqlite3, "SQLITE_LOCKED", 6),
+})
 
 # 클라이언트에게 제시할 재시도 대기(초). busy_timeout(5초)을 이미 소진한 뒤이므로
 # 곧바로 다시 때리면 같은 경합에 다시 걸린다.

@@ -10,6 +10,14 @@ import asyncio
 import sqlite3
 
 import pytest
+
+# 이 파일의 전제(실제 예외에 sqlite_errorcode 가 채워짐, SQLITE_* 상수 존재)는
+# Python 3.11+ 에서만 성립한다. 3.11 미만에서는 변환 자체가 발동하지 않는 것이
+# 의도된 동작이므로(server/errors.py docstring), 검증할 것도 없다 — 모듈째 건너뛴다.
+# CI/Docker 는 3.11 로 고정되어 있어 거기서는 전부 실행된다.
+if not hasattr(sqlite3, "SQLITE_BUSY"):
+    pytest.skip("sqlite_errorcode 는 Python 3.11+ 전용", allow_module_level=True)
+
 from starlette.requests import Request
 
 from server import errors

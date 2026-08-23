@@ -95,7 +95,11 @@ def test_session_boundaries_are_iso_and_ordered():
     assert datetime.fromisoformat(s["server_time"]).tzinfo is not None
 
 
-def test_calendar_covered_flag():
+def test_calendar_covered_flag(monkeypatch):
+    # 운영 머신에서는 실제 DB의 KIS 휴장일 캐시가 TABLE_MAX_YEAR 이후 날짜를 덮어
+    # calendar_covered=True 가 되므로(소스가 "kis"로 승격), 캐시를 차단해
+    # 하드코딩 표만으로 판정하게 격리한다 — 이 테스트의 검증 대상은 표 커버리지다.
+    monkeypatch.setattr(mc, "_cached_open_flag", lambda d: None)
     assert mc.market_status(_at(_FRI, 10, 0))["calendar_covered"] is True
     future = date(mc.TABLE_MAX_YEAR + 1, 3, 3)
     assert mc.market_status(_at(future, 10, 0))["calendar_covered"] is False
