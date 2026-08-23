@@ -183,6 +183,25 @@ def send_html(subject: str, body_html: str, *, out: dict | None = None) -> bool:
             smtp.login(sender, password)
             smtp.sendmail(sender, recipients, msg.as_string())
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        # 실측(2026-08-23): Gmail 이 535 / "5.7.8 Username and Password not accepted"
+        # + 지원 문서 링크를 돌려줬다. 원문이 영어 두 줄이라 바로 읽기 어려워 **Google 이
+        # 준 문장을 다시 말하는 수준의** 한 줄 요약만 앞에 붙인다.
+        #
+        # 원인 목록(2단계 인증 필요 여부 등)은 넣지 않는다 — 이 저장소는 외부 스펙을
+        # 1차 출처로만 적고, Google 지원 문서는 개발 환경에서 403 으로 차단돼 확인할 수
+        # 없었다. 확인 못 한 정책을 단정하면 사용자를 엉뚱한 곳으로 보낸다. 응답에 들어
+        # 있는 Google 링크를 그대로 남겨 사용자가 1차 출처로 가게 한다.
+        logger.warning(f"[notifier] 이메일 발송 실패: {e}")
+        if out is not None:
+            detail = str(e)[:300]
+            for secret in (password, password.replace(" ", "")):
+                if secret:
+                    detail = detail.replace(secret, "***")
+            out["reason"] = (
+                f"Google 이 자격증명을 거부했습니다(SMTP 535) — {detail}"
+            )
+        return False
     except Exception as e:
         logger.warning(f"[notifier] 이메일 발송 실패: {e}")
         if out is not None:

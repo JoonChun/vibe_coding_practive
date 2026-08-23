@@ -1293,7 +1293,19 @@ MyStockBot_PRD.md 항목을 표시하는 중입니다.
   Slack Incoming Webhook 에는 **그 이유가 존재하지 않는다** — 인증 헤더를 쓰지 않고
   URL 자체가 자격증명이라 갱신 로직이 구조적으로 필요 없다.
 
-  ⚠️ **실발송 미검증.** 이 저장소는 Slack 도메인(`hooks.slack.com`·`api.slack.com`·
+  ✅ **Discord 실발송 확인 (2026-08-23, 사용자 네트워크).**
+  `scripts/diagnose_alerts.py --probe` → `✓ discord: 발송 성공`. 개발 환경에서는
+  discord.com 이 차단되어 규격을 공식 문서 저장소로만 확인했는데, 그 규격(특히
+  `?wait=true` 로 저장 여부를 확인하는 부분)이 실제로 통한다는 것이 확인됐다.
+
+  같은 실행에서 **Gmail 은 SMTP 535 로 거부**됐다(`5.7.8 Username and Password not
+  accepted`). 코드 경로가 아니라 사용자 계정 자격증명 문제다 — 같은 `dispatch` 를 지나
+  Discord 는 성공했고, SMTP 연결·TLS 는 맺힌 뒤 **인증 단계에서** 거부됐다.
+  Google 지원 문서는 개발 환경에서 403 으로 차단되어 원인 목록(2단계 인증 요구 여부
+  등)은 1차 출처로 확인하지 못했으므로 코드 문구에 단정해 넣지 않고, Google 이 응답에
+  넣어준 링크를 그대로 노출한다.
+
+  ⚠️ **Slack 실발송 미검증.** 이 저장소는 Slack 도메인(`hooks.slack.com`·`api.slack.com`·
   `docs.slack.dev`·`slack.com`)이 이그레스 프록시에서 **전부 403 CONNECT** 로 막힌 환경에서
   개발되었다. 공식 문서 페이지조차 열 수 없었다. 저장소 규칙(추측 금지)에 따라 규격은
   Slack 이 직접 배포하는 **SDK 소스 코드**에서 교차 확인했다:

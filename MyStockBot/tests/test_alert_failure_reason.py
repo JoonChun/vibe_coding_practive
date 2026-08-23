@@ -233,3 +233,46 @@ def test_out_is_optional(discord, monkeypatch):
     monkeypatch.setattr(alert_channels.urllib.request, "urlopen",
                         lambda r, timeout=None: _Resp(200, "{}"))
     assert alert_channels.send_discord("hi") is True
+
+
+# ── SMTP 인증 거부(535)에 한 줄 요약을 붙인다 ─────────────────────────────
+#
+# 실측(2026-08-23 사용자 네트워크): Gmail 이
+#   535, b'5.7.8 Username and Password not accepted. For more information, go to
+#         5.7.8  https://support.google.com/mail/?p=BadCredentials ...'
+# 를 돌려줬다. 원문은 영어 두 줄이라 한국어 사용자가 바로 읽기 어렵다. 그래서 **Google
+# 이 준 문장을 다시 말하는 수준의** 요약만 앞에 붙인다.
+#
+# 원인 목록(2단계 인증 필요 여부 등)을 문구에 넣지 않는 이유: 이 저장소는 외부 스펙을
+# 1차 출처로만 적고, Google 지원 문서는 개발 환경에서 403 으로 차단돼 확인할 수 없었다.
+# 확인 못 한 정책을 단정하면 사용자를 엉뚱한 곳으로 보낸다. Google 이 응답에 넣어준
+# 링크를 그대로 남겨 사용자가 1차 출처로 가게 한다.
+
+def test_smtp_535_gets_a_korean_summary(email_env, monkeypatch):
+    import smtplib
+
+    exc = smtplib.SMTPAuthenticationError(
+        535,
+        b"5.7.8 Username and Password not accepted. For more information, go to\n"
+        b"5.7.8  https://support.google.com/mail/?p=BadCredentials x - gsmtp",
+    )
+    monkeypatch.setattr(notifier.smtplib, "SMTP_SSL", _smtp_raising(exc))
+    out: dict = {}
+    assert notifier.send_html("s", "<p>b</p>", out=out) is False
+    reason = out["reason"]
+    assert "거부" in reason, "영어 원문만 주면 한국어 사용자가 바로 못 읽는다"
+    assert "535" in reason
+    # Google 이 준 링크는 살려둔다 — 그게 1차 출처다.
+    assert "support.google.com" in reason
+
+
+def test_other_smtp_errors_are_not_relabeled(email_env, monkeypatch):
+    """535 가 아닌 오류에 인증 문구를 붙이면 오진을 유발한다."""
+    import smtplib
+
+    exc = smtplib.SMTPRecipientsRefused({"x@y.z": (550, b"No such user")})
+    monkeypatch.setattr(notifier.smtplib, "SMTP_SSL", _smtp_raising(exc))
+    out: dict = {}
+    notifier.send_html("s", "<p>b</p>", out=out)
+    assert "자격증명" not in out["reason"]
+    assert "SMTPRecipientsRefused" in out["reason"]
