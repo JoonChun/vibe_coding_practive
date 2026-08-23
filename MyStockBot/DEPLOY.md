@@ -111,13 +111,129 @@ tailscale serve --bg --https=443 http://localhost:4173
 
 ---
 
-## 3. Cloudflare Tunnel (무료 HTTPS 고정 URL)
+## 3. 백엔드 HTTPS 공개 (터널)
 
-### 사전 준비
+**현재 운영: 3-1(Quick Tunnel) + `scripts/sync_tunnel.sh` 자동 동기화.**
+터널이 죽거나 PC를 재부팅하면 URL이 바뀌므로 `sync_tunnel.sh`를 한 번 실행하면
+터널 기동→Vercel env 갱신→재배포→검증까지 자동 처리된다.
+
+| 방식 | 도메인 | URL 고정 | 비고 |
+|---|---|---|---|
+| **3-1. Cloudflare Quick Tunnel + sync 스크립트** | 불필요 | 변경되지만 자동 동기화 | **현 운영 방식** |
+| 3-0. Tailscale Funnel | 불필요 | 고정 | 재배포 자체가 불필요해지는 대안 |
+| Cloudflare Named Tunnel | **필요** | 고정 | 도메인 보유 시 |
+
+### 3-0. Tailscale Funnel (무도메인 고정 URL 대안)
+
+Windows에 Tailscale 앱을 설치하고(https://tailscale.com/download, 구글 로그인 가능),
+PowerShell에서:
+
+```powershell
+# Docker 백엔드(8000)를 인터넷에 고정 HTTPS URL로 공개
+tailscale funnel --bg 8000
+# 첫 실행 시 관리 콘솔 링크가 뜨면 열어서 Funnel 허용 1회 승인
+# 출력 예: https://<PC이름>.<테일넷이름>.ts.net  ← 재시작해도 동일(고정)
+```
+
+- 이 URL을 Vercel 환경변수 `VITE_API_BASE`에 넣고 Redeploy (URL이 고정이라 1회로 끝)
+- 중지: `tailscale funnel --bg off` / 상태: `tailscale funnel status`
+- WebSocket(/ws/ticks)도 같은 URL로 통과됨
+- ⚠ Funnel은 인터넷 공개다 — `MYSTOCKBOT_API_TOKEN` 활성이 전제(§C 참고)
+
+### 3-1. Quick Tunnel (구 운영 방식)
+
+도메인을 소유하지 않은 개인용 배포에 적합합니다. 다만 프로세스 재시작마다 URL이 바뀌므로, 프론트 빌드에 박힌 `VITE_API_BASE` 환경변수가 무효화되는 문제가 있습니다. 이 문제를 해결하려면 **sync_tunnel.sh 스크립트**를 사용합니다.
+
+#### Quick Tunnel의 한계
+
+- **프로세스 재시작 시 URL 회전**: PC 재부팅, 프로세스 충돌 등이 발생하면 새로운 `*.trycloudflare.com` URL 할당
+- **프론트 재배포 필요**: Vercel에 배포된 프론트 번들에 박힌 `VITE_API_BASE`가 구 URL을 가리켜 연결 불가
+- **수동 재배포의 번거로움**: 매번 Vercel 환경변수를 수정하고 redeploy 필요
+
+#### 기동
+
+```bash
+# 백엔드 Docker 실행 (8000번 포트)
+cd MyStockBot
+docker compose up -d --build
+
+# Quick tunnel 시작 (메트릭 포트 자동 선택)
+cloudflared tunnel --url http://localhost:8000
+# 출력 예: https://dsc-mardi-guides-harbor.trycloudflare.com
+```
+
+nohup으로 백그라운드 실행:
+```bash
+nohup cloudflared tunnel --url http://localhost:8000 --metrics 127.0.0.1:20241 > data/cloudflared.log 2>&1 &
+```
+
+#### 자동 동기화 스크립트
+
+**`scripts/sync_tunnel.sh`** 는 다음을 자동으로 수행합니다:
+
+1. **터널 탐지**: 127.0.0.1:20241~20250 메트릭 포트에서 활성 터널 검색
+2. **터널 기동**: 활성 터널이 없으면 cloudflared 자동 시작 (hostname 획득 최대 30초 + 신규 터널 DNS·엣지 전파 대기 최대 180초)
+3. **좀비 정리**: DNS NXDOMAIN인 죽은 터널 종료
+4. **Vercel 번들 분석**: mystockbot.vercel.app의 assets/*.js에서 현재 박힌 URL 추출
+5. **URL 비교**: 현재 터널과 배포된 URL이 다르면 Vercel 재배포
+6. **최종 검증**: 배포 후 번들 재추출로 동기화 확인
+
+**사용법**
+
+```bash
+# 정상 실행 (필요시 Vercel 환경변수 갱신 및 재배포)
+/home/joon/vibe_ws/MyStockBot/scripts/sync_tunnel.sh
+
+# 드라이런 (동기화 필요 여부 판단만, Vercel 변경 없음)
+/home/joon/vibe_ws/MyStockBot/scripts/sync_tunnel.sh --dry-run
+```
+
+**로그 위치**
+
+```
+/home/joon/vibe_ws/MyStockBot/data/cloudflared.log
+```
+
+#### 복구 절차 (PC 재부팅 / 터널 재시작 후)
+
+1. **Docker 실행 확인**
+   ```bash
+   cd MyStockBot
+   docker compose ps
+   # mystockbot-api가 실행 중이어야 함
+   ```
+
+2. **동기화 스크립트 실행**
+   ```bash
+   /home/joon/vibe_ws/MyStockBot/scripts/sync_tunnel.sh
+   ```
+   스크립트가 다음을 자동으로 처리합니다:
+   - 기존 터널이 살아있으면 재사용
+   - 없으면 새로운 quick tunnel 기동
+   - Vercel에 배포된 URL 확인
+   - 필요하면 `VITE_API_BASE` 갱신 및 프론트 재배포
+
+3. **배포 완료 대기** (약 1~2분)
+
+4. **확인**
+   ```bash
+   curl https://mystockbot.vercel.app/api/health
+   # 200 응답 → 정상
+   ```
+
+---
+
+### 3-2. Named Tunnel (고정 URL, 권장 고려사항)
+
+도메인을 소유한 경우, Cloudflare Named Tunnel을 사용해 고정 URL을 얻을 수 있습니다. 이 방식은 `sync_tunnel.sh` 자동화 불필요 (URL 고정).
+
+#### 사전 준비
 - Cloudflare 계정 (무료)
 - cloudflared CLI 설치
+- **도메인 소유** (Cloudflare 또는 타 DNS 제공자에 등록된 도메인)
 
-### 터널 생성 및 설정
+#### 설정
+
 ```bash
 # cloudflared 로그인
 cloudflared tunnel login
@@ -125,9 +241,8 @@ cloudflared tunnel login
 # 터널 생성 (예: mystockbot)
 cloudflared tunnel create mystockbot
 
-# 터널 설정 파일 작성
-# ~/.cloudflare-warp/config.yml 또는 명령줄로:
-cloudflared tunnel route dns mystockbot <your-domain.com>
+# DNS 레코드 추가 (Cloudflare DNS에 위임된 도메인이어야 함)
+cloudflared tunnel route dns mystockbot api.example.com
 
 # 터널 시작 (localhost:8000과 연결)
 cloudflared tunnel run --url http://localhost:8000 mystockbot
@@ -138,32 +253,54 @@ cloudflared tunnel run --url http://localhost:8000 mystockbot
 cloudflared service install
 ```
 
-### 결과
-- 고정 HTTPS URL 획득: `https://mystockbot.<your-domain.com>`
-- 포트포워딩 불필요 (Cloudflare가 중개)
-- 공유기 설정 변경 불필요
+#### 결과
+- 고정 HTTPS URL 획득: `https://api.example.com`
+- 프론트 배포 후 URL 변경 없음
+- 포트포워딩 불필요
+
+---
+
+### 3-3. Tailscale Funnel (대안: 사설망 + 고정 URL)
+
+도메인 없이 고정 URL과 HTTPS를 원한다면, **Tailscale Funnel**도 선택지입니다 (자세한 사항은 § 2-② 참고).
 
 ---
 
 ## 4. Vercel 프론트엔드 연결
 
-### 프론트 배포
+### 초기 배포
+
 ```bash
 cd web/
 vercel deploy
 ```
 
 ### 환경변수 설정 (Vercel)
-Vercel 프로젝트 설정 → "Environment Variables":
-```
-VITE_API_BASE=https://mystockbot.<your-domain.com>
-```
+
+**Quick Tunnel 사용 시**
+- `VITE_API_BASE` 초기값 설정 불필요
+- `scripts/sync_tunnel.sh`가 실행될 때마다 자동으로 환경변수 갱신 및 재배포
+- 수동 개입 불필요
+
+**Named Tunnel 또는 고정 URL 사용 시**
+- Vercel 프로젝트 설정 → "Environment Variables"에서:
+  ```
+  VITE_API_BASE=https://api.example.com
+  ```
+- URL이 고정되므로 추가 조치 불필요
 
 ### 백엔드 CORS 설정 (MyStockBot/.env)
-Vercel 도메인을 `CORS_ALLOWED_ORIGINS`에 추가:
+
+**프론트엔드 오리진**(브라우저에서 페이지를 여는 주소)을 `CORS_ALLOWED_ORIGINS`에 추가:
+
 ```
-CORS_ALLOWED_ORIGINS=http://localhost:5173,https://<your-vercel-app>.vercel.app,https://mystockbot.<your-domain.com>
+CORS_ALLOWED_ORIGINS=http://localhost:5173,https://<your-vercel-app>.vercel.app
 ```
+
+**주의**: CORS가 검사하는 것은 *요청을 보내는 쪽*(프론트 페이지) 오리진이지, API 호스트가 아니다.
+따라서 **터널 URL은 여기에 넣을 필요가 없고, Quick Tunnel URL이 회전해도 CORS 설정은 바꿀 필요 없다.**
+(참고: 백엔드는 FastAPI `CORSMiddleware`의 정확 문자열 매칭이라 `https://*.trycloudflare.com` 같은
+서브도메인 와일드카드는 어차피 동작하지 않는다.)
 
 변경 후 docker compose 재시작:
 ```bash
@@ -255,12 +392,38 @@ rm -rf data/mystockbot.db
 docker compose restart mystockbot-api
 ```
 
-### Cloudflare Tunnel 연결 안 됨
+### Cloudflare Quick Tunnel 재시작 후 웹 접속 불가
+
+**현상**: mystockbot.vercel.app 접속 시 "Cannot GET /api/..." 오류
+
+**원인**: quick tunnel URL이 바뀌었는데 Vercel의 `VITE_API_BASE`가 구 URL을 가리킴
+
+**해결**:
 ```bash
-cloudflared tunnel info mystockbot
+/home/joon/vibe_ws/MyStockBot/scripts/sync_tunnel.sh
+```
+스크립트가 다음을 자동으로 처리합니다:
+- 현재 활성 터널 탐지 (또는 새로 기동)
+- Vercel 번들에서 박힌 URL 추출
+- 필요하면 환경변수 갱신 및 재배포
+
+**배포 진행 상황 확인**:
+```bash
+# 로그 확인
+tail -f /home/joon/vibe_ws/MyStockBot/data/cloudflared.log
+
+# 드라이런으로 필요 여부만 확인 (재배포 없음)
+/home/joon/vibe_ws/MyStockBot/scripts/sync_tunnel.sh --dry-run
+```
+
+### Cloudflare Named Tunnel 연결 안 됨
+
+Named Tunnel 사용 중 문제 발생 시:
+```bash
+cloudflared tunnel info <tunnel-name>
 ```
 터널 상태 확인. 인증서 갱신 필요 시 `cloudflared tunnel delete/create`.
 
 ---
 
-마지막 업데이트: 2026-07-12
+마지막 업데이트: 2026-07-21
