@@ -1,11 +1,12 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 
 import db
 import watchlist_sync
 
-from ..services import candles
+from ..services import candles, collector
 
 from ..schemas import (
     WatchlistItemIn,
@@ -13,6 +14,8 @@ from ..schemas import (
     WatchlistListResponse,
     WatchlistSyncResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -36,6 +39,13 @@ def create_watchlist_item(item: WatchlistItemIn, background_tasks: BackgroundTas
     # 일/주/월봉 과거 이력 선채움 — 첫 차트 조회의 온디맨드 딥 수집(페이지네이션 수 초)을
     # 사용자가 기다리지 않게 한다. 실패해도 온디맨드 경로가 그대로 남아 있다.
     background_tasks.add_task(candles.backfill_history, row["code"])
+    # 다음 정기 사이클(장외 최대 10분)까지 기다리지 않고 수집을 앞당긴다 — 방금 추가한
+    # 종목이 '—' 로 비어 있는 시간을 없앤다. 실패해도 201 을 막지 않는다(다음 정기
+    # 사이클에서 어차피 반영된다).
+    try:
+        collector.trigger_immediate_cycle()
+    except Exception as e:
+        logger.warning("[watchlist] 즉시 수집 트리거 실패(다음 정기 사이클에서 반영): %s", e)
     return row
 
 

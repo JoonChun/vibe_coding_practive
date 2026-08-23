@@ -265,6 +265,21 @@ export interface DecisionRules {
   long_strong_requires_tech_confirm: boolean;
 }
 
+/** 눌림목 판정 6상태 — 백엔드 indicators.pullback_signal 의 status 문자열과 1:1 */
+export type PullbackStatus =
+  | "데이터부족"
+  | "추세아님"
+  | "추세지속"
+  | "눌림 진행중(관망)"
+  | "눌림목 반등(매수후보)"
+  | "눌림 이탈(무효)";
+
+/** 눌림목 체크리스트 항목 — 순서 고정 6개(백엔드 schemas.PullbackCheck 와 1:1) */
+export interface PullbackCheck {
+  label: string;
+  ok: boolean;
+}
+
 export interface SnapshotFactors {
   macd_1d: string | null;
   rsi_1d: string | null;
@@ -288,6 +303,12 @@ export interface SnapshotFactors {
    * 구버전 응답에는 없어 undefined/null 일 수 있다.
    */
   bars_60m?: number | null;
+  /** 눌림목 판정 — 5단계 판정과 별개 축(점수에 합산되지 않음). 구버전 응답이면 undefined */
+  pullback_status?: PullbackStatus | null;
+  pullback_reason?: string | null;
+  pullback_trend_up?: boolean | null;
+  /** 조건 체크리스트 — "데이터부족"이면 빈 배열 */
+  pullback_checks?: PullbackCheck[] | null;
   /** 단기(60분봉) 기여요인 — MACD·RSI */
   breakdown_short: FactorRow[];
   /** 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE */
@@ -403,4 +424,58 @@ export interface AlertHistoryItem {
 
 export interface AlertHistoryResponse {
   items: AlertHistoryItem[];
+}
+
+/** GET /api/stocks/{code}/whatif — 종목·코스피 병치 손익(가격 비율 기준, 배당/분할/수수료 미반영). */
+export interface WhatIfSide {
+  buy_price: number;
+  current_price: number;
+  eval_amount: number;
+  profit: number;
+  return_pct: number;
+  multiple: number;
+}
+
+/** 매수일 시점까지의 데이터만으로 재현한 "그날의 봇 판정"(참고용) — 재무비율(PER/PBR/ROE)은
+ * 과거 재현 불가로 항상 제외되며, note는 그 사실을 알리는 고정 문구(항상 채워짐). */
+export interface WhatIfBotJudgment {
+  long_view: SignalView | null;
+  macd_1d: string | null;
+  rsi_1d: string | null;
+  pullback_status: PullbackStatus | null;
+  note: string;
+}
+
+export interface WhatIfResponse {
+  code: string;
+  requested_date: string;
+  buy_date: string | null;
+  buy_price: number | null;
+  amount: number;
+  shares: number | null;
+  current_date: string | null;
+  current_price: number | null;
+  eval_amount: number | null;
+  profit: number | null;
+  return_pct: number | null;
+  multiple: number | null;
+  kospi: WhatIfSide | null;
+  bot_judgment: WhatIfBotJudgment | null;
+  source: SnapshotSource | null;
+  /** 채워지면 나머지 필드는 신뢰하지 않고 에러 상태로 그린다 — 백엔드 한글 문구를 그대로 노출. */
+  error: string | null;
+}
+
+/** GET /api/paper/equity — 모의투자 자산 추이 1점(그 날짜 종가 기준 평가) */
+export interface PaperEquityPoint {
+  date: string;
+  cash: number;
+  holdings_value: number;
+  total: number;
+}
+
+export interface PaperEquityResponse {
+  points: PaperEquityPoint[];
+  /** 평가 가정·한계(일봉 폴백 사용 여부 포함) */
+  notes: string[];
 }

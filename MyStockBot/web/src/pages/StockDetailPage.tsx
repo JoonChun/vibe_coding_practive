@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BacktestCard } from "../components/BacktestCard";
 import { DcaCard } from "../components/DcaCard";
+import { TimeMachineCard } from "../components/TimeMachineCard";
 import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
+import { PullbackCard } from "../components/PullbackCard";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { TokenBanner } from "../components/TokenBanner";
 import { useRelativeTime } from "../hooks/useRelativeTime";
@@ -206,6 +208,14 @@ export default function StockDetailPage() {
               </div>
               <div className="detail-grid__factors">
                 <FactorBreakdown rows={factorRows} rules={rules} view={tab} />
+                {/* 눌림목은 일봉 기반이라 장기 탭에서만 의미가 있다 */}
+                {tab === "long" ? (
+                  <PullbackCard
+                    status={item?.factors?.pullback_status ?? null}
+                    reason={item?.factors?.pullback_reason ?? null}
+                    checks={item?.factors?.pullback_checks}
+                  />
+                ) : null}
               </div>
               <div className="detail-grid__bollinger">
                 <BollingerTrack
@@ -231,6 +241,7 @@ export default function StockDetailPage() {
         </div>
 
         <BacktestCard code={code} />
+        <TimeMachineCard code={code} />
         <DcaCard code={code} name={name} />
       </main>
 

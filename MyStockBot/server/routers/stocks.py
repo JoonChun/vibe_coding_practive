@@ -1,15 +1,28 @@
 import asyncio
+from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 
 import db
+from config import TIMEZONE
 
-from ..schemas import BacktestResponse, CandlesResponse, DcaResponse, SearchResponse
-from ..services import backtest, candles, dca
+from ..schemas import (
+    BacktestResponse,
+    CandlesResponse,
+    DcaResponse,
+    SearchResponse,
+    WhatIfResponse,
+)
+from ..services import backtest, candles, dca, whatif
 from ..services.timeseries import PriceDataError
 
 router = APIRouter(prefix="/api")
+
+_WHATIF_DATE_FMT = "%Y-%m-%d"
+_MIN_WHATIF_AMOUNT = 1
+_MAX_WHATIF_AMOUNT = 100_000_000
 
 _DEFAULT_SEARCH_LIMIT = 10
 _MAX_SEARCH_LIMIT = 30
@@ -96,3 +109,29 @@ async def get_stock_dca(
         raise HTTPException(status_code=409, detail=str(e))
     except dca.DataSourceError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.get("/stocks/{code}/whatif", response_model=WhatIfResponse)
+async def get_stock_whatif(
+    code: str,
+    date: str = Query(..., description="매수 가정일 YYYY-MM-DD"),
+    amount: int = Query(..., ge=_MIN_WHATIF_AMOUNT, le=_MAX_WHATIF_AMOUNT),
+):
+    try:
+        normalized_code = db.normalize_code(code)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        parsed_date = datetime.strptime(date, _WHATIF_DATE_FMT).date()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail=f"날짜 형식 오류(YYYY-MM-DD): {date}")
+
+    today_kst = datetime.now(ZoneInfo(TIMEZONE)).date()
+    if parsed_date > today_kst:
+        raise HTTPException(status_code=422, detail=f"미래 날짜는 조회할 수 없습니다: {date}")
+
+    # candles read-through + 지표 계산(pandas)이 섞인 블로킹 로직 — 스레드로 넘긴다
+    # (위 candles 라우트와 동일 관례).
+    result = await asyncio.to_thread(whatif.compute_whatif, normalized_code, date, amount)
+    return result

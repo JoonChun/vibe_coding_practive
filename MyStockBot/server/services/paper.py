@@ -7,7 +7,7 @@
 DB 계층(db.execute_paper_order 등)이 원자적 트랜잭션으로 잔액/보유를 보증하고,
 여기서는 현재가로 보유 평가금액·손익을 덧입혀 응답을 만든다.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import db
@@ -148,3 +148,136 @@ def place_order(code: str, side: str, qty: int) -> dict:
 
 def reset() -> dict:
     return _enrich(db.reset_paper_account(PAPER_SEED_DEFAULT), _price_map())
+
+
+# ────────────────────────────────────────────
+# 자산 추이 — 거래 이력을 되짚어 일자별 평가금액을 재구성
+# ────────────────────────────────────────────
+
+_EQUITY_MAX_TRADES = 500
+_EQUITY_CANDLE_DEPTH = 500
+
+
+def _trade_date_kst(ts: str) -> str | None:
+    """paper_trades.ts(UTC 'YYYY-MM-DD HH:MM:SS') → KST 날짜 'YYYY-MM-DD'.
+
+    거래 시각은 UTC 로 저장되지만(datetime('now')) 캔들의 t 는 KST 자정 기준이라,
+    같은 축에 놓으려면 KST 날짜로 맞춰야 한다. 장 마감 후(한국 15:30 = UTC 06:30)의
+    거래가 전날로 밀리는 것을 막는 지점이다.
+    """
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+
+def _daily_close_map(code: str) -> dict[str, float]:
+    """(code) 일봉 저장소 → {KST 날짜: 종가}. 저장소에 없으면 빈 dict."""
+    out: dict[str, float] = {}
+    for row in db.get_candles_store(code, "1d", _EQUITY_CANDLE_DEPTH):
+        t = row.get("t")
+        close = row.get("close")
+        if t is None or close is None:
+            continue
+        day = datetime.fromtimestamp(int(t), ZoneInfo(TIMEZONE)).strftime("%Y-%m-%d")
+        out[day] = float(close)
+    return out
+
+
+def get_equity_curve() -> dict:
+    """모의투자 자산 추이 — 첫 거래일부터 오늘까지 일자별 [현금 + 보유 평가].
+
+    ## 어떻게 만드나
+    거래 이력을 시간순으로 재생하면서 각 날짜의 현금·보유 수량을 구하고, 보유분은
+    **그 날짜의 일봉 종가**로 평가한다. 즉 거래 사이의 가격 변동도 곡선에 반영된다
+    (거래 시점만 잇는 계단식 근사가 아니다).
+
+    ## 한계 (응답 notes 로도 함께 내려보낸다)
+    - 그 날짜 종가가 저장소에 없으면 직전에 알려진 종가로 이어붙인다(forward fill).
+      그마저 없으면(캔들이 아직 안 쌓인 신규 종목) 그 종목은 평균단가로 평가한다.
+    - 일봉 저장소 깊이(약 500봉)를 넘는 과거는 그릴 수 없다.
+    - 수수료·세금·슬리피지는 거래 자체와 마찬가지로 반영하지 않는다.
+    """
+    trades = list(reversed(db.get_paper_trades(_EQUITY_MAX_TRADES)))  # 시간 오름차순
+    if not trades:
+        return {"points": [], "notes": ["거래 내역이 없습니다."]}
+
+    codes = sorted({t["code"] for t in trades})
+    close_maps = {code: _daily_close_map(code) for code in codes}
+
+    # 날짜 축: 첫 거래일 이후의 모든 일봉 날짜 ∪ 거래일(캔들이 없는 종목만 거래한 경우 대비)
+    first_day = min(filter(None, (_trade_date_kst(t["ts"]) for t in trades)), default=None)
+    if first_day is None:
+        return {"points": [], "notes": ["거래 시각을 해석할 수 없습니다."]}
+
+    days: set[str] = {d for m in close_maps.values() for d in m if d >= first_day}
+    days.update(d for t in trades if (d := _trade_date_kst(t["ts"])) and d >= first_day)
+    axis = sorted(days)
+    if not axis:
+        return {"points": [], "notes": ["평가에 쓸 일봉이 아직 없습니다."]}
+
+    # 날짜별 거래 묶음
+    by_day: dict[str, list[dict]] = {}
+    for t in trades:
+        day = _trade_date_kst(t["ts"])
+        if day:
+            by_day.setdefault(day, []).append(t)
+
+    cash = float(PAPER_SEED_DEFAULT)
+    qty: dict[str, int] = {}
+    cost: dict[str, float] = {}      # 평균단가 — 종가가 없을 때의 마지막 폴백
+    used_fallback = False
+
+    # forward fill 시드 — 축(first_day 이후)에는 없지만 그 **이전**에 있는 마지막 종가로
+    # 미리 채운다. 첫 거래가 주말·휴장일이면 그날 일봉이 없는데, 이 시드가 없으면
+    # 직전 거래일 종가를 두고도 평균단가 폴백으로 떨어진다.
+    last_close: dict[str, float] = {}
+    for code, cmap in close_maps.items():
+        prior = [d for d in cmap if d < first_day]
+        if prior:
+            last_close[code] = cmap[max(prior)]
+    points: list[dict] = []
+
+    for day in axis:
+        for t in by_day.get(day, []):
+            code, side, n, price = t["code"], t["side"], int(t["qty"]), float(t["price"])
+            if side == "buy":
+                prev_qty = qty.get(code, 0)
+                prev_cost = cost.get(code, 0.0)
+                qty[code] = prev_qty + n
+                cost[code] = ((prev_cost * prev_qty) + price * n) / max(1, prev_qty + n)
+                cash -= price * n
+            else:
+                qty[code] = max(0, qty.get(code, 0) - n)
+                cash += price * n
+
+        holdings_value = 0.0
+        for code, n in qty.items():
+            if n <= 0:
+                continue
+            close = close_maps.get(code, {}).get(day)
+            if close is not None:
+                last_close[code] = close
+            else:
+                close = last_close.get(code)
+            if close is None:
+                close = cost.get(code, 0.0)
+                used_fallback = True
+            holdings_value += close * n
+
+        points.append({
+            "date": day,
+            "cash": round(cash),
+            "holdings_value": round(holdings_value),
+            "total": round(cash + holdings_value),
+        })
+
+    notes = [
+        "보유분은 그날 종가로 평가 — 거래 사이의 가격 변동도 반영됩니다",
+        "수수료·세금·슬리피지 미반영",
+    ]
+    if used_fallback:
+        notes.append("일부 구간은 일봉이 없어 평균단가로 평가했습니다")
+
+    return {"points": points, "notes": notes}
