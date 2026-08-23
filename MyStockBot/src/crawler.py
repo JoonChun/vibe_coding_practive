@@ -456,6 +456,114 @@ def fetch_kis_holidays(token: str, bass_dt: str, max_days: int) -> list[dict]:
     return sorted(collected.values(), key=lambda r: r["date"])[:max_days]
 
 
+# 페이지네이션 시 한 호출의 [start, end] 날짜 구간(일수) — period별 근사치.
+# KIS 기간별시세는 호출당 최대 100건이므로, 각 tf의 발생 빈도(거래일/주/월)를 감안해
+# 한 호출이 대략 100건 근처로 나오도록 잡는다(공휴일만큼 살짝 넉넉하게).
+_PAGE_WINDOW_DAYS = {"D": 140, "W": 700, "M": 3000}
+
+
+def fetch_kis_ohlcv_paged(
+    code: str,
+    token: str,
+    period: str,
+    target_count: int,
+    max_pages: int = 15,
+    end: datetime | None = None,
+) -> pd.DataFrame | None:
+    """KIS 기간별시세(FHKST03010100)를 날짜 구간을 과거로 옮겨가며 반복 호출해
+    최대 target_count건까지 누적한다.
+
+    TR/URL은 fetch_kis_ohlcv(단일 호출, 무변경)와 동일 — 호출당 최대 100건 제한을
+    페이지네이션으로 우회한다. end 를 주면 그 시점 이전 구간부터 역행한다
+    (candles 서비스의 before 커서 — 차트 왼쪽 스크롤 시 과거 페이지 로딩용).
+
+    페이지네이션 규칙:
+      - 첫 호출: end=end(기본 오늘), start=end-윈도우(period별 _PAGE_WINDOW_DAYS).
+      - 다음 호출: end=(직전 응답의 가장 이른 날짜 - 1일), start=end-윈도우.
+      - 응답이 비거나(원천 고갈) 가장 이른 날짜가 더 과거로 진행하지 못하면 중단.
+      - target_count건 이상 모이면 즉시 중단, max_pages 도달 시에도 중단(폭주 방지).
+      - 호출 간격은 kis_auth.kis_throttle() 전역 스로틀 하나로만 강제한다
+        (별도 sleep 을 겹치지 않는다 — collector.py 가 daily 경로에서 확인한 관례).
+
+    반환: fetch_kis_ohlcv 와 동일 스키마(date 'YYYYMMDD'/open/high/low/close/volume),
+    날짜 오름차순, 중복 제거. target_count 초과분은 최신 target_count건만 남긴다.
+    실패·빈 데이터 시 None.
+    """
+    tz = ZoneInfo(TIMEZONE)
+    cursor_end = end if end is not None else datetime.now(tz)
+    window_days = _PAGE_WINDOW_DAYS.get(period, _PAGE_WINDOW_DAYS["D"])
+
+    all_rows: dict[str, dict] = {}
+    earliest_seen: str | None = None
+
+    for page in range(max_pages):
+        start = cursor_end - timedelta(days=window_days)
+
+        headers = _get_headers(token)
+        headers["tr_id"] = "FHKST03010100"
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": cursor_end.strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": period,
+            "FID_ORG_ADJ_PRC": "0",
+        }
+        try:
+            kis_auth.kis_throttle()
+            resp = requests.get(KIS_DAILY_PRICE_URL, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.warning(f"[KIS] OHLCV 페이지네이션 요청 실패 ({code}, period={period}, page={page}): {e}")
+            break
+
+        output2 = data.get("output2")
+        if not output2:
+            break
+
+        page_dates = []
+        for item in output2:
+            try:
+                date_str = item["stck_bsop_date"]
+                page_dates.append(date_str)
+                if date_str not in all_rows:
+                    all_rows[date_str] = {
+                        "date": date_str,
+                        "open": int(item["stck_oprc"]),
+                        "high": int(item["stck_hgpr"]),
+                        "low": int(item["stck_lwpr"]),
+                        "close": int(item["stck_clpr"]),
+                        "volume": int(item["acml_vol"]),
+                    }
+            except (KeyError, ValueError):
+                continue
+
+        if not page_dates:
+            break
+
+        new_earliest = min(page_dates)
+        if earliest_seen is not None and new_earliest >= earliest_seen:
+            break  # 더 과거로 진행 못함 — 무한루프 방지
+        earliest_seen = new_earliest
+
+        if len(all_rows) >= target_count:
+            break
+
+        try:
+            cursor_end = datetime.strptime(new_earliest, "%Y%m%d").replace(tzinfo=tz) - timedelta(days=1)
+        except ValueError:
+            break
+
+    if not all_rows:
+        return None
+
+    df = pd.DataFrame(list(all_rows.values())).sort_values("date").reset_index(drop=True)
+    if len(df) > target_count:
+        df = df.iloc[-target_count:].reset_index(drop=True)
+    return df
+
+
 def _kis_daily_ohlcv(code: str, token: str) -> pd.DataFrame | None:
     """기존 호출부(스냅샷 수집) 전용 — 일봉 지표 계산에 필요한 lookback으로 fetch_kis_ohlcv 호출."""
     lookback = int(OHLCV_LOOKBACK_DAYS * 1.6)

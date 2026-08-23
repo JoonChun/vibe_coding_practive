@@ -97,7 +97,35 @@ def _watchlist_sheet_import() -> None:
         logger.warning("[scheduler] 관심종목 시트 임포트 실패: %s", e)
 
 
+def _daily_candle_backfill() -> None:
+    """관심종목 전체의 일/주/월봉 과거 이력 백필 — 장 마감 후 1회.
+
+    온디맨드 딥 수집(첫 차트 로딩 수 초)을 예방하고, 상장 이력이 요청보다 짧은 종목도
+    candles 쪽 바닥(_history_floor) 기억이 채워져 낮 시간 반복 수집이 사라진다.
+    kis_throttle(전역 0.5초 간격)이 호출 속도를 묶으므로 야간 배치로만 돌린다.
+    """
+    import db
+
+    from . import candles
+
+    rows = db.load_watchlist()
+    logger.info("[scheduler] 캔들 백필 시작 — 관심종목 %d개", len(rows))
+    for row in rows:
+        candles.backfill_history(row["code"])
+    logger.info("[scheduler] 캔들 백필 완료")
+
+
 def start() -> None:
+    _scheduler.add_job(
+        _daily_candle_backfill,
+        trigger="cron",
+        day_of_week="mon-fri",
+        hour=16,
+        minute=20,
+        timezone=TIMEZONE,
+        id="daily_candle_backfill",
+        replace_existing=True,
+    )
     _scheduler.add_job(
         _daily_master_refresh,
         trigger="cron",

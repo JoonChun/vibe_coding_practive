@@ -112,6 +112,12 @@ def init_db() -> None:
             )
             """
         )
+        # 120m/240m 오염 행 정리 — 예전 리샘플이 positional(조회창 시작 기준)이라 같은
+        # 실제 구간이 재조회 시각마다 다른 t 로 저장돼 겹치는 봉이 쌓였다. 지금은
+        # clock-aligned(t 가 버킷 크기로 나누어떨어짐)로만 저장하므로, 경계에 안 맞는
+        # 행 = 옛 방식의 잔재다. 조건 자체가 멱등이라 부팅마다 실행해도 안전하다.
+        conn.execute("DELETE FROM candles WHERE tf = '120m' AND t % 7200 != 0")
+        conn.execute("DELETE FROM candles WHERE tf = '240m' AND t % 14400 != 0")
         # ── KRX 휴장일 캐시 ──
         # KIS 국내휴장일조회(CTCA0903R)는 "가급적 1일 1회 호출"을 요청하므로 결과를 여기
         # 영속 저장한다. in-memory 캐시만 쓰면 서버 재시작마다 재호출하게 된다.
@@ -497,6 +503,27 @@ def get_candles_store(code: str, tf: str, limit: int) -> list[dict]:
             "SELECT t, open, high, low, close, volume FROM candles "
             "WHERE code = ? AND tf = ? ORDER BY t DESC LIMIT ?",
             (code, tf, safe_limit),
+        ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+    finally:
+        conn.close()
+
+
+def get_candles_store_before(code: str, tf: str, limit: int, before_t: int) -> list[dict]:
+    """(code, tf) 저장소에서 t < before_t 인 캔들을 t 오름차순 마지막 limit개 반환.
+
+    차트 왼쪽 스크롤(과거 페이지 로딩)용 커서 조회 — before_t 는 배타적 상한이다
+    (프론트가 이미 가진 가장 오래된 봉의 t 를 그대로 넘기면 그보다 과거만 온다).
+    데이터 없으면 빈 리스트.
+    """
+    safe_limit = max(1, int(limit))
+
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT t, open, high, low, close, volume FROM candles "
+            "WHERE code = ? AND tf = ? AND t < ? ORDER BY t DESC LIMIT ?",
+            (code, tf, int(before_t), safe_limit),
         ).fetchall()
         return [dict(row) for row in reversed(rows)]
     finally:
