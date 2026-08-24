@@ -33,7 +33,12 @@ import urllib3
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import KIS_MASTER_URLS, STOCK_MASTER_STALE_DAYS
+from config import (
+    KIS_MASTER_URLS,
+    STOCK_MASTER_MIN_RATIO,
+    STOCK_MASTER_MIN_ROWS_PER_MARKET,
+    STOCK_MASTER_STALE_DAYS,
+)
 
 import db
 
@@ -125,12 +130,59 @@ def download_and_parse() -> list[dict]:
     return all_items
 
 
+def _delisting_guard_ok(rows: list[dict]) -> bool:
+    """이번 파일로 "사라진 코드 = 상장폐지"를 판정해도 되는지.
+
+    시장 하나가 통째로 실패하는 경우는 이미 안전하다 — _download_with_retry 가 예외를
+    던져 upsert 자체가 실행되지 않는다. 진짜 위험은 **부분 성공**이다: zip 은 열리는데
+    내용이 잘렸거나 인코딩이 어긋나 코드 필터에서 대량 탈락하면, rows 는 정상적으로
+    돌아오고 나머지 전 종목이 상폐로 찍힌다.
+
+    두 가지를 본다.
+      ① 시장별 절대 하한 — KOSPI/KOSDAQ 각각 최소 건수를 넘는가
+      ② 기존 대비 상대 하한 — 상장 중 종목 수가 갑자기 5% 넘게 줄지 않았는가
+         (실제 상폐는 연간 수십 건 규모라 정상 갱신에서는 절대 안 걸린다)
+    """
+    by_market: dict[str, int] = {}
+    for row in rows:
+        by_market[row["market"]] = by_market.get(row["market"], 0) + 1
+
+    for market in ("KOSPI", "KOSDAQ"):
+        n = by_market.get(market, 0)
+        if n < STOCK_MASTER_MIN_ROWS_PER_MARKET:
+            logger.warning(
+                "[stock_master] 상폐 판정 보류 — %s 가 %d건으로 하한(%d) 미만. "
+                "파일이 잘렸을 수 있어 데이터만 갱신한다.",
+                market, n, STOCK_MASTER_MIN_ROWS_PER_MARKET,
+            )
+            return False
+
+    previous = db.count_stock_master()
+    if previous and len(rows) < previous * STOCK_MASTER_MIN_RATIO:
+        logger.warning(
+            "[stock_master] 상폐 판정 보류 — 종목 수가 %d→%d 로 급감(기준 %.0f%%). "
+            "파일 이상이 의심되어 데이터만 갱신한다.",
+            previous, len(rows), STOCK_MASTER_MIN_RATIO * 100,
+        )
+        return False
+
+    return True
+
+
 def refresh_stock_master() -> int:
-    """마스터를 다운로드해 DB에 upsert. 반영 건수 반환."""
+    """마스터를 다운로드해 DB에 upsert. 반영 건수 반환.
+
+    무결성 가드를 통과하면 이번 파일에서 사라진 코드를 상장폐지로 표시한다 — 그래야
+    상폐 종목이 검색·자동완성에서 사라진다. 가드가 막으면 upsert 만 하고 판정은 미룬다.
+    """
     logger.info("[stock_master] 종목마스터 갱신 시작")
     rows = download_and_parse()
-    count = db.upsert_stock_master(rows)
-    logger.info(f"[stock_master] 종목마스터 갱신 완료: {count}건")
+    mark_delisted = _delisting_guard_ok(rows)
+    count = db.upsert_stock_master(rows, mark_missing_delisted=mark_delisted)
+    logger.info(
+        "[stock_master] 종목마스터 갱신 완료: %d건 (상폐 판정 %s)",
+        count, "적용" if mark_delisted else "보류",
+    )
     return count
 
 

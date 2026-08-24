@@ -113,7 +113,7 @@ def _backfill_candles(spreadsheet_id: str) -> None:
     total = 0
     for code, items in by_code.items():
         items.sort(key=lambda x: x["t"])
-        total += db.upsert_candles(code, "1d", items)
+        total += db.upsert_candles(code, "1d", items, source="sheets")
         logger.info(f"[backfill] {code}: 일봉 {len(items)}건 → candles(1d)")
 
     logger.info(f"[backfill] candles(1d) 총 {total}건 저장")

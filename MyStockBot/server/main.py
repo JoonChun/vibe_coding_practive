@@ -138,8 +138,14 @@ app.middleware("http")(auth_middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOWED_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # 프론트가 실제로 쓰는 것만 허용한다(web/src/api.ts 기준: 조회는 GET, 관심종목
+    # 추가·주문·알림테스트는 POST, 관심종목 삭제는 DELETE). OPTIONS 는 preflight 용.
+    # 토큰 인증이 앞단에 있어 "*" 라도 실질 위험은 낮지만, 허용 범위를 실제 사용면에
+    # 맞춰 두면 나중에 늘어난 메서드가 조용히 통과하지 않는다.
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    # Authorization(토큰) + Content-Type(JSON 본문) + ngrok 경고 우회 헤더.
+    # 마지막 것은 api.ts 가 모든 요청에 붙이므로 빠지면 preflight 가 막힌다.
+    allow_headers=["Authorization", "Content-Type", "ngrok-skip-browser-warning"],
 )
 
 # SQLite 쓰기 경합(busy_timeout 초과)을 500 대신 429 + Retry-After 로 바꾼다.

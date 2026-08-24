@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -69,6 +69,45 @@ def _migrate_paper_trades(conn: sqlite3.Connection) -> None:
             conn.execute(ddl)
 
 
+def _migrate_stock_master(conn: sqlite3.Connection) -> None:
+    """stock_master 에 delisted 컬럼을 더한다.
+
+    paper_trades 관례를 따라 ALTER 로 더한다 — 이 테이블은 종목명·시장의 유일한
+    출처이고(관심종목 목록이 LEFT JOIN 으로 market 을 얹는다) 버리면 다음 마스터
+    갱신까지 이름이 비므로, DROP 계열이 아니다.
+    기존 행은 DEFAULT 0(상장 중)으로 시작한다 — 다음 갱신에서 실제로 사라진 코드만
+    1 로 바뀐다. 모르는 것을 '상폐'로 단정하지 않는 방향이다.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(stock_master)")}
+    if not existing:  # 테이블이 아직 없다(방금 CREATE 된다) → 할 일 없음
+        return
+    if "delisted" not in existing:
+        conn.execute(
+            "ALTER TABLE stock_master ADD COLUMN delisted INTEGER NOT NULL DEFAULT 0"
+        )
+
+
+def _migrate_candles_source(conn: sqlite3.Connection) -> None:
+    """candles 에 source 컬럼을 더한다 — 그 봉을 **어느 규약으로** 받았는지 기록한다.
+
+    왜 필요한가: KIS(원주가 정수)와 yfinance(auto_adjust=True — 분할·배당 조정)는
+    조정 규약이 다른데, 지금까지 같은 (code, tf, t) PK 에 번갈아 REPLACE 되어 한
+    종목 안에서 기준가가 섞일 수 있었다. rule_eval 은 이 문제를 알고 **읽는 쪽에서**
+    yfinance 폴백을 포기하는 방식으로 회피해 왔다 — 이 컬럼은 그 회피를 쓰는 쪽이
+    아니라 저장하는 쪽에서 끝내기 위한 것이다.
+
+    paper_trades 관례를 따라 ALTER 로 더하고 **기존 행은 NULL 로 둔다.** 'kis' 로
+    일괄 채우지 않는다 — 실제로 그 행들 중 일부는 yfinance·시트 백필 산이고,
+    모르는 것을 안다고 적으면 나중에 구분할 방법이 사라진다. NULL 은 "규약 불명"이며,
+    다음 수집이 그 (code, tf) 를 새 소스로 덮어쓸 때 자연히 정리된다.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(candles)")}
+    if not existing:  # 테이블이 아직 없다(방금 CREATE 된다) → 할 일 없음
+        return
+    if "source" not in existing:
+        conn.execute("ALTER TABLE candles ADD COLUMN source TEXT")
+
+
 def init_db() -> None:
     conn = get_connection()
     try:
@@ -89,10 +128,14 @@ def init_db() -> None:
                 code TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 market TEXT NOT NULL,
-                updated_at TEXT
+                updated_at TEXT,
+                -- 마스터 파일에서 사라진 종목(상장폐지 추정). 행을 지우지 않는 이유는
+                -- 보유 중인 상폐 종목의 이름·시장이 필요하고 재상장 시 되살려야 하기 때문.
+                delisted INTEGER NOT NULL DEFAULT 0
             )
             """
         )
+        _migrate_stock_master(conn)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_stock_master_name ON stock_master(name)"
         )
@@ -118,6 +161,29 @@ def init_db() -> None:
         # 행 = 옛 방식의 잔재다. 조건 자체가 멱등이라 부팅마다 실행해도 안전하다.
         conn.execute("DELETE FROM candles WHERE tf = '120m' AND t % 7200 != 0")
         conn.execute("DELETE FROM candles WHERE tf = '240m' AND t % 14400 != 0")
+        _migrate_candles_source(conn)
+
+        # ── 캔들 원천 고갈 바닥 ──
+        # "이 종목·tf 는 원천에 더 이상 과거가 없다"는 확인 결과. 인메모리로만 두면
+        # 재시작마다 잊혀서, 이미 고갈을 확인한 종목도 첫 차트 로딩에서 최대 15페이지
+        # 페이지네이션(콜당 0.5초 스로틀)을 다시 시도한다 — market_holidays 를 영속화한
+        # 것과 같은 이유다.
+        #
+        # source 를 함께 남기는 이유: KIS 토큰이 죽어 yfinance 폴백(일봉 2년)으로 채운
+        # 결과를 바닥으로 굳히면, 그 종목 일봉이 2년에서 영구히 잘린다. 바닥은 'kis'
+        # 확인분만 신뢰한다(아래 set_candle_history_floor 참조).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS candle_history_floor (
+                code TEXT NOT NULL,
+                tf TEXT NOT NULL,
+                floor_t INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (code, tf)
+            )
+            """
+        )
         # ── KRX 휴장일 캐시 ──
         # KIS 국내휴장일조회(CTCA0903R)는 "가급적 1일 1회 호출"을 요청하므로 결과를 여기
         # 영속 저장한다. in-memory 캐시만 쓰면 서버 재시작마다 재호출하게 된다.
@@ -365,28 +431,63 @@ def remove_watchlist_item(code) -> bool:
         conn.execute(
             "DELETE FROM decision_alert_state WHERE code = ?", (normalized_code,)
         )
+        # 캔들도 함께 정리한다 — 관심종목에서 빠지면 이 종목의 봉을 갱신할 주체가
+        # 없어져 낡은 채로 남는다(실측으로 고아 캔들 1,878행이 쌓여 있었고, 매일
+        # 백업 14벌에 그대로 따라다닌다). 다시 추가하면 백필이 즉시 재수집하므로
+        # 되돌릴 수 있다. 바닥 기록도 같이 지운다(캔들이 없으면 거짓이 된다).
+        conn.execute("DELETE FROM candles WHERE code = ?", (normalized_code,))
+        conn.execute("DELETE FROM candle_history_floor WHERE code = ?", (normalized_code,))
         conn.commit()
         return cursor.rowcount > 0
     finally:
         conn.close()
 
 
-def upsert_stock_master(rows: list[dict]) -> int:
+def upsert_stock_master(rows: list[dict], mark_missing_delisted: bool = False) -> int:
     """[{code, name, market}, ...] 를 stock_master 에 upsert.
 
     executemany 한 번 + commit 한 번 = 트랜잭션 1개. 반영 건수 반환.
+
+    mark_missing_delisted=True 면 **이번 파일에 없던 코드**를 상장폐지로 표시한다
+    (행은 지우지 않는다 — 보유 중인 상폐 종목의 이름·시장 정보가 필요하고, 재상장
+    되면 되살려야 한다). 이번 파일에 들어온 코드는 항상 delisted=0 으로 되돌아가므로
+    오탐이 나도 다음 정상 갱신에서 자동 복구된다.
+
+    ★ 이 플래그는 **호출부가 파일 무결성을 검증한 뒤에만** 켜야 한다. 마스터 파일이
+    잘린 채 정상 zip 으로 도착하면 행 수만 줄어든 채 조용히 성공하는데, 그때 켜면
+    멀쩡한 전 종목이 상폐로 찍힌다(stock_master.refresh_stock_master 의 가드 참조).
+
+    updated_at 은 파이썬에서 만든 단일 run_ts 로 바인딩한다 — SQLite datetime('now')
+    는 행마다 재평가돼 초 경계를 넘으면 같은 실행분끼리 값이 갈리고, 그러면 "이번
+    실행에 안 들어온 행" 판별이 어긋난다.
     """
     if not rows:
         return 0
 
+    run_ts = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
     conn = get_connection()
     try:
+        if mark_missing_delisted:
+            # 전부 상폐 후보로 표시해 두고, 아래 upsert 가 이번 파일에 있는 코드만
+            # 0 으로 되돌린다 — 결과적으로 "파일에 없던 코드"만 1 로 남는다.
+            #
+            # updated_at 비교로 판별하지 않는 이유: 타임스탬프가 초 단위라 같은 초에
+            # 두 번 갱신하면 "이번 실행분"과 "직전 실행분"이 구분되지 않아 아무도
+            # 상폐로 잡히지 않는다(테스트로 확인). 이 방식은 시계 해상도와 무관하고,
+            # 같은 트랜잭션 안이라 중간 상태가 밖에서 보이지도 않는다.
+            conn.execute("UPDATE stock_master SET delisted = 1")
+
         conn.executemany(
             """
-            INSERT OR REPLACE INTO stock_master (code, name, market, updated_at)
-            VALUES (?, ?, ?, datetime('now'))
+            INSERT INTO stock_master (code, name, market, updated_at, delisted)
+            VALUES (?, ?, ?, ?, 0)
+            ON CONFLICT(code) DO UPDATE SET
+                name = excluded.name,
+                market = excluded.market,
+                updated_at = excluded.updated_at,
+                delisted = 0
             """,
-            [(row["code"], row["name"], row["market"]) for row in rows],
+            [(row["code"], row["name"], row["market"], run_ts) for row in rows],
         )
         conn.commit()
         return len(rows)
@@ -394,15 +495,36 @@ def upsert_stock_master(rows: list[dict]) -> int:
         conn.close()
 
 
+def count_stock_master(market: str | None = None) -> int:
+    """상장 중(delisted=0)인 종목 수. 마스터 파일 무결성 가드의 비교 기준."""
+    conn = get_connection()
+    try:
+        if market is None:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM stock_master WHERE delisted = 0"
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM stock_master WHERE delisted = 0 AND market = ?",
+                (market,),
+            ).fetchone()
+        return int(row["n"]) if row else 0
+    finally:
+        conn.close()
+
+
 def get_stock_master_meta() -> dict:
-    """stock_master 건수와 가장 오래된 updated_at.
+    """stock_master 건수와 가장 오래된 updated_at. **상장 중(delisted=0)만 센다.**
 
     startup/스케줄러에서 갱신 필요 여부(비어있음·7일 초과)를 판단하는 데 쓰인다.
+    상폐 행을 포함하면 그 행의 updated_at 이 갱신되지 않아 MIN 이 영원히 옛날 값으로
+    남고, needs_refresh() 가 매번 참이 되어 부팅마다 마스터를 다시 받게 된다.
     """
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT COUNT(*) AS count, MIN(updated_at) AS oldest_updated_at FROM stock_master"
+            "SELECT COUNT(*) AS count, MIN(updated_at) AS oldest_updated_at "
+            "FROM stock_master WHERE delisted = 0"
         ).fetchone()
         return dict(row)
     finally:
@@ -434,9 +556,10 @@ def search_stocks(q: str, limit: int = 10) -> list[dict]:
             """
             SELECT code, name, market
             FROM stock_master
-            WHERE code = :q
+            WHERE delisted = 0
+              AND (code = :q
                OR code LIKE :prefix ESCAPE '\\'
-               OR name LIKE :contains ESCAPE '\\'
+               OR name LIKE :contains ESCAPE '\\')
             ORDER BY
                 CASE
                     WHEN code = :q THEN 0
@@ -459,12 +582,53 @@ def search_stocks(q: str, limit: int = 10) -> list[dict]:
         conn.close()
 
 
-def upsert_candles(code: str, tf: str, items: list[dict]) -> int:
+def get_candles_source(code: str, tf: str) -> str | None:
+    """(code, tf) 저장소에 기록된 조정 규약(source). 행이 없거나 규약 불명이면 None.
+
+    같은 (code, tf) 안에 여러 소스가 섞여 있으면(마이그레이션 이전 데이터) 가장 최근
+    행의 값을 대표로 본다 — 호출부는 이 값이 새 소스와 다르면 혼합으로 판단한다.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT source FROM candles WHERE code = ? AND tf = ? AND source IS NOT NULL "
+            "ORDER BY t DESC LIMIT 1",
+            (code, tf),
+        ).fetchone()
+        return None if row is None else row["source"]
+    finally:
+        conn.close()
+
+
+def delete_candles(code: str, tf: str | None = None) -> int:
+    """(code[, tf]) 캔들 삭제. 삭제된 행 수 반환.
+
+    캔들은 소스에서 재구축 가능한 캐시다 — 규약이 섞였거나 분할로 과거가 어긋났을 때
+    잘못된 가격을 남겨두는 것보다 지우고 다시 받는 편이 낫다(오염된 리샘플 행을 부팅
+    시 지우는 기존 정리와 같은 사상).
+    """
+    conn = get_connection()
+    try:
+        if tf is None:
+            cur = conn.execute("DELETE FROM candles WHERE code = ?", (code,))
+        else:
+            cur = conn.execute("DELETE FROM candles WHERE code = ? AND tf = ?", (code, tf))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def upsert_candles(code: str, tf: str, items: list[dict], source: str | None = None) -> int:
     """캔들 영속 저장소에 upsert. items 는 [{t, open, high, low, close, volume}, ...].
 
     단일 트랜잭션(executemany + commit 1회). (code, tf, t) PK 충돌 시 덮어쓴다
     (KIS/yfinance 재수집 시 동일 캔들이 갱신될 수 있으므로 REPLACE가 맞다).
     빈 items 는 no-op(0 반환) — 실패한 fetch 결과로 기존 데이터를 지우지 않기 위함.
+
+    source 는 그 봉을 받은 조정 규약("kis"|"yfinance"|"sheets"). 기본 None 은 "규약
+    불명"이며 기존 호출부를 그대로 두기 위한 값이다 — 새 코드는 반드시 명시할 것.
+    규약이 다른 소스로 덮어쓰는 것을 막는 책임은 호출부에 있다(candles 서비스 참조).
     """
     if not items:
         return 0
@@ -474,15 +638,16 @@ def upsert_candles(code: str, tf: str, items: list[dict]) -> int:
     try:
         conn.executemany(
             """
-            INSERT OR REPLACE INTO candles (code, tf, t, open, high, low, close, volume, fetched_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO candles
+                (code, tf, t, open, high, low, close, volume, fetched_at, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     code, tf, item.get("t"),
                     item.get("open"), item.get("high"), item.get("low"),
                     item.get("close"), item.get("volume"),
-                    fetched_at,
+                    fetched_at, source,
                 )
                 for item in items
             ],
@@ -568,6 +733,70 @@ def create_backup(backup_dir: str | None = None, retention: int = 14) -> str | N
             pass  # 지우기 실패가 백업 자체를 실패로 만들 이유는 없다
 
     return dest_path
+
+
+def get_candle_history_floor(code: str, tf: str, max_age_days: int = 30) -> int | None:
+    """(code, tf) 원천 고갈 바닥 epoch. 없거나 너무 오래된 기록이면 None.
+
+    max_age_days 재검증: 바닥은 "더 과거가 없다"는 **부정 확인**이라 한번 굳으면 스스로
+    풀리지 않는다(바닥이 딥 수집을 막고, 딥 수집이 없으면 바닥을 내릴 관측도 없다).
+    실제 상장 이력은 늘어나지 않지만 원천 쪽 사정으로 잘못 굳었을 수 있으므로, 한 달에
+    한 번은 무시하고 재확인하게 둔다 — 종목당 월 1회 페이지네이션은 사실상 공짜다.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT floor_t FROM candle_history_floor "
+            "WHERE code = ? AND tf = ? AND updated_at >= ?",
+            (
+                code, tf,
+                (datetime.now(timezone.utc) - timedelta(days=max_age_days)).strftime(_UTC_TS_FORMAT),
+            ),
+        ).fetchone()
+        return None if row is None else int(row["floor_t"])
+    finally:
+        conn.close()
+
+
+def set_candle_history_floor(code: str, tf: str, floor_t: int, source: str) -> None:
+    """원천 고갈 바닥 기록. **아래로만 내려간다** — 더 과거가 확인되면 갱신하고,
+    위로는 되돌리지 않는다(그래야 한 번 확인한 깊이를 잃지 않는다).
+
+    조건부 갱신을 SQL 한 문장에 담아 read-modify-write 경합을 없앤다.
+    updated_at 은 값이 그대로여도 갱신한다 — 재검증 TTL 의 기준이기 때문이다.
+    """
+    now = datetime.now(timezone.utc).strftime(_UTC_TS_FORMAT)
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO candle_history_floor (code, tf, floor_t, source, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(code, tf) DO UPDATE SET
+                floor_t = MIN(candle_history_floor.floor_t, excluded.floor_t),
+                source = excluded.source,
+                updated_at = excluded.updated_at
+            """,
+            (code, tf, int(floor_t), source, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def clear_candle_history_floor(code: str, tf: str | None = None) -> None:
+    """바닥 기록 삭제 — 캔들을 퍼지할 때 함께 부른다(퍼지 후에는 바닥이 거짓이 된다)."""
+    conn = get_connection()
+    try:
+        if tf is None:
+            conn.execute("DELETE FROM candle_history_floor WHERE code = ?", (code,))
+        else:
+            conn.execute(
+                "DELETE FROM candle_history_floor WHERE code = ? AND tf = ?", (code, tf)
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_candles_age_seconds(code: str, tf: str) -> float | None:
