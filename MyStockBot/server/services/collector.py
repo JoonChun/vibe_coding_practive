@@ -35,7 +35,7 @@ from config import (
     TIMEZONE,
 )
 
-from . import alerts
+from . import alerts, candles as candles_service
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,61 @@ _stop_event = threading.Event()
 # 대기 중인 루프를 깨우는 이벤트 — 정지(stop)와 즉시수집(trigger_immediate_cycle)
 # 양쪽이 공유한다. 어느 쪽으로 깼는지는 _stop_event 로 구분한다.
 _wake_event = threading.Event()
+
+# ── 종목별 수집 실패 백오프 ──
+# 상장폐지·거래정지 종목은 매 사이클 KIS 호출이 실패하는데, 실패해도 저장소 나이가
+# 갱신되지 않아 신선도 게이트가 늘 stale 로 판정한다 → 장중 30초마다 전역 스로틀
+# 슬롯(0.5초)을 영구히 소모하며 정상 종목의 수집을 그만큼 늦춘다.
+# 연속 실패가 임계치를 넘으면 지수적으로 재시도 간격을 벌린다(상한 6시간).
+# 수집 루프는 워커 4개로 병렬 실행되므로 락이 필요하다(재무 캐시와 같은 관례).
+_FETCH_FAIL_THRESHOLD = 3          # 이 횟수까지는 매 사이클 그대로 재시도한다
+_FETCH_BACKOFF_BASE_SECONDS = 300  # 임계 초과 첫 백오프 5분 → 10분 → 20분 …
+_FETCH_BACKOFF_MAX_SECONDS = 6 * 3600
+_fetch_fail_streak: dict[str, int] = {}
+_fetch_skip_until: dict[str, float] = {}  # time.monotonic() 기준
+_fetch_backoff_lock = threading.Lock()
+
+
+def _fetch_backoff_ok(code: str) -> bool:
+    """이번 사이클에 이 종목을 시도해도 되는지. 백오프 중이면 False."""
+    with _fetch_backoff_lock:
+        until = _fetch_skip_until.get(code)
+        return until is None or time.monotonic() >= until
+
+
+def _note_fetch_success(code: str) -> None:
+    """성공하면 스트릭·백오프를 즉시 푼다(거래정지 해제·상장 재개 대응)."""
+    with _fetch_backoff_lock:
+        _fetch_fail_streak.pop(code, None)
+        _fetch_skip_until.pop(code, None)
+
+
+def _prune_fetch_backoff(active_codes: set[str]) -> None:
+    """관심종목에서 빠진 코드의 백오프 기록을 버린다.
+
+    없어도 누수라 부를 규모는 아니지만(엔트리 수십 바이트), 종목을 자주 갈아끼우면
+    단조 증가한다. 사이클마다 활성 목록을 이미 들고 있으므로 공짜로 정리한다.
+    """
+    with _fetch_backoff_lock:
+        for stale in [c for c in _fetch_fail_streak if c not in active_codes]:
+            _fetch_fail_streak.pop(stale, None)
+        for stale in [c for c in _fetch_skip_until if c not in active_codes]:
+            _fetch_skip_until.pop(stale, None)
+
+
+def _note_fetch_failure(code: str) -> None:
+    with _fetch_backoff_lock:
+        streak = _fetch_fail_streak.get(code, 0) + 1
+        _fetch_fail_streak[code] = streak
+        if streak < _FETCH_FAIL_THRESHOLD:
+            return
+        over = streak - _FETCH_FAIL_THRESHOLD
+        delay = min(_FETCH_BACKOFF_BASE_SECONDS * (2 ** over), _FETCH_BACKOFF_MAX_SECONDS)
+        _fetch_skip_until[code] = time.monotonic() + delay
+    logger.warning(
+        "[collector] %s 수집 %d회 연속 실패 — %d초간 재시도를 미룹니다(상장폐지·거래정지 추정)",
+        code, streak, int(delay),
+    )
 
 
 # ────────────────────────────────────────────
@@ -297,7 +352,9 @@ def _get_daily_df(code: str, token: str | None) -> tuple[pd.DataFrame | None, st
 
     daily_items = _df_to_candle_items_daily(daily_df)
     if daily_items:
-        db.upsert_candles(code, "1d", daily_items)
+        # 저장은 candles 서비스의 관문을 통과시킨다 — 규약 혼합·분할 단차 방어를
+        # 수집 루프와 차트 요청이 함께 받도록(여기도 kis/yfinance 혼합 진입점이다).
+        candles_service.store_candles(code, "1d", daily_items, source)
     _remember_source(code, "1d", source)
     stored = db.get_candles_store(code, "1d", 100)
     return (pd.DataFrame(stored) if stored else daily_df), source
@@ -351,7 +408,7 @@ def _get_60m_df(code: str, token: str | None = None) -> tuple[pd.DataFrame | Non
 
     items60 = _df_to_candle_items_minute(df60)
     if items60:
-        db.upsert_candles(code, "60m", items60)
+        candles_service.store_candles(code, "60m", items60, source)
     _remember_source(code, "60m", source)
     stored = db.get_candles_store(code, "60m", 150)
     return (pd.DataFrame(stored) if stored else df60), source
@@ -361,10 +418,22 @@ def _collect_one(item: dict, token: str | None) -> dict:
     code = item["code"]
     name = item["name"]
 
+    # 연속 실패 중인 종목은 외부 호출 없이 바로 오류 항목으로 돌려준다 — 상장폐지·거래정지
+    # 종목이 매 사이클(장중 30초) KIS 슬롯을 영구히 먹는 것을 막는다.
+    if not _fetch_backoff_ok(code):
+        return _error_item(code, name, "수집 실패가 반복되어 잠시 재시도를 미룹니다")
+
     # ① 일봉(신선도 게이트 — 600초 이내면 저장소에서 바로 서빙, 외부 fetch 생략)
     daily_store_df, source = _get_daily_df(code, token)
     if daily_store_df is None or daily_store_df.empty:
+        # 토큰이 없는 사이클(KIS 자격증명 실패·만료)은 **전역 장애**다 — 종목 탓이
+        # 아니므로 스트릭을 올리지 않는다. 안 그러면 앱키가 하루 죽었을 때 전 종목이
+        # 백오프에 빠져, 자격증명을 고친 뒤에도 몇 시간 동안 수집이 안 돌아온다.
+        if token is not None:
+            _note_fetch_failure(code)
         return _error_item(code, name, f"일봉 수집 실패: {code}")
+
+    _note_fetch_success(code)
 
     close = _safe_float(daily_store_df.iloc[-1]["close"]) if not daily_store_df.empty else None
     change_data = _price_change(daily_store_df)
@@ -504,6 +573,8 @@ def _run_cycle() -> None:
             _state = {"generated_at": now.isoformat(), "items": []}
         logger.info("[collector] watchlist 비어있음 — 수집 건너뜀")
         return
+
+    _prune_fetch_backoff({s["code"] for s in stock_list})
 
     try:
         token = kis_auth.get_token()

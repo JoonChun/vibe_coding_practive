@@ -22,9 +22,11 @@ _SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-_LOCAL_CREDENTIALS_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "mystockbot-497909-4649b1cfee23.json"
-)
+# 자격증명은 GOOGLE_CREDENTIALS_JSON 환경변수 하나로만 받는다.
+#
+# 예전에는 저장소 루트의 서비스계정 키 파일(mystockbot-*.json)을 폴백으로 읽었는데,
+# 그 파일이 평문 개인키인 채로 작업 디렉토리에 남아 있어야 한다는 뜻이었다(백업·스냅샷·
+# 실수 커밋으로 새어나가는 경로). 환경변수 한 곳으로 좁히면 유출 표면이 그만큼 준다.
 
 # Dashboard C열에 이 표시가 있으면 수집 대상에서 제외한다(웹앱에서 관심종목을 삭제했을 때
 # 시트 행을 지우는 대신 이 표시를 남긴다 — 사용자가 직접 넣은 행을 파괴하지 않고, 셀만
@@ -36,19 +38,20 @@ _DASHBOARD_STATUS_COL = 3  # C열
 
 
 def credentials_available() -> bool:
-    """Google 자격증명이 준비돼 있는지(환경변수 JSON 또는 로컬 키파일). 호출 없이 판단."""
-    if os.environ.get(CREDENTIALS_ENV_KEY):
-        return True
-    return os.path.isfile(_LOCAL_CREDENTIALS_FILE)
+    """Google 자격증명(GOOGLE_CREDENTIALS_JSON)이 준비돼 있는지. 호출 없이 판단."""
+    return bool((os.environ.get(CREDENTIALS_ENV_KEY) or "").strip())
 
 
 def _get_client() -> gspread.Client:
-    raw = os.environ.get(CREDENTIALS_ENV_KEY)
-    if raw:
-        info = json.loads(raw)
-        creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
-        return gspread.authorize(creds)
-    return gspread.service_account(filename=_LOCAL_CREDENTIALS_FILE, scopes=_SCOPES)
+    raw = (os.environ.get(CREDENTIALS_ENV_KEY) or "").strip()
+    if not raw:
+        raise RuntimeError(
+            f"{CREDENTIALS_ENV_KEY} 환경변수가 없습니다 — 서비스계정 JSON 전체를 "
+            "한 줄 문자열로 넣으세요(.env 또는 GitHub Secrets)."
+        )
+    info = json.loads(raw)
+    creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
+    return gspread.authorize(creds)
 
 
 def _dashboard_ws(spreadsheet_id: str):
