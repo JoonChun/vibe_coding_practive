@@ -618,6 +618,8 @@ def get_index_candles(count: int = 1000) -> list[dict]:
     if df is not None and not df.empty:
         items = _df_to_items_daily(df)
         if items:
+            # store_candles 관문을 거치지 않는 유일한 경로다 — 지수는 yfinance 단일
+            # 소스라 규약이 섞일 수 없고, 분할도 없어 단차 감지가 무의미하다.
             db.upsert_candles(_INDEX_CODE, _INDEX_TF, items, source="yfinance")
             logger.info(f"[candles] 코스피 지수(^KS11) 적재 — {len(items)}건 upsert")
 

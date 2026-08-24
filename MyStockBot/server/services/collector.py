@@ -117,6 +117,19 @@ def _note_fetch_success(code: str) -> None:
         _fetch_skip_until.pop(code, None)
 
 
+def _prune_fetch_backoff(active_codes: set[str]) -> None:
+    """관심종목에서 빠진 코드의 백오프 기록을 버린다.
+
+    없어도 누수라 부를 규모는 아니지만(엔트리 수십 바이트), 종목을 자주 갈아끼우면
+    단조 증가한다. 사이클마다 활성 목록을 이미 들고 있으므로 공짜로 정리한다.
+    """
+    with _fetch_backoff_lock:
+        for stale in [c for c in _fetch_fail_streak if c not in active_codes]:
+            _fetch_fail_streak.pop(stale, None)
+        for stale in [c for c in _fetch_skip_until if c not in active_codes]:
+            _fetch_skip_until.pop(stale, None)
+
+
 def _note_fetch_failure(code: str) -> None:
     with _fetch_backoff_lock:
         streak = _fetch_fail_streak.get(code, 0) + 1
@@ -560,6 +573,8 @@ def _run_cycle() -> None:
             _state = {"generated_at": now.isoformat(), "items": []}
         logger.info("[collector] watchlist 비어있음 — 수집 건너뜀")
         return
+
+    _prune_fetch_backoff({s["code"] for s in stock_list})
 
     try:
         token = kis_auth.get_token()

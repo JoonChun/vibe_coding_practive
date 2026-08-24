@@ -157,7 +157,14 @@ def _delisting_guard_ok(rows: list[dict]) -> bool:
             )
             return False
 
-    previous = db.count_stock_master()
+    try:
+        previous = db.count_stock_master()
+    except Exception as e:
+        # 비교 기준을 못 읽으면 판정을 미룬다 — 가드가 목적인데 가드가 죽었다고
+        # 마스터 갱신 전체를 실패시키면 본말이 전도된다(데이터는 최신화돼야 한다).
+        logger.warning("[stock_master] 상폐 판정 보류 — 기존 종목 수 조회 실패: %s", e)
+        return False
+
     if previous and len(rows) < previous * STOCK_MASTER_MIN_RATIO:
         logger.warning(
             "[stock_master] 상폐 판정 보류 — 종목 수가 %d→%d 로 급감(기준 %.0f%%). "

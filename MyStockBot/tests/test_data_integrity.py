@@ -281,3 +281,32 @@ def test_removal_does_not_touch_other_codes(db):
 
     assert len(db.get_candles_store("^KS11", "1d", 100)) == 5
     assert len(db.get_candles_store("000660", "1d", 100)) == 5
+
+
+def test_backoff_prune_drops_removed_codes():
+    """관심종목에서 빠진 코드의 백오프 기록이 단조 증가하지 않는다."""
+    from server.services import collector
+
+    with collector._fetch_backoff_lock:
+        collector._fetch_fail_streak.clear()
+        collector._fetch_skip_until.clear()
+    collector._note_fetch_failure("000001")
+    collector._note_fetch_failure("000002")
+
+    collector._prune_fetch_backoff({"000001"})
+
+    with collector._fetch_backoff_lock:
+        assert "000001" in collector._fetch_fail_streak
+        assert "000002" not in collector._fetch_fail_streak
+
+
+def test_delisting_guard_defers_when_count_query_fails(db, monkeypatch):
+    """가드가 쓰는 조회가 죽어도 마스터 갱신 전체를 실패시키지 않는다 —
+    가드가 목적인데 가드 때문에 데이터 최신화가 막히면 본말전도다."""
+    import stock_master
+
+    def boom():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(db, "count_stock_master", boom)
+    assert stock_master._delisting_guard_ok(_KOSPI + _KOSDAQ) is False
