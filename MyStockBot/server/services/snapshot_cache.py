@@ -54,7 +54,24 @@ def _to_snapshot_item(item: dict) -> dict:
         "change": item.get("change"),
         "change_pct": item.get("change_pct"),
         "factors": _to_factors(item),
+        "live": _to_live(item.get("code")),
     }
+
+
+def _to_live(code) -> dict | None:
+    """tick_aggregator 의 실시간 참고 판정을 얹는다(지연 import — 순환 방지).
+
+    합성기가 아직 안 떴거나(부팅 직후) 그 종목 틱이 없으면 None 이다 — 정상 상태이며
+    화면은 확정 판정만 그린다.
+    """
+    if not code:
+        return None
+    try:
+        from . import tick_aggregator
+
+        return tick_aggregator.get_reference_state().get(code)
+    except Exception:
+        return None
 
 
 def _rules_meta() -> dict:

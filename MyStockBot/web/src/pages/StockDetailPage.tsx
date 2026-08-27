@@ -7,6 +7,7 @@ import { BollingerTrack } from "../components/BollingerTrack";
 import { CandleChart } from "../components/CandleChart";
 import { DecisionGauge } from "../components/DecisionGauge";
 import { FactorBreakdown } from "../components/FactorBreakdown";
+import { LiveReferenceStrip } from "../components/LiveReferenceStrip";
 import { PullbackCard } from "../components/PullbackCard";
 import { RealtimeBadge } from "../components/RealtimeBadge";
 import { TokenBanner } from "../components/TokenBanner";
@@ -205,6 +206,15 @@ export default function StockDetailPage() {
                   relativeTime={relativeUpdatedAt || "방금"}
                   warming={tab === "short" && isShortViewWarming(item?.factors)}
                 />
+                {/* 실시간 참고 판정 — 확정 게이지 아래에 보조로만 둔다(확정을 압도하지 않게) */}
+                <LiveReferenceStrip
+                  variant="full"
+                  kind={tab === "short" ? "단기" : "장기"}
+                  live={item?.live ?? null}
+                  confirmedView={view}
+                  wsConnected={tickStream.connected && tickStream.kisConnected}
+                  warming={tab === "short" && isShortViewWarming(item?.factors)}
+                />
               </div>
               <div className="detail-grid__factors">
                 <FactorBreakdown rows={factorRows} rules={rules} view={tab} />
@@ -236,7 +246,11 @@ export default function StockDetailPage() {
             </div>
           )}
           <div className="detail-grid__chart">
-            <CandleChart code={code} />
+            <CandleChart
+              code={code}
+              liveBars={tickStream.liveBars[code]}
+              wsConnected={tickStream.connected && tickStream.kisConnected}
+            />
           </div>
         </div>
 

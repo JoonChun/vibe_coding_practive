@@ -16,6 +16,8 @@
     {"type": "status", "kis_connected": bool, "subscribed": list[str],
      "excluded": list[str], "subscription_limit": int}
       (연결 상태 변화 시 + 41건 캡으로 제외된 종목 목록이 바뀔 때)
+    그 밖에 tick_aggregator 가 broadcast_event() 로 내보내는 bar_update 이벤트도
+    같은 큐를 탄다(이 모듈은 통로만 제공하고 내용에 관여하지 않는다).
 
 동작 개요:
     1) 연결 태스크(_connection_loop): approval_key 발급(kis_auth.get_approval_key) →
@@ -63,7 +65,7 @@ H0STCNT0(국내주식 실시간체결가, KRX) 필드 순서 — 공식 출처(W
     (이하 15~45: 이 모듈에서는 사용하지 않음 — 매도/매수 체결건수, 체결강도 등)
 
     이 모듈이 실제로 쓰는 인덱스는 0(코드), 1(시간), 2(현재가), 3(부호), 4(전일대비),
-    5(전일대비율), 13(누적거래량)뿐이다.
+    5(전일대비율), 7·8·9(당일 시/고/저 — 진행중 1일봉 합성용), 13(누적거래량)이다.
 
     PRDY_VRSS_SIGN(전일 대비 부호) 코드 — KIS REST/WS 전 API 공통 관례:
         1 상한가, 2 상승, 3 보합, 4 하한가, 5 하락.
@@ -105,6 +107,11 @@ _IDX_PRICE = 2
 _IDX_SIGN = 3
 _IDX_CHANGE = 4
 _IDX_CHANGE_PCT = 5
+# 당일 시가/고가/저가 — 진행중 1일봉을 O(1)로 합성하는 데 쓴다(틱마다 누적할 필요가 없다).
+# 값이 비어 오는 경우가 있어(개장 직후 등) 파싱 실패는 None 으로 두고 호출부가 판단한다.
+_IDX_DAY_OPEN = 7
+_IDX_DAY_HIGH = 8
+_IDX_DAY_LOW = 9
 _IDX_VOLUME = 13
 
 # PRDY_VRSS_SIGN 코드 → 극성(1 상한/2 상승 = +, 3 보합 = 0, 4 하한/5 하락 = -)
@@ -253,6 +260,15 @@ async def _broadcast(event: dict) -> None:
         _put_nowait_drop_oldest(queue, event)
 
 
+async def broadcast_event(event: dict) -> None:
+    """다른 서비스(tick_aggregator)가 브라우저 WS 로 임의 이벤트를 내보내는 공개 통로.
+
+    리스너 큐 관리·drop-oldest 정책을 한 곳에 두기 위해 _broadcast 를 재노출한다 —
+    호출부가 _listeners 를 직접 만지면 정책이 갈라진다.
+    """
+    await _broadcast(event)
+
+
 async def _broadcast_status() -> None:
     await _broadcast({"type": "status", **get_status()})
 
@@ -288,6 +304,15 @@ def _parse_ccnl_record(fields: list[str]) -> dict | None:
     except (ValueError, IndexError):
         return None
 
+    # 당일 시/고/저는 **있으면 쓰고 없으면 넘긴다** — 이 세 값이 비어 온다고 틱 자체를
+    # 버리면 가격 표시까지 멈춘다(진행중 1일봉만 못 만들 뿐이다).
+    def _opt_float(idx: int) -> float | None:
+        try:
+            raw = fields[idx].strip()
+            return float(raw) if raw else None
+        except (ValueError, IndexError):
+            return None
+
     polarity = _SIGN_POLARITY.get(sign, 0)
 
     return {
@@ -298,6 +323,10 @@ def _parse_ccnl_record(fields: list[str]) -> dict | None:
         "change_pct": round(change_pct_magnitude * polarity, 2),
         "volume": volume,
         "time": _format_time(raw_time),
+        # 진행중 1일봉 합성용 — 틱마다 누적하지 않고 KIS 가 준 당일값을 그대로 쓴다.
+        "day_open": _opt_float(_IDX_DAY_OPEN),
+        "day_high": _opt_float(_IDX_DAY_HIGH),
+        "day_low": _opt_float(_IDX_DAY_LOW),
     }
 
 

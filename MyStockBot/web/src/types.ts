@@ -326,6 +326,8 @@ export interface SnapshotItem {
   source: SnapshotSource | null;
   error: string | null;
   factors: SnapshotFactors | null;
+  /** 실시간 참고 판정(additive) — 틱이 없거나 장외면 null */
+  live?: LiveJudgment | null;
 }
 
 export interface SnapshotResponse {
@@ -478,4 +480,35 @@ export interface PaperEquityResponse {
   points: PaperEquityPoint[];
   /** 평가 가정·한계(일봉 폴백 사용 여부 포함) */
   notes: string[];
+}
+
+/**
+ * 실시간 **참고** 판정 — 확정 판정(short_view/long_view)과 별개다.
+ *
+ * 아직 닫히지 않은 진행중 봉을 이어붙여 계산하므로 마감까지 바뀔 수 있다. 화면은 확정과
+ * **다를 때만** 보조로 노출한다. updated_at 은 short/long 공통(둘이 같은 순간 재계산된다).
+ * null 이면 아직 이 종목의 참고 판정이 없다는 뜻(워밍업) — 오류가 아니다.
+ */
+export interface LiveJudgment {
+  short_view_live: SignalView | null;
+  short_score_live: number | null;
+  long_view_live: SignalView | null;
+  long_score_live: number | null;
+  /** 확정 쪽 bars_60m 과 같은 워밍업 축 — 없으면 확정은 '축적 중'인데 실시간만 '관망'이 뜬다 */
+  bars_60m_live?: number | null;
+  updated_at: string | null;
+}
+
+/**
+ * WS bar_update 가 실어나르는 진행중(미마감) 봉 1개.
+ * CandleItem 과 달리 결측이 없다 — 서버가 전 필드가 찬 봉만 내보낸다.
+ * tf ∈ {1m,5m,15m,30m,60m,120m,240m,1d} (1w/1M/1y 는 이 메시지에 오지 않는다).
+ */
+export interface LiveBar {
+  t: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }

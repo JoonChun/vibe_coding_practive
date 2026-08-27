@@ -79,6 +79,7 @@ export default function DashboardPage() {
           market: item.market ?? null,
           shortWarming: isShortViewWarming(snap?.factors),
           realtimeExcluded: tickStream.excludedCodes.has(item.code),
+          live: snap?.live ?? null,
         };
       });
   }, [watchlist, snapshot.data, tickStream.excludedCodes]);
@@ -328,6 +329,7 @@ export default function DashboardPage() {
                 row={row}
                 onDelete={handleDelete}
                 tick={tickStream.ticks[row.code] ?? null}
+                wsConnected={tickStream.connected && tickStream.kisConnected}
               />
             ))}
           </ul>

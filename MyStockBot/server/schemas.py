@@ -85,6 +85,22 @@ class FactorDetail(BaseModel):
     breakdown_long: list[FactorRow] = []    # 장기(일봉+재무) 기여요인 — MACD·RSI·PER·PBR·ROE
 
 
+class LiveJudgment(BaseModel):
+    """실시간 **참고** 판정 — 확정 판정(short_view/long_view)과 별개다.
+
+    확정 봉만 쓰는 판정과 달리 아직 닫히지 않은 진행중 봉을 이어붙여 계산하므로,
+    마감까지 얼마든지 바뀔 수 있다. 화면은 이 값을 확정과 **다를 때만** 보조로 노출한다.
+    bars_60m_live 는 확정 쪽과 같은 워밍업 축 — 이게 없으면 확정 칩은 '축적 중'인데
+    실시간 칩은 '관망'이 뜨는 모순이 생긴다.
+    """
+    short_view_live: str | None = None
+    short_score_live: int | None = None
+    long_view_live: str | None = None
+    long_score_live: int | None = None
+    bars_60m_live: int | None = None
+    updated_at: str | None = None
+
+
 class SnapshotItem(BaseModel):
     code: str
     name: str
@@ -96,6 +112,8 @@ class SnapshotItem(BaseModel):
     change: float | None = None
     change_pct: float | None = None
     factors: FactorDetail | None = None
+    # 실시간 참고 판정(additive). 틱이 없거나 장외면 None — 기존 계약 무변경.
+    live: LiveJudgment | None = None
 
 
 class SnapshotResponse(BaseModel):

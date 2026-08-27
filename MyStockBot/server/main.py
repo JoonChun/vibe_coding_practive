@@ -36,7 +36,7 @@ from .auth import auth_middleware, is_auth_enabled
 from .errors import sqlite_operational_error_handler
 from .static import mount_web_ui
 from .routers import alerts, indices, market, paper, stream, watchlist, snapshot, stocks
-from .services import collector, kis_ws, scheduler
+from .services import collector, kis_ws, scheduler, tick_aggregator
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,10 @@ async def lifespan(app: FastAPI):
         # 그래도 부팅 경로에서 예기치 못한 예외로 서버 자체가 죽는 일은 없어야 하므로
         # 여기서도 한 번 더 격리한다 — 실패해도 REST API/폴링 스냅샷은 정상 동작.
         await kis_ws.start()
+        # tick_aggregator 는 자체 큐로 kis_ws.add_listener 를 등록하므로 kis_ws.start()
+        # **이후**에 기동해야 한다. 실패해도 나머지 기능은 정상 동작한다(실시간 참고
+        # 판정과 진행중 봉만 비활성).
+        await tick_aggregator.start()
     except Exception as e:
         logger.warning(
             "[startup] KIS 실시간 WS 시작 실패(틱 스트림 비활성, 나머지 기능은 정상 동작): %s", e
@@ -122,6 +126,7 @@ async def lifespan(app: FastAPI):
     collector.stop()
     scheduler.shutdown()
     try:
+        await tick_aggregator.stop()
         await kis_ws.stop()
     except Exception as e:
         logger.warning("[shutdown] KIS 실시간 WS 정지 중 예외: %s", e)

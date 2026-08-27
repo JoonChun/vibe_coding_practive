@@ -10,6 +10,8 @@ interface SignalChipProps {
    * 바꾸지는 않으므로 정렬·분포 집계(DECISION_RANK·countDecisions)에는 영향이 없다.
    */
   warming?: boolean;
+  /** "live" 면 실시간 참고 판정용 저채도 외곽선 — 확정 판정을 시각적으로 압도하지 않게 */
+  variant?: "confirmed" | "live";
 }
 
 interface ChipStyle {
@@ -45,7 +47,8 @@ function resolveStyle(label: SignalView | null): {
   return { display: "데이터부족", style: CHIP_STYLES["데이터부족"] };
 }
 
-export function SignalChip({ label, kind, warming = false }: SignalChipProps) {
+export function SignalChip({ label, kind, warming = false, variant = "confirmed" }: SignalChipProps) {
+  const isLive = variant === "live";
   const resolved = resolveStyle(label);
   const display = warming ? "축적 중" : resolved.display;
   const style = warming ? CHIP_STYLES["데이터부족"] : resolved.style;
@@ -55,10 +58,12 @@ export function SignalChip({ label, kind, warming = false }: SignalChipProps) {
 
   return (
     <span
-      className={`signal-chip${style.outline ? " signal-chip--outline" : ""}`}
+      className={`signal-chip${style.outline ? " signal-chip--outline" : ""}${
+        isLive ? " signal-chip--live" : ""
+      }`}
       style={{
-        backgroundColor: style.bg,
-        color: style.fg,
+        backgroundColor: isLive ? "transparent" : style.bg,
+        color: isLive ? style.border : style.fg,
         borderColor: style.border,
       }}
       aria-label={`${kind} 관점: ${display}`}

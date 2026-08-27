@@ -173,6 +173,19 @@ KIS_MASTER_URLS = {
     "KOSPI": "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip",
     "KOSDAQ": "https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip",
 }
+# 틱 합성기(server/services/tick_aggregator.py) — 진행중(미확정) 봉 합성 주기.
+# 봉 브로드캐스트는 화면 갱신용이라 짧게, 참고 판정은 지표 재계산이 붙어 조금 길게 둔다.
+TICK_AGG_BAR_BROADCAST_INTERVAL_SECONDS = int(
+    os.environ.get("TICK_AGG_BAR_BROADCAST_INTERVAL_SECONDS", "2")
+)
+TICK_AGG_REFERENCE_INTERVAL_SECONDS = int(
+    os.environ.get("TICK_AGG_REFERENCE_INTERVAL_SECONDS", "5")
+)
+# 분봉 링버퍼 보관 분수 — 240분봉 한 버킷(240분)을 덮고도 여유가 있어야 한다.
+TICK_AGG_RING_BUFFER_MAX_MINUTES = int(
+    os.environ.get("TICK_AGG_RING_BUFFER_MAX_MINUTES", "400")
+)
+
 STOCK_MASTER_STALE_DAYS = 7
 
 # 상장폐지 판정(마스터 파일에서 사라진 코드) 안전 가드.
