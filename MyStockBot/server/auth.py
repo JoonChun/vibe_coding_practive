@@ -31,9 +31,15 @@ _API_PREFIX = "/api"
 #
 # IP별 추적은 하지 않는다 — 터널(cloudflared/Tailscale) 뒤에서는 모든 요청의
 # client IP 가 터널 프로세스의 로컬 주소로 보여 IP별 구분이 무의미하다.
-# 대신 **실패만** 전역으로 세고, 창 안 실패가 임계치를 넘으면 이후의 "실패하는"
-# 요청에만 429 를 준다. 올바른 토큰은 언제나 통과하므로, 공격이 진짜 사용자를
-# 잠그는(락아웃 DoS) 부작용 없이 추측 속도만 분당 _FAIL_THRESHOLD 로 상한된다.
+# 대신 **토큰을 제시한 실패만** 전역으로 센다.
+#
+# ★ 이 장치는 사용자를 잠그지 않는다 — 실패 응답은 임계를 넘든 말든 **항상 401** 이고,
+#   감속은 Retry-After 헤더로만 알린다. 예전에는 임계 초과 시 429 를 줬는데, 그러면
+#   프론트가 401 을 못 받아 토큰 입력 배너가 뜨지 않아 **사용자가 토큰을 넣을 방법을
+#   잃었다**(실측 확인). 첫 접속은 폴링 3종이 동시에 401 을 받으므로 임계를 금방 넘는다.
+#
+# ★ Authorization 헤더가 없는 요청은 카운트하지 않는다 — 값을 찍어보는 공격이 아니라
+#   "아직 토큰을 입력하지 않은 정상 첫 접속"이다.
 _FAIL_WINDOW_SECONDS = 60
 _FAIL_THRESHOLD = 10
 _RETRY_AFTER_SECONDS = 60
@@ -43,7 +49,8 @@ _fail_lock = threading.Lock()
 
 def _register_failure_and_check_limit() -> bool:
     """인증 실패 1건을 기록하고, 창(_FAIL_WINDOW_SECONDS) 안의 실패 수가 임계치를
-    넘었으면 True(=이 요청은 401 대신 429 대상)를 돌려준다."""
+    넘었으면 True(=이 응답에 Retry-After 를 붙일 대상)를 돌려준다.
+    상태코드는 어느 쪽이든 401 이다 — 위 주석 참조."""
     now = time.monotonic()
     with _fail_lock:
         while _fail_times and now - _fail_times[0] > _FAIL_WINDOW_SECONDS:
@@ -95,18 +102,26 @@ async def auth_middleware(request: Request, call_next):
 
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
+    presented = scheme.lower() == "bearer" and bool(token)
 
-    if scheme.lower() != "bearer" or not token or not tokens_match(token, _API_TOKEN):
-        if _register_failure_and_check_limit():
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "인증 실패가 너무 잦습니다 — 잠시 후 다시 시도하세요"},
-                headers={"Retry-After": str(_RETRY_AFTER_SECONDS)},
-            )
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "인증이 필요합니다"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # 유효한 토큰은 감속 상태와 무관하게 항상 통과한다.
+    if presented and tokens_match(token, _API_TOKEN):
+        return await call_next(request)
 
-    return await call_next(request)
+    # ── 실패 경로 ──
+    # ★ 상태코드는 **항상 401** 이다. 예전에는 감속 임계를 넘으면 429 를 줬는데, 그러면
+    #   프론트가 401 을 못 받아 **토큰 입력 배너 자체가 안 뜬다**(useSnapshot.errorStatus
+    #   === 401 로 판정한다). 즉 사용자가 토큰을 넣을 UI 를 잃는다 — 실측으로 확인한
+    #   결함이다. 첫 접속은 폴링 3종이 동시에 401 을 받으므로 임계를 금방 넘는다.
+    #   감속은 상태코드가 아니라 Retry-After 로만 알린다.
+    #
+    # ★ 카운트는 **토큰을 제시한 실패만** 센다. Authorization 헤더가 아예 없는 요청은
+    #   "아직 토큰을 입력하지 않은 첫 접속"이지 값을 찍어보는 공격이 아니다.
+    headers = {"WWW-Authenticate": "Bearer"}
+    if presented and _register_failure_and_check_limit():
+        headers["Retry-After"] = str(_RETRY_AFTER_SECONDS)
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "인증이 필요합니다"},
+        headers=headers,
+    )

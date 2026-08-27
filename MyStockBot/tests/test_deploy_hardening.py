@@ -55,13 +55,31 @@ def _auth_env(monkeypatch):
         auth._fail_times.clear()
 
 
-def test_failures_get_401_until_threshold_then_429():
+def test_failures_stay_401_and_gain_retry_after():
+    """★ 임계를 넘어도 상태코드는 401 을 유지한다.
+
+    429 를 주면 프론트가 401 을 못 받아 토큰 입력 배너가 뜨지 않고, 사용자가 토큰을
+    넣을 방법을 잃는다(실측으로 겪은 결함 — 첫 접속은 폴링 3종이 동시에 401 을 받아
+    임계를 금방 넘는다). 감속은 Retry-After 헤더로만 알린다."""
     for _ in range(auth._FAIL_THRESHOLD):
-        assert _call(token="wrong").status_code == 401
+        r = _call(token="wrong")
+        assert r.status_code == 401
+        assert "Retry-After" not in r.headers
 
     over = _call(token="wrong")
-    assert over.status_code == 429
+    assert over.status_code == 401, "감속이 사용자를 잠그면 안 된다"
     assert over.headers["Retry-After"] == str(auth._RETRY_AFTER_SECONDS)
+
+
+def test_missing_header_never_counts_toward_limit():
+    """토큰을 아직 입력하지 않은 첫 접속은 공격이 아니다 — 폴링이 401 을 아무리 받아도
+    감속에 걸리지 않아야 한다(걸리면 배너가 못 뜨던 그 결함이 재발한다)."""
+    for _ in range(auth._FAIL_THRESHOLD * 3):
+        r = _call(token=None)
+        assert r.status_code == 401
+        assert "Retry-After" not in r.headers
+    with auth._fail_lock:
+        assert len(auth._fail_times) == 0
 
 
 def test_valid_token_passes_even_during_bruteforce_storm():
@@ -82,7 +100,7 @@ def test_window_expiry_resets_limiter():
         auth._fail_times.clear()
         auth._fail_times.extend(shifted)
 
-    assert _call(token="wrong").status_code == 401
+    assert "Retry-After" not in _call(token="wrong").headers
 
 
 def test_health_path_exempt_never_counts():
