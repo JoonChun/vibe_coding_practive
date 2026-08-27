@@ -11,6 +11,10 @@ services:
     environment:
       TZ: Asia/Seoul
       MYSTOCKBOT_DB_PATH: /app/data/mystockbot.db
+      # 아래 user: 오버라이드로 실행 uid 가 이미지의 app(10001)이 아니게 되면 그 uid 의
+      # 홈이 없어 yfinance 가 "/" 를 홈으로 보고 /.cache 생성을 시도하다 실패한다
+      # (기능은 캐시 없이 계속 동작하지만 매 부팅 경고가 뜨고 조회가 조금 느려진다).
+      HOME: /tmp
     volumes:
       # SQLite DB + KIS 토큰 캐시. 호스트에서 직접 열어볼 수 있게 바인드 마운트로 둔다.
       - ./data:/app/data

@@ -26,7 +26,13 @@ docker compose up -d --build
   사용자(보통 `1000`) 소유 디렉터리에 써야 한다. compose 가 `${UID:-1000}:${GID:-1000}`
   으로 넘긴다. uid 가 1000 이 아니면:
   ```bash
-  UID=$(id -u) GID=$(id -g) docker compose up -d --build
+  # bash 에서 UID 는 읽기 전용이라 `UID=$(id -u) ...` 는 조용히 무시된다.
+  # 호스트 uid 가 1000 이면 compose 기본값과 같아 그대로 두어도 되고,
+  # 다르면 아래처럼 .env 나 export 로 넘긴다.
+  docker compose up -d --build
+  # uid 가 1000 이 아닌 경우:
+  #   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --build
+  #   (docker-compose.yml 의 user 를 ${HOST_UID:-1000}:${HOST_GID:-1000} 으로 맞춰 쓸 것)
   ```
   이걸 안 맞추면 `unable to open database file` 로 죽는다.
 - **의존성은 `requirements.lock.txt` 로 고정한다.** `requirements.txt` 는 하한만 있는
