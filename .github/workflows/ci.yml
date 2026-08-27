@@ -39,4 +39,7 @@ jobs:
           cache: npm
           cache-dependency-path: MyStockBot/web/package-lock.json
       - run: npm ci
+      # 단위 테스트를 빌드보다 먼저 — 로직이 깨졌으면 번들이 나와도 의미가 없다.
+      - name: Test (vitest)
+        run: npm test
       - run: npm run build

@@ -16,6 +16,7 @@ PROPAGATION_TIMEOUT=180  # 신규 터널 공개 도달 대기 — DNS·엣지 �
 VERCEL_PRODUCTION_URL="https://mystockbot.vercel.app"
 
 DRY_RUN=false
+SKIP_SMOKE=false
 
 ###############################################################################
 # 유틸리티 함수
@@ -306,12 +307,46 @@ verify_deployment() {
 # 메인 로직
 ###############################################################################
 
-main() {
-    # 플래그 파싱
-    if [ "${1:-}" = "--dry-run" ]; then
-        DRY_RUN=true
-        log INFO "드라이런 모드 활성화"
+run_ui_smoke() {
+    local base_url="$1"
+
+    if [ "$SKIP_SMOKE" = true ]; then
+        log INFO "브라우저 스모크 건너뜀(--skip-smoke)"
+        return 0
     fi
+
+    if ! node -e "require('playwright')" >/dev/null 2>&1 \
+       && ! node -e "require(require('child_process').execSync('npm root -g',{encoding:'utf8'}).trim()+'/playwright')" >/dev/null 2>&1; then
+        log INFO "Playwright 미설치 — 브라우저 스모크 건너뜀 (npm i -g playwright 로 활성화)"
+        return 0
+    fi
+
+    local token="${MYSTOCKBOT_API_TOKEN:-}"
+    log INFO "브라우저 스모크 실행: $base_url"
+    if node "${PROJECT_ROOT}/scripts/smoke_ui.mjs" "$base_url" "$token"; then
+        log INFO "브라우저 스모크 통과"
+    else
+        log WARN "브라우저 스모크 실패 — 배포는 유지되나 화면을 직접 확인할 것"
+    fi
+}
+
+
+main() {
+    # 플래그 파싱 — 순서 무관, 여러 개 동시 지정 가능
+    for arg in "$@"; do
+        case "$arg" in
+            --dry-run)
+                DRY_RUN=true
+                log INFO "드라이런 모드 활성화"
+                ;;
+            --skip-smoke)
+                SKIP_SMOKE=true
+                ;;
+            *)
+                log WARN "알 수 없는 옵션 무시: $arg"
+                ;;
+        esac
+    done
 
     check_dependencies
 
@@ -361,6 +396,13 @@ main() {
 
     # 최종 검증
     verify_deployment "https://${tunnel_url}"
+
+    # 브라우저 스모크 — 터널·재배포 뒤 "진짜로 화면이 그려지는가"까지 확인한다.
+    # tsc/vite build 는 빈 화면을 잡지 못하고, verify_deployment 는 번들에 박힌 URL 만 본다.
+    # Playwright 가 없으면 조용히 건너뛴다(CI 에 넣지 않은 이유와 같다 — 무거운 의존성을
+    # 강제하지 않는다). 스모크 실패는 경고로 남기고 동기화 자체는 성공으로 둔다 —
+    # 이미 갱신된 환경변수를 되돌리는 편이 더 위험하다.
+    run_ui_smoke "https://${tunnel_url}"
 
     log INFO "=== 터널 동기화 완료 ==="
 }
