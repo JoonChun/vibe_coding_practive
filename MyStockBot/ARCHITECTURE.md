@@ -30,7 +30,12 @@
 
 ```
 web/src/            React PWA — 그리기만 한다. 판정 점수를 재계산하지 않는다.
-  ├ pages/          화면 5개(메인·관심종목·모의투자·알림·종목상세)
+  ├ pages/          화면 5개. **파일명이 직관과 어긋나니 주의**:
+  │                   MainDashboardPage → "/"        (메인 대시보드)
+  │                   DashboardPage     → "/watchlist" (관심종목)
+  │                   PaperTradingPage  → "/paper"
+  │                   AlertsPage        → "/alerts"
+  │                   StockDetailPage   → "/stocks/:code"
   ├ components/     카드·칩·차트. 백엔드가 준 값을 렌더
   ├ hooks/          useSnapshot(20초 폴링)·useTickStream(WS)·useMarketStatus
   └ utils/          decision.ts(정렬·집계·워밍업 판정)·dcaShare.ts(공유 카드 렌더)
@@ -58,18 +63,21 @@ src/                크론 배치와 웹앱이 **공유**하는 순수 모듈
 
 ## 3. 서비스 지도
 
-| 모듈 | 하는 일 | 특이점 |
-|---|---|---|
-| `collector.py` | 상시 수집 루프(장중 30초·그 외 600초) | 유일한 백그라운드 쓰기 주체. 판정·알림의 원천 |
-| `candles.py` | 멀티 타임프레임 캔들 read-through | **모든 캔들 쓰기의 관문**(§5) |
-| `snapshot_cache.py` | collector 상태 → API 응답 변환 | 계산 없음. 순수 변환 |
-| `alerts.py` | 판정 전환 알림 게이트 | 오알림 방지 장치 6종(§6) |
-| `kis_ws.py` | KIS 실시간 체결가 중계 | 세션당 구독 41건 상한 |
-| `backtest.py` | 판정 재적용 적중률 | 재무 제외(과거 재현 불가) |
-| `dca.py` / `whatif.py` | 적립식·타임머신 시뮬레이션 | 판정 로직 미사용, 가격만 |
-| `paper.py` | 모의투자 + 자산 추이 | 체결가는 collector 스냅샷 |
-| `rule_eval.py` | 룰 평가 하네스(CLI) | 가중치를 바꿀 **근거가 있는지**를 먼저 답한다 |
-| `scheduler.py` | 일일 배치 5개 | 백업 17:00 · 백필 16:20 · 마스터 16:00 · 휴장일 08:10 · 시트임포트 매시 :50 |
+`src/` 소속(크론과 공유)과 `server/services/` 소속(웹앱 전용)을 구분해 둔다 — 전자를
+고치면 크론 배치까지 영향받는다.
+
+| 모듈 | 위치 | 하는 일 | 특이점 |
+|---|---|---|---|
+| `collector.py` | `server/services/` | 상시 수집 루프(장중 30초·그 외 600초) | 유일한 백그라운드 쓰기 주체. 판정·알림의 원천 |
+| `candles.py` | `server/services/` | 멀티 타임프레임 캔들 read-through | **모든 캔들 쓰기의 관문**(§5) |
+| `snapshot_cache.py` | `server/services/` | collector 상태 → API 응답 변환 | 계산 없음. 순수 변환 |
+| `alerts.py` | `server/services/` | 판정 전환 알림 게이트 | 오알림 방지 장치 6종(§6) |
+| `kis_ws.py` | `server/services/` | KIS 실시간 체결가 중계 | 세션당 구독 41건 상한 |
+| `backtest.py` | `server/services/` | 판정 재적용 적중률 | 재무 제외(과거 재현 불가) |
+| `dca.py` / `whatif.py` | `server/services/` | 적립식·타임머신 시뮬레이션 | 판정 로직 미사용, 가격만 |
+| `paper.py` | `server/services/` | 모의투자 + 자산 추이 | 체결가는 collector 스냅샷 |
+| `rule_eval.py` | `server/services/` | 룰 평가 하네스(CLI) | 가중치를 바꿀 **근거가 있는지**를 먼저 답한다 |
+| `scheduler.py` | `server/services/` | 일일 배치 5개 | 백업 17:00 · 백필 16:20 · 마스터 16:00 · 휴장일 08:10 · 시트임포트 평일 09~15시 매시 :50 |
 
 ---
 
