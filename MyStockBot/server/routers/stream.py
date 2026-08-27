@@ -29,7 +29,9 @@ router = APIRouter(tags=["stream"])
 
 # 느린 클라이언트가 전체 브로드캐스트를 막지 않도록 유한 큐(가득 차면 kis_ws 쪽에서
 # 가장 오래된 항목을 drop — 계약: add_listener(q) 를 등록만 하면 됨).
-_QUEUE_MAXSIZE = 200
+# 진행중 봉 브로드캐스트가 붙으면서 한 주기에 최대 41종목 × 8tf ≈ 328건이 몰린다.
+# 200 이면 앞쪽 종목이 drop-oldest 로 유실되므로 여유를 크게 둔다.
+_QUEUE_MAXSIZE = 2000
 
 # 토큰 불일치 시 종료 코드. 4000~4999 는 애플리케이션 전용 대역(RFC 6455).
 _CLOSE_CODE_UNAUTHORIZED = 4401

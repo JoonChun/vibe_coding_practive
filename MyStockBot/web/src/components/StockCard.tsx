@@ -5,6 +5,8 @@ import { useTickFlash, type TickFlashDirection } from "../hooks/useTickFlash";
 import type { SignalView, SnapshotSource } from "../types";
 import { SignalChip } from "./SignalChip";
 import { SourceBadge } from "./SourceBadge";
+import type { LiveJudgment } from "../types";
+import { LiveReferenceStrip } from "./LiveReferenceStrip";
 import { Sparkline } from "./Sparkline";
 
 export interface StockCardData {
@@ -20,6 +22,8 @@ export interface StockCardData {
   shortWarming?: boolean;
   /** KIS 구독 한도(41건)에 걸려 실시간 시세에서 제외된 종목 */
   realtimeExcluded?: boolean;
+  /** 실시간 참고 판정(additive) — 확정과 다를 때만 카드에 조용히 노출된다 */
+  live?: LiveJudgment | null;
 }
 
 interface StockCardProps {
@@ -27,6 +31,8 @@ interface StockCardProps {
   onDelete: (code: string) => Promise<void>;
   /** 실시간 틱 — 있으면 가격·등락률을 이 값으로 표시하고 수신 순간 300ms 플래시 */
   tick?: TickData | null;
+  /** LiveReferenceStrip 의 워밍업/미가용 판정 보조 신호 */
+  wsConnected?: boolean;
 }
 
 const MARKET_BADGE_CLASS: Record<string, string> = {
@@ -34,9 +40,9 @@ const MARKET_BADGE_CLASS: Record<string, string> = {
   KOSDAQ: "market-badge market-badge--kosdaq",
 };
 
-export function StockCard({ row, onDelete, tick }: StockCardProps) {
+export function StockCard({ row, onDelete, tick, wsConnected = false }: StockCardProps) {
   const [pending, setPending] = useState(false);
-  const { code, name, shortView, longView, source, market, shortWarming, realtimeExcluded } = row;
+  const { code, name, shortView, longView, source, market, shortWarming, realtimeExcluded, live } = row;
   const marketLabel = market ?? "KRX";
   const marketBadgeClass = MARKET_BADGE_CLASS[marketLabel] ?? "market-badge";
 
@@ -123,6 +129,24 @@ export function StockCard({ row, onDelete, tick }: StockCardProps) {
         <div className="stock-card__chips">
           <SignalChip label={shortView} kind="단기" warming={shortWarming} />
           <SignalChip label={longView} kind="장기" />
+        </div>
+
+        <div className="stock-card__live-row">
+          <LiveReferenceStrip
+            variant="compact"
+            kind="단기"
+            live={live ?? null}
+            confirmedView={shortView}
+            wsConnected={wsConnected}
+            warming={shortWarming}
+          />
+          <LiveReferenceStrip
+            variant="compact"
+            kind="장기"
+            live={live ?? null}
+            confirmedView={longView}
+            wsConnected={wsConnected}
+          />
         </div>
 
         <div className="stock-card__badges">

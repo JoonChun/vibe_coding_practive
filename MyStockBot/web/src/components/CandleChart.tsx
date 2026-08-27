@@ -11,11 +11,15 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { getCandles } from "../api";
-import type { CandleItem, CandlesResponse, Timeframe } from "../types";
+import type { CandleItem, CandlesResponse, LiveBar, Timeframe } from "../types";
 import { SourceBadge } from "./SourceBadge";
 
 interface CandleChartProps {
   code: string;
+  /** 이 종목의 tf별 진행중(미마감) 봉 — useTickStream().liveBars[code] */
+  liveBars?: Partial<Record<Timeframe, LiveBar>>;
+  /** 브라우저↔서버 WS 가 살아 있는지. 끊겨 있으면 LIVE 태그를 띄우지 않는다 */
+  wsConnected?: boolean;
 }
 
 const UP_COLOR = "#dc2626"; // 양봉 적색 (국내 HTS 관행)
@@ -113,6 +117,12 @@ function isValidCandle(item: CandleItem): item is ValidCandle {
   );
 }
 
+/** 마지막 봉의 t. 빈 배열이면 undefined.
+ * (Array.prototype.at 은 이 프로젝트 tsconfig 의 lib 타깃 밖이라 인덱스로 접근한다.) */
+function lastT(list: { t: number }[]): number | undefined {
+  return list.length > 0 ? list[list.length - 1].t : undefined;
+}
+
 function computeMovingAverage(bars: ValidCandle[], period: number): LineData[] {
   if (bars.length < period) return [];
   const result: LineData[] = [];
@@ -134,7 +144,7 @@ function computeMovingAverage(bars: ValidCandle[], period: number): LineData[] {
  * 분봉(1·5·15·30·60·120·240)/일/주/월/년 전환, 거래량 오버레이, MA 5/20/60/120을 그린다.
  * tf·code 변경 시 이전 요청 응답은 무시하고(레이스 방지) 최신 데이터로만 갱신한다.
  */
-export function CandleChart({ code }: CandleChartProps) {
+export function CandleChart({ code, liveBars, wsConnected = false }: CandleChartProps) {
   const [tf, setTf] = useState<Timeframe>("1d");
   const [data, setData] = useState<CandlesResponse | null>(null);
   // 초기 응답 + 왼쪽 스크롤로 이어 붙인 과거 페이지들을 병합한 전체 봉 목록(t 오름차순).
@@ -156,6 +166,10 @@ export function CandleChart({ code }: CandleChartProps) {
   const initialFitRef = useRef(false);
   // 차트 생성 시 1회 등록하는 스크롤 구독이 항상 최신 상태를 보도록 함수 자체를 ref 로 전달.
   const loadOlderRef = useRef<(() => void) | null>(null);
+  // 현재 화면에 얹혀 있는 진행중 봉. bars(확정 봉)에는 넣지 않는다 —
+  // bars 는 "확정 봉만, t 오름차순, [0]이 과거 페이징 커서"라는 불변식을 지켜야 한다.
+  // 대신 setData 로 시리즈를 다시 깔 때마다 이 값을 재적용해 진행중 봉이 사라지지 않게 한다.
+  const liveBarRef = useRef<LiveBar | null>(null);
 
   // 차트 인스턴스는 마운트 시 1회만 생성 — 리사이즈 대응 + 언마운트 시 정리.
   useEffect(() => {
@@ -254,6 +268,7 @@ export function CandleChart({ code }: CandleChartProps) {
   // tf·code 변경 시 재조회. 응답이 도착했을 때 더 최신 요청이 나가 있으면 무시(레이스 방지).
   useEffect(() => {
     olderRef.current = { loading: false, exhausted: false };
+    liveBarRef.current = null;  // 다른 tf 의 진행중 봉이 새 차트에 남지 않도록
 
     if (!code) {
       setData(null);
@@ -313,6 +328,40 @@ export function CandleChart({ code }: CandleChartProps) {
       });
   };
 
+  // 진행중 봉을 시리즈에 얹는다. bars 를 건드리지 않으므로 페이징 불변식이 안전하다.
+  // 확정 봉보다 과거인 봉은 무시한다(늦게 도착한 낡은 bar_update 방어).
+  function applyLiveBar(bar: LiveBar | null, lastConfirmedT: number | undefined) {
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    if (!candleSeries || !volumeSeries || !bar) return;
+    if (lastConfirmedT !== undefined && bar.t < lastConfirmedT) return;
+    candleSeries.update({
+      time: bar.t as UTCTimestamp,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+    });
+    volumeSeries.update({
+      time: bar.t as UTCTimestamp,
+      value: bar.volume,
+      color: bar.close >= bar.open ? UP_VOLUME_COLOR : DOWN_VOLUME_COLOR,
+    });
+  }
+
+  // 새 진행중 봉이 도착하면 즉시 반영(2초 주기). O(1) — 전체 setData 를 하지 않는다.
+  const liveBar = liveBars?.[tf] ?? null;
+  useEffect(() => {
+    // 응답과 tf/code 가 어긋난 순간(전환 직후)에는 얹지 않는다 — 레이스 방어.
+    if (!data || data.code !== code || data.tf !== tf) {
+      liveBarRef.current = null;
+      return;
+    }
+    if (!liveBar) return;
+    liveBarRef.current = liveBar;
+    applyLiveBar(liveBar, lastT(barsRef.current));
+  }, [liveBar, data, code, tf]);
+
   // 봉 목록(초기 로딩 또는 과거 페이지 병합)이 바뀌면 캔들/거래량/이동평균 시리즈에 반영.
   useEffect(() => {
     barsRef.current = bars;
@@ -347,6 +396,11 @@ export function CandleChart({ code }: CandleChartProps) {
       maSeriesRef.current[ma.period]?.setData(computeMovingAverage(validBars, ma.period));
     }
 
+    // ★ setData 는 확정 봉만으로 시리즈를 전면 리셋하므로 진행중 봉이 지워진다.
+    // 과거 페이지를 이어 붙일 때마다 마지막 봉이 튀지 않도록 즉시 다시 얹는다.
+    // fitContent 앞에 두어야 fit 범위에 진행중 봉이 포함된다.
+    applyLiveBar(liveBarRef.current, lastT(validBars));
+
     // fitContent 는 초기 로딩 직후 1회만 — 과거 페이지를 이어 붙일 때 fit 하면
     // 보고 있던 구간이 전체 범위로 튀어 스크롤 위치를 잃는다(시간축 기준이라
     // setData 만으로는 보이는 구간이 유지된다).
@@ -367,7 +421,7 @@ export function CandleChart({ code }: CandleChartProps) {
     handleTfChange(value as Timeframe);
   }
 
-  const isEmpty = !loading && data !== null && bars.length === 0;
+  const isEmpty = !loading && data !== null && bars.length === 0 && !liveBar;
   const overlayMessage = errorMessage ?? (isEmpty ? "이 주기의 데이터가 없습니다" : null);
 
   return (
@@ -385,6 +439,11 @@ export function CandleChart({ code }: CandleChartProps) {
           ))}
         </div>
         {data ? <SourceBadge source={data.source} /> : null}
+        {liveBar && wsConnected ? (
+          <span className="candle-chart__live-tag" title="진행중 봉 — 마감 전까지 계속 바뀝니다">
+            LIVE
+          </span>
+        ) : null}
       </div>
 
       <div className="tf-bar" role="group" aria-label="차트 타임프레임 선택">

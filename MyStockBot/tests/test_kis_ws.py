@@ -11,8 +11,14 @@ from server.services import kis_ws
 
 # ── H0STCNT0 파서 ──
 
-def _record(code: str, price: str, sign: str, change: str, pct: str, volume: str) -> list[str]:
-    """46필드 레코드 1건 생성(이 모듈이 쓰는 인덱스만 채우고 나머지는 빈 문자열)."""
+def _record(
+    code: str, price: str, sign: str, change: str, pct: str, volume: str,
+    day_open: str = "", day_high: str = "", day_low: str = "",
+) -> list[str]:
+    """46필드 레코드 1건 생성(이 모듈이 쓰는 인덱스만 채우고 나머지는 빈 문자열).
+
+    당일 시/고/저(7·8·9)는 기본 빈 문자열 — KIS 가 이 값을 비워 보내는 경우가 실제로
+    있고, 그때도 틱 자체는 살아야 한다는 계약을 기본값으로 표현한다."""
     fields = [""] * kis_ws._CCNL_FIELD_COUNT
     fields[kis_ws._IDX_CODE] = code
     fields[kis_ws._IDX_TIME] = "093015"
@@ -21,6 +27,9 @@ def _record(code: str, price: str, sign: str, change: str, pct: str, volume: str
     fields[kis_ws._IDX_CHANGE] = change
     fields[kis_ws._IDX_CHANGE_PCT] = pct
     fields[kis_ws._IDX_VOLUME] = volume
+    fields[kis_ws._IDX_DAY_OPEN] = day_open
+    fields[kis_ws._IDX_DAY_HIGH] = day_high
+    fields[kis_ws._IDX_DAY_LOW] = day_low
     return fields
 
 
@@ -36,6 +45,10 @@ def test_parse_single_record_rising():
         "change_pct": 2.16,
         "volume": 12345678,
         "time": "09:30:15",
+        # 당일 시/고/저가 비어 오면 None — 틱은 살리고 진행중 1일봉만 못 만든다.
+        "day_open": None,
+        "day_high": None,
+        "day_low": None,
     }
 
 
@@ -151,3 +164,37 @@ def test_read_loop_survives_malformed_frame(monkeypatch):
     # 잘못된 프레임에서 멈추지 않고 계속 읽어, 끝에서야 연결 종료 예외가 난다.
     with pytest.raises(ConnectionError):
         asyncio.run(kis_ws._read_loop(ws))
+
+
+# ────────────────────────────────────────────
+# 당일 시/고/저 파싱 — 진행중 1일봉 합성의 입력
+# ────────────────────────────────────────────
+
+def test_parse_fills_day_ohl_when_present():
+    fields = _record("005930", "71000", "2", "1500", "2.16", "12345678",
+                     day_open="70000", day_high="71500", day_low="69800")
+    event = kis_ws._parse_ccnl_record(fields)
+    assert event["day_open"] == 70000.0
+    assert event["day_high"] == 71500.0
+    assert event["day_low"] == 69800.0
+
+
+def test_parse_keeps_tick_alive_when_day_ohl_missing():
+    """이 세 값이 비었다고 틱을 버리면 가격 표시까지 멈춘다 — 진행중 봉만 포기한다."""
+    event = kis_ws._parse_ccnl_record(
+        _record("005930", "71000", "2", "1500", "2.16", "12345678")
+    )
+    assert event is not None
+    assert event["price"] == 71000.0
+    assert event["day_open"] is None
+
+
+def test_parse_tolerates_garbage_day_ohl():
+    """숫자가 아닌 값이 와도 그 필드만 None 이고 나머지 틱은 정상이다."""
+    event = kis_ws._parse_ccnl_record(
+        _record("005930", "71000", "2", "1500", "2.16", "12345678",
+                day_open="-", day_high="71500", day_low="")
+    )
+    assert event["day_open"] is None
+    assert event["day_high"] == 71500.0
+    assert event["day_low"] is None

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiToken } from "../api";
+import type { LiveBar, Timeframe } from "../types";
 
 // ⚠️ 보안 주의: token을 ?token= query parameter로 전달하므로 브라우저 DevTools 및
 // 서버 로그(access log 등)에 평문으로 노출될 수 있다. WebSocket 표준상 Authorization
@@ -33,6 +34,49 @@ export interface UseTickStreamResult {
    * 안내가 깜빡이는 편이 더 혼란스럽다.
    */
   excludedCodes: Set<string>;
+  /**
+   * 종목코드 → 타임프레임별 진행중(미마감) 봉. bar_update 를 못 받은 종목·tf 는 키가 없다.
+   * 재연결로 WS 가 잠시 끊겨도 지우지 않는다(ticks 와 같은 원칙 — 재연결 즉시 다시 찬다).
+   */
+  liveBars: Record<string, Partial<Record<Timeframe, LiveBar>>>;
+}
+
+/** bar_update.tf 허용값 — candles API 의 Timeframe 중 1w/1M/1y 는 이 메시지로 오지 않는다 */
+const VALID_BAR_TFS: ReadonlySet<string> = new Set([
+  "1m", "5m", "15m", "30m", "60m", "120m", "240m", "1d",
+]);
+
+interface RawBarUpdateMessage {
+  type: "bar_update";
+  code: string;
+  tf: Timeframe;
+  bar: Record<string, unknown>;
+}
+
+function isRawBarUpdateMessage(data: unknown): data is RawBarUpdateMessage {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    obj.type === "bar_update" &&
+    typeof obj.code === "string" &&
+    typeof obj.tf === "string" &&
+    VALID_BAR_TFS.has(obj.tf) &&
+    typeof obj.bar === "object" &&
+    obj.bar !== null
+  );
+}
+
+/** 전 필드가 유효한 숫자일 때만 LiveBar 로 승격한다.
+ * 서버 계약상 결측이 없어야 하지만, 반쯤 찬 봉이 차트에 들어가면 캔들이 깨지므로 방어한다. */
+function parseLiveBar(raw: Record<string, unknown>): LiveBar | null {
+  const { t, open, high, low, close, volume } = raw;
+  if (
+    typeof t === "number" && typeof open === "number" && typeof high === "number" &&
+    typeof low === "number" && typeof close === "number" && typeof volume === "number"
+  ) {
+    return { t, open, high, low, close, volume };
+  }
+  return null;
 }
 
 const INITIAL_BACKOFF_MS = 1_000;
@@ -80,6 +124,9 @@ export function useTickStream(): UseTickStreamResult {
   const [connected, setConnected] = useState(false);
   const [kisConnected, setKisConnected] = useState(false);
   const [excludedCodes, setExcludedCodes] = useState<Set<string>>(() => new Set());
+  const [liveBars, setLiveBars] = useState<
+    Record<string, Partial<Record<Timeframe, LiveBar>>>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +147,28 @@ export function useTickStream(): UseTickStreamResult {
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         connect();
       }, backoffMs);
+    }
+
+    // 장중엔 종목×tf 수십 건이 2초 주기로 몰린다. 메시지마다 setState 하지 않고 같은
+    // 애니메이션 프레임에 도착한 갱신을 하나로 합쳐 1회만 반영한다(리렌더 폭풍 방지).
+    let pendingLiveBars: Record<string, Partial<Record<Timeframe, LiveBar>>> | null = null;
+    let flushRafId: number | null = null;
+
+    function scheduleLiveBarsFlush() {
+      if (flushRafId !== null) return;
+      flushRafId = window.requestAnimationFrame(() => {
+        flushRafId = null;
+        const pending = pendingLiveBars;
+        pendingLiveBars = null;
+        if (!pending || cancelled) return;
+        setLiveBars((prev) => {
+          const next: Record<string, Partial<Record<Timeframe, LiveBar>>> = { ...prev };
+          for (const code of Object.keys(pending)) {
+            next[code] = { ...next[code], ...pending[code] };
+          }
+          return next;
+        });
+      });
     }
 
     function connect() {
@@ -142,6 +211,16 @@ export function useTickStream(): UseTickStreamResult {
             receivedAt: Date.now(),
           };
           setTicks((prev) => ({ ...prev, [tick.code]: tick }));
+        } else if (isRawBarUpdateMessage(data)) {
+          const bar = parseLiveBar(data.bar);
+          if (bar) {
+            if (!pendingLiveBars) pendingLiveBars = {};
+            pendingLiveBars[data.code] = {
+              ...pendingLiveBars[data.code],
+              [data.tf]: bar,
+            };
+            scheduleLiveBarsFlush();
+          }
         } else if (data.type === "status") {
           setKisConnected(Boolean(data.kis_connected));
           // excluded 는 구버전 서버엔 없다 — 배열일 때만 반영한다.
@@ -194,6 +273,9 @@ export function useTickStream(): UseTickStreamResult {
 
     return () => {
       cancelled = true;
+      if (flushRafId !== null) {
+        window.cancelAnimationFrame(flushRafId);
+      }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
@@ -208,5 +290,5 @@ export function useTickStream(): UseTickStreamResult {
     };
   }, []);
 
-  return { ticks, connected, kisConnected, excludedCodes };
+  return { ticks, connected, kisConnected, excludedCodes, liveBars };
 }
